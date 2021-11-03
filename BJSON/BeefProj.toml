@@ -1,0 +1,6 @@
+FileVersion = 1
+
+[Project]
+Name = "BJSON"
+TargetType = "BeefLib"
+StartupObject = "BJSON.Program"

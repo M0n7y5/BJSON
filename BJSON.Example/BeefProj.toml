@@ -1,0 +1,6 @@
+FileVersion = 1
+Dependencies = {corlib = "*", BJSON = "*"}
+
+[Project]
+Name = "BJSON.Example"
+StartupObject = "BJSON.Example.Program"
