@@ -5,6 +5,8 @@ namespace BJSON.Enums
 {
 	enum JsonType
 	{
+		//case Empty;
+
 		//Complex data
 		case OBJECT;
 		case ARRAY;
@@ -28,6 +30,7 @@ namespace BJSON.Enums
 				case .STRING: return typeof(String);
 				case .BOOL: return typeof(bool);
 				case .NULL: return null;
+
 				}
 			}
 		}

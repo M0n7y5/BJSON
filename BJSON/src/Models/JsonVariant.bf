@@ -1,15 +1,18 @@
 using System;
 using System.Collections;
 using BJSON.Enums;
+using System.Diagnostics;
+
 namespace BJSON.Models
 {
-	struct JsonVariant : ICollection<Self>
+	struct JsonVariant
 	{
 		JsonType JType = .NULL;
 		Variant Value = .();
 
 		public this()
 		{
+			//Debug.WriteLine("Test Test");
 		}
 
 		this(Variant value, JsonType type)
@@ -126,9 +129,9 @@ namespace BJSON.Models
 			return (.)GetTypedValue<String>(self);
 		}
 
-		public Self this[String key]
+		public ref Self this[String key]
 		{
-			get => GetChildByName(key);
+			get mut => ref GetChildByName(key);
 			set mut => SetChildByName(key, value);
 		}
 
@@ -142,40 +145,63 @@ namespace BJSON.Models
 		// Object
 		void SetChildByName(String key, JsonVariant value) mut
 		{
-			if (!this.Value.HasValue)
+			switch (JType)
 			{
-				// if we dont have a value, create new object with the key and
-				// provided value and replace itself with it
-				//Create(new JsonObject() { (new String(key), value) }, true);
-				this = JsonVariant(key, value);
-			}
-			else
-			{
-				if (this.Value.VariantType != typeof(JsonObject))
-				{
-					// if we are not JsonObject, create new JsonObject and
-					// replace current variant value
-					this.Dispose();
-					this = JsonVariant(key, value);
-					//Create(new JsonObject() { (new String(key), value) }, true);
-				}
-				else
+			case .NULL: this = JsonVariant(key, value); return;
+			case .OBJECT:
 				{
 					let obj = this.Value.Get<JsonObject>();
-					if (obj.ContainsKey(key))// if key exists, replace it with new value
+					if (obj.ContainsKey(key))// if key exists, replace its value with new value
 					{
 						obj[key].Dispose();// dispose old value
 
 						obj[key] = value;
 					}
+					else
+					{
+						// if key doesnt exist add new entry
+						obj.Add(new .(key), value);
+					}
 				}
+				return;
+
+			default:
+				{
+					this.Dispose();
+					this = JsonVariant(key, value);
+				}
+				return;
+
 			}
 		}
 
 		// Object
-		Self GetChildByName(String str)
+		ref Self GetChildByName(String key) mut
 		{
-			return default;
+			switch (JType)
+			{
+			case .NULL: this = JsonVariant(key, .()); return ref this;
+			case .OBJECT:
+				{
+					let obj = this.Value.Get<JsonObject>();
+					if (obj.ContainsKey(key))
+					{
+						return ref obj[key];
+					}
+					else
+					{
+						Debug.FatalError("This should not happen ...");
+						return ref JsonVariant();
+					}
+				}
+
+			default:
+				{
+					this.Dispose();
+					this = JsonVariant(key, .());
+					return ref this;
+				}
+			}
 		}
 
 		// Array
@@ -190,70 +216,65 @@ namespace BJSON.Models
 		}
 
 
-		public void Add(JsonVariant item)
+		public void Add(JsonVariant item) mut
 		{
-		}
-
-		public void Clear()
-		{
-		}
-
-		public bool Contains(JsonVariant item)
-		{
-			return default;
-		}
-
-		public void CopyTo(Span<JsonVariant> span)
-		{
-		}
-
-		public bool Remove(JsonVariant item)
-		{
-			return default;
+			this = item;
 		}
 
 		static T GetTypedValue<T>(Self self) where T : class
 		{
+			if (self.JType == .NULL)
+				return default;// fail silently
+
 			if (self.Value.VariantType == typeof(T))
 				return self.Value.Get<T>();
-			return default;// fail silently
+			else
+				return default;// fail silently
 		}
 
 		static T GetTypedValue<T>(Self self) where T : struct
 		{
+			if (self.JType == .NULL)
+				return default;// fail silently
+
 			if (self.Value.VariantType == typeof(T))
 				return self.Value.Get<T>();
-			return default;// fail silently
+			else
+				return default;// fail silently
 		}
 
-		void Dispose() mut
+		public void Dispose() mut
 		{
-			PreDispose();
-			this.Value.Dispose();
-		}
-
-		void PreDispose()
-		{
-			switch (this.Value.VariantType)
+			if (this.Value.HasValue)
 			{
-			case typeof(JsonArray):
-				let array = Value.Get<JsonArray>();
-				for (var item in array)
+				switch (this.Value.VariantType)
 				{
-					/*item.PreDispose();*/
-					item.Dispose();
+				case typeof(JsonArray):
+					let array = Value.Get<JsonArray>();
+					for (var item in array)
+					{
+						/*item.PreDispose();*/
+						item.Dispose();
+					}
+					delete array;
+					break;
+				case typeof(JsonObject):
+					let obj = Value.Get<JsonObject>();
+					for (var item in obj)
+					{
+						delete item.key;
+						/*item.value.PreDispose();*/
+						item.value.Dispose();
+					}
+					delete obj;
+					break;
+				default:
+					Value.Dispose();
+					break;
 				}
-				break;
-			case typeof(JsonObject):
-				let array = Value.Get<JsonObject>();
-				for (var item in array)
-				{
-					delete item.key;
-					/*item.value.PreDispose();*/
-					item.value.Dispose();
-				}
-				break;
 			}
+
+			SetType(.NULL);
 		}
 	}
 }

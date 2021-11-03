@@ -33,7 +33,7 @@ namespace BJSON.Test
 			let json2 = JsonVariant() { 2, 44, 65 };
 
 			//initialize as object
-			let json3 = JsonVariant()
+			var json3 = JsonVariant()
 				{
 					("firstName", "John"),
 					("lastName", "Smith"),
