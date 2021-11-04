@@ -23,7 +23,20 @@ namespace BJSON.Example
 
 			var json = JsonVariant();// root
 
-			int test = json["name"];
+			json[42] = "Eyyyyyyy lmao";
+			json[99] = "Sheesh";
+			json[100] = 1345;
+			json[142] = 999999;
+
+			String noTruth = json[155]["entry"];
+
+			json[155]["entry"] = "Is it working?";
+
+
+			let array = json[142];
+			let truth = json[155]["entry"];
+
+			/*int test = json["name"];
 			String testStr = json["name"];
 
 
@@ -35,7 +48,7 @@ namespace BJSON.Example
 
 			var lmao2 = json["name"];
 			var number = json["name"]["phoneNumber"];
-			var number2 = json["name"]["phoneNumber2"];
+			var number2 = json["name"]["phoneNumber2"];*/
 			//json["name"]["phoneNumber2"] = 999999;
 
 			json.Dispose();

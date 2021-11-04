@@ -5,7 +5,7 @@ namespace BJSON.Enums
 {
 	enum JsonType
 	{
-		//case Empty;
+		case NULL;
 
 		//Complex data
 		case OBJECT;
@@ -16,7 +16,6 @@ namespace BJSON.Enums
 		// Simple Data
 		case NUMBER;
 		case BOOL;
-		case NULL;
 
 		public Type GetType
 		{

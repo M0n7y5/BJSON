@@ -136,9 +136,9 @@ namespace BJSON.Models
 		}
 
 		// Access array
-		public Self this[uint index]
+		public ref Self this[uint index]
 		{
-			get => GetChildFromIndex(index);
+			get mut => ref GetChildFromIndex(index);
 			set mut => SetChildByIndex(index, value);
 		}
 
@@ -205,14 +205,79 @@ namespace BJSON.Models
 		}
 
 		// Array
-		void SetChildByIndex(uint param, Self variant)
+		void SetChildByIndex(uint key, Self value) mut
 		{
+			switch (JType)
+			{
+			case .NULL:
+				{
+					let array = new JsonArray();
+					ResizeArray(array, (.)key);
+					array.Insert((.)key, value);
+					this = JsonVariant(array);
+					return;
+				}
+			case .ARRAY:
+				{
+					let array = this.Value.Get<JsonArray>();
+
+					if (array.Count - 1 < (.)key)
+					{
+						ResizeArray(array, (.)key);
+						array.Insert((.)key, value);
+					}
+					else
+					{
+						array[(.)key].Dispose();
+						array[(.)key] = value;
+					}
+				}
+				return;
+
+			default:
+				{
+					this.Dispose();// replace current value with array
+					let array = new JsonArray();
+					ResizeArray(array, (.)key);
+					array.Insert((.)key, value);
+					this = JsonVariant(array);
+					return;
+				}
+			}
 		}
 
 		// Array
-		Self GetChildFromIndex(uint param)
+		ref Self GetChildFromIndex(uint key) mut
 		{
-			return default;
+			switch (JType)
+			{
+			case .NULL:
+				{
+					this = JsonVariant(new JsonArray((.)key + 1));
+					return ref this;
+				}
+			case .ARRAY:
+				{
+					let array = this.Value.Get<JsonArray>();
+
+					if (array.Count - 1 >= (.)key)
+					{
+						return ref array[(.)key];
+					}
+					else
+					{
+						ResizeArray(array, (.)key);
+						array.Insert((.)key, default(JsonVariant));
+						return ref array[(.)key];
+					}
+				}
+			default:
+				{
+					this.Dispose();
+					this = JsonVariant(new JsonArray());
+					return ref this;
+				}
+			}
 		}
 
 
@@ -220,6 +285,30 @@ namespace BJSON.Models
 		{
 			this = item;
 		}
+
+
+		public void ResizeArray(JsonArray array, int newSize, bool autoFree = true)
+		{
+			if (newSize > array.Count)
+			{
+				// just grow array
+				array.GrowUnitialized(newSize - array.Count);
+				return;
+			}
+			/*else
+			{
+				var nItemsTofree = array.Count - newSize;
+
+				for (var item in array[... ^nItemsTofree])
+				{
+					item.Dispose();
+				}
+
+				array.RemoveRange(newSize, nItemsTofree);
+			}*/
+		}
+
+
 
 		static T GetTypedValue<T>(Self self) where T : class
 		{
