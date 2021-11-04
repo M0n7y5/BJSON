@@ -23,7 +23,7 @@ namespace BJSON.Example
 
 			var json = JsonVariant();// root
 
-			json[42] = "Eyyyyyyy lmao";
+			/*json[42] = "Eyyyyyyy lmao";
 			json[99] = "Sheesh";
 			json[100] = 1345;
 			json[142] = 999999;
@@ -34,7 +34,7 @@ namespace BJSON.Example
 
 
 			let array = json[142];
-			let truth = json[155]["entry"];
+			let truth = json[155]["entry"];*/
 
 			/*int test = json["name"];
 			String testStr = json["name"];

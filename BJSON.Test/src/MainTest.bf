@@ -5,6 +5,30 @@ namespace BJSON.Test
 	class MainTest
 	{
 		[Test]
+		public static void Array_T()
+		{
+			var json = JsonVariant();// root
+			defer json.Dispose();
+
+			json[42] = "Eyyyyyyy lmao";
+			json[99] = "Sheesh";
+			json[100] = 1345;
+			json[142] = 999999;
+
+			// should be null
+			String noTruth = json[155]["entry"];
+			Test.Assert(noTruth == null);
+
+			json[155]["entry"] = "Is it working?";
+
+			Test.Assert(json[42] == "Eyyyyyyy lmao");
+			Test.Assert(json[99] == "Sheesh");
+			Test.Assert(json[100] == 1345);
+			Test.Assert(json[142] == 999999);
+		}
+
+
+		/*[Test]
 		public static void TestMe()
 		{
 			/*var jsonString = @"""
@@ -55,7 +79,7 @@ namespace BJSON.Test
 			String officeNumber = json3["phoneNumbers"][1]["number"];
 
 			Test.Assert(false);
-		}
+		}*/
 
 		/*{
 		  "firstName": "John",
