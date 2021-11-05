@@ -1,4 +1,5 @@
 using System;
+using BJSON.Models;
 
 namespace BJSON
 {
@@ -6,7 +7,7 @@ namespace BJSON
 	{
 
 
-		public static JsonElement Deserialize(String json)
+		public static JsonVariant Deserialize(String json)
 		{
 
 			return default;

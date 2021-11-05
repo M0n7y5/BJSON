@@ -90,7 +90,7 @@ namespace BJSON.Models
 			return JsonVariant(value);
 		}
 
-		public static operator Self((String, int) value)
+		/*public static operator Self((String, int) value)
 		{
 			return JsonVariant(value.0, value.1);
 		}
@@ -113,7 +113,7 @@ namespace BJSON.Models
 		public static operator Self((String, bool) value)
 		{
 			return JsonVariant(value.0, value.1);
-		}
+		}*/
 
 		public static operator int(Self self)
 		{
@@ -127,6 +127,13 @@ namespace BJSON.Models
 			// json supports only double
 			//WARN: Allocating
 			return (.)GetTypedValue<String>(self);
+		}
+
+		public static operator bool(Self self)
+		{
+			// json supports only double
+			//WARN: Allocating
+			return (.)GetTypedValue<bool>(self);
 		}
 
 		public ref Self this[String key]
@@ -280,10 +287,49 @@ namespace BJSON.Models
 			}
 		}
 
-
+		// Array
 		public void Add(JsonVariant item) mut
 		{
-			this = item;
+			switch (JType)
+			{
+			case .ARRAY:
+				{
+					let array = this.Value.Get<JsonArray>();
+					array.Add(item);
+					return;
+				}
+			default:
+				{
+					this.Dispose();
+					let array = new JsonArray();
+					array.Add(item);
+					this = JsonVariant(array);
+					return;
+				}
+
+			}
+		}
+
+		public void Add((String key, JsonVariant value) item) mut
+		{
+			switch (JType)
+			{
+			case .OBJECT:
+				{
+					let obj = this.Value.Get<JsonObject>();
+					obj.Add(new String(item.key), item.value);
+					return;
+				}
+			default:
+				{
+					this.Dispose();
+					let obj = new JsonObject();
+					obj.Add(new String(item.key), item.value);
+					this = JsonVariant(obj);
+					return;
+				}
+
+			}
 		}
 
 
@@ -292,7 +338,8 @@ namespace BJSON.Models
 			if (newSize > array.Count)
 			{
 				// just grow array
-				array.GrowUnitialized(newSize - array.Count);
+				for (int i in 0 ... newSize - array.Count)
+					array.Add(default);
 				return;
 			}
 			/*else
