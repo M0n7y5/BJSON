@@ -5,7 +5,7 @@ using System.Diagnostics;
 
 namespace BJSON.Models
 {
-	struct JsonVariant
+	struct JsonVariant : IDisposable
 	{
 		JsonType JType = .NULL;
 		Variant Value = .();

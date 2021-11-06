@@ -7,6 +7,10 @@ namespace BJSON.Test
 		[Test]
 		public static void Array_T()
 		{
+			var json2 = JsonVariant() { 2, 44, 65 };
+			defer json2.Dispose();
+
+
 			var json = JsonVariant();// root
 			defer json.Dispose();
 

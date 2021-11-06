@@ -5,3 +5,6 @@ Dependencies = {corlib = "*", BJSON = "*"}
 Name = "BJSON.Test"
 TargetType = "BeefTest"
 StartupObject = "BJSON.Test.Program"
+
+[Configs.Test.Win64]
+BeefLibType = "DynamicDebug"

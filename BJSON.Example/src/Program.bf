@@ -7,6 +7,16 @@ namespace BJSON.Example
 	{
 		public static int Main(String[] args)
 		{
+
+			using(var json2 = JsonVariant() { 2, 44, 65 })
+			{
+
+			}
+
+			var json2 = JsonVariant() { 2, 44, 65 };
+			defer json2.Dispose();
+
+
 						/*var jsonString = @"""
 			{
 			  "firstName": "John",
@@ -45,7 +55,7 @@ namespace BJSON.Example
 			json["window"][2]["name"] = "Amogus";*/
 
 			// initialize as array
-			var json2 = JsonVariant() { 2, 44, 65 };
+			/*var json2 = JsonVariant() { 2, 44, 65 };
 			defer json2.Dispose();
 
 
@@ -91,7 +101,7 @@ namespace BJSON.Example
 
 
 			String numberType = json3["phoneNumbers"][1]["type"];
-			String officeNumber = json3["phoneNumbers"][1]["number"];
+			String officeNumber = json3["phoneNumbers"][1]["number"];*/
 
 
 			return 0;
