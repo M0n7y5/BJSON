@@ -7,14 +7,8 @@ namespace BJSON.Example
 	{
 		public static int Main(String[] args)
 		{
-
-			using(var json2 = JsonVariant() { 2, 44, 65 })
-			{
-
-			}
-
-			var json2 = JsonVariant() { 2, 44, 65 };
-			defer json2.Dispose();
+			/*var json2 = JsonVariant() { 2, 44, 65 };
+			defer json2.Dispose();*/
 
 
 						/*var jsonString = @"""
@@ -58,6 +52,10 @@ namespace BJSON.Example
 			/*var json2 = JsonVariant() { 2, 44, 65 };
 			defer json2.Dispose();
 
+			let str2 = scope String();
+			Json.Serialize(json2, str2);
+
+
 
 			var json22 = JsonVariant()
 				{
@@ -67,6 +65,10 @@ namespace BJSON.Example
 					("age", 27)
 				};
 			defer json22.Dispose();
+			let str22 = scope String();
+			Json.Serialize(json22, str22);*/
+
+
 
 			//initialize as object
 			var json3 = JsonVariant()
@@ -92,6 +94,10 @@ namespace BJSON.Example
 				};
 			defer json3.Dispose();
 
+			let str3 = scope String();
+			Json.Serialize(json3, str3);
+
+
 
 			String firstName = json3["firstName"];
 			String lastName = json3["lastName"];
@@ -101,7 +107,7 @@ namespace BJSON.Example
 
 
 			String numberType = json3["phoneNumbers"][1]["type"];
-			String officeNumber = json3["phoneNumbers"][1]["number"];*/
+			String officeNumber = json3["phoneNumbers"][1]["number"];
 
 
 			return 0;

@@ -7,8 +7,8 @@ namespace BJSON.Models
 {
 	struct JsonVariant : IDisposable
 	{
-		JsonType JType = .NULL;
-		Variant Value = .();
+		public JsonType JType = .NULL;
+		public Variant Value = .();
 
 		public this()
 		{
@@ -49,91 +49,81 @@ namespace BJSON.Models
 		{
 		}
 
-
 		[Inline]
 		void SetType(JsonType type) mut
 		{
 			this.JType = type;
 		}
 
-
+		[Inline]
 		public static operator Self(bool value)
 		{
 			return JsonVariant(value);
 		}
 
+		[Inline]
 		public static operator Self(int value)
 		{
 			// json supports only double
 			return (double)value;
 		}
 
+		[Inline]
 		public static operator Self(uint value)
 		{
 			// json supports only double
 			return (double)value;
 		}
 
+		[Inline]
 		public static operator Self(double value)
 		{
 			// json supports only double
 			return JsonVariant(value);
 		}
 
+		[Inline]
 		public static operator Self(String value)
 		{
 			return JsonVariant(value);
 		}
 
+		[Inline]
 		public static operator Self(Variant value)
 		{
 			return JsonVariant(value);
 		}
 
-		/*public static operator Self((String, int) value)
-		{
-			return JsonVariant(value.0, value.1);
-		}
-
-		public static operator Self((String, double) value)
-		{
-			return JsonVariant(value.0, value.1);
-		}
-
-		public static operator Self((String, String) value)
-		{
-			return JsonVariant(value.0, value.1);
-		}
-
-		public static operator Self((String, Self) value)
-		{
-			return JsonVariant(value.0, value.1);
-		}
-
-		public static operator Self((String, bool) value)
-		{
-			return JsonVariant(value.0, value.1);
-		}*/
-
+		[Inline]
 		public static operator int(Self self)
 		{
 			// json supports only double
-			//WARN: Allocating
 			return (.)GetTypedValue<double>(self);
 		}
 
+		[Inline]
 		public static operator String(Self self)
 		{
-			// json supports only double
-			//WARN: Allocating
+
 			return (.)GetTypedValue<String>(self);
 		}
 
+		[Inline]
 		public static operator bool(Self self)
 		{
-			// json supports only double
-			//WARN: Allocating
 			return (.)GetTypedValue<bool>(self);
+		}
+
+		[Inline]
+		public static operator JsonArray(Self self)
+		{
+			return (.)GetTypedValue<JsonArray>(self);
+		}
+
+		[Inline]
+		public static operator JsonObject(Self self)
+		{
+			return (.)GetTypedValue<JsonObject>(self);
 		}
 
 		public ref Self this[String key]
@@ -158,7 +148,8 @@ namespace BJSON.Models
 			case .OBJECT:
 				{
 					let obj = this.Value.Get<JsonObject>();
-					if (obj.ContainsKey(key))// if key exists, replace its value with new value
+					// if key exists, replace its value with new value
+					if (obj.ContainsKey(key))
 					{
 						obj[key].Dispose();// dispose old value
 
@@ -310,7 +301,7 @@ namespace BJSON.Models
 			}
 		}
 
-		public void Add((String key, JsonVariant value) item) mut
+		public void Add(JsonKeyPair item) mut
 		{
 			switch (JType)
 			{
@@ -356,7 +347,7 @@ namespace BJSON.Models
 		}
 
 
-
+		[Inline]
 		static T GetTypedValue<T>(Self self) where T : class
 		{
 			if (self.JType == .NULL)
@@ -368,6 +359,7 @@ namespace BJSON.Models
 				return default;// fail silently
 		}
 
+		[Inline]
 		static T GetTypedValue<T>(Self self) where T : struct
 		{
 			if (self.JType == .NULL)
