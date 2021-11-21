@@ -56,72 +56,71 @@ namespace BJSON.Models
 		}
 
 		[Inline]
-		public static operator Self(bool value)
+		public static implicit operator Self(bool value)
 		{
 			return JsonVariant(value);
 		}
 
 		[Inline]
-		public static operator Self(int value)
+		public static implicit operator Self(int value)
 		{
 			// json supports only double
 			return (double)value;
 		}
 
 		[Inline]
-		public static operator Self(uint value)
+		public static implicit operator Self(uint value)
 		{
 			// json supports only double
 			return (double)value;
 		}
 
 		[Inline]
-		public static operator Self(double value)
+		public static implicit operator Self(double value)
 		{
 			// json supports only double
 			return JsonVariant(value);
 		}
 
 		[Inline]
-		public static operator Self(String value)
+		public static implicit operator Self(String value)
 		{
 			return JsonVariant(value);
 		}
 
 		[Inline]
-		public static operator Self(Variant value)
+		public static implicit operator Self(Variant value)
 		{
 			return JsonVariant(value);
 		}
 
 		[Inline]
-		public static operator int(Self self)
+		public static implicit operator int(Self self)
 		{
 			// json supports only double
 			return (.)GetTypedValue<double>(self);
 		}
 
 		[Inline]
-		public static operator String(Self self)
+		public static implicit operator String(Self self)
 		{
-
 			return (.)GetTypedValue<String>(self);
 		}
 
 		[Inline]
-		public static operator bool(Self self)
+		public static implicit operator bool(Self self)
 		{
 			return (.)GetTypedValue<bool>(self);
 		}
 
 		[Inline]
-		public static operator JsonArray(Self self)
+		public static implicit operator JsonArray(Self self)
 		{
 			return (.)GetTypedValue<JsonArray>(self);
 		}
 
 		[Inline]
-		public static operator JsonObject(Self self)
+		public static implicit operator JsonObject(Self self)
 		{
 			return (.)GetTypedValue<JsonObject>(self);
 		}

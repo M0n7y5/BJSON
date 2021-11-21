@@ -11,7 +11,7 @@ namespace BJSON.Example
 			defer json2.Dispose();*/
 
 
-						/*var jsonString = @"""
+			var jsonString = @"""
 			{
 			  "firstName": "John",
 			  "lastName": "Smith",
@@ -19,10 +19,12 @@ namespace BJSON.Example
 			  "age": 27
 			}
 			""";
-	
-			var person = Json.Deserialize(jsonString);
-			int age = person["age"];*/
 
+			var person = Json.Deserialize(jsonString);
+			//int age = person["age"];
+
+
+			return 0;
 			//JsonVariant testsss = default;
 
 			/*var json = JsonVariant();// root
@@ -90,7 +92,7 @@ namespace BJSON.Example
 									("number", "646 555-4567")
 								}
 						}
-					)
+							)
 				};
 			defer json3.Dispose();
 

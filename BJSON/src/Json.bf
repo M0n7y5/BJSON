@@ -7,7 +7,12 @@ namespace BJSON
 	{
 		public static JsonVariant Deserialize(String json)
 		{
-			return default;
+			let deserializer = scope Deserializer();
+			JsonVariant jsonVariant;
+
+			//TODO: return bool or result
+			deserializer.Deserialize(json, out jsonVariant, true);
+			return jsonVariant;
 		}
 
 		public static bool Serialize(JsonVariant json, String outText)

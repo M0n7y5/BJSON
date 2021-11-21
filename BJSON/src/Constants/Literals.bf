@@ -5,5 +5,7 @@ namespace BJSON.Constants
 		public const StringView TrueLiteral = "true";
 		public const StringView FalseLiteral = "false";
 		public const StringView NullLiteral = "null";
+
+		
 	}
 }
