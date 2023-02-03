@@ -45,6 +45,10 @@ namespace BJSON.Models
 		{
 		}
 
+		public this(StringView value) : this(.Create(new String(value), true), .STRING)
+		{
+		}
+
 		public this(bool value) : this(.Create(value), .BOOL)
 		{
 		}
@@ -84,6 +88,13 @@ namespace BJSON.Models
 
 		[Inline]
 		public static implicit operator Self(String value)
+		{
+			return JsonVariant(value);
+		}
+
+
+		[Inline]
+		public static implicit operator Self(StringView value)
 		{
 			return JsonVariant(value);
 		}
@@ -150,7 +161,7 @@ namespace BJSON.Models
 					// if key exists, replace its value with new value
 					if (obj.ContainsKey(key))
 					{
-						obj[key].Dispose();// dispose old value
+						obj[key].Dispose(); // dispose old value
 
 						obj[key] = value;
 					}
@@ -233,7 +244,7 @@ namespace BJSON.Models
 
 			default:
 				{
-					this.Dispose();// replace current value with array
+					this.Dispose(); // replace current value with array
 					let array = new JsonArray();
 					ResizeArray(array, (.)key);
 					array.Insert((.)key, value);
@@ -350,24 +361,24 @@ namespace BJSON.Models
 		static T GetTypedValue<T>(Self self) where T : class
 		{
 			if (self.JType == .NULL)
-				return default;// fail silently
+				return default; // fail silently
 
 			if (self.Value.VariantType == typeof(T))
 				return self.Value.Get<T>();
 			else
-				return default;// fail silently
+				return default; // fail silently
 		}
 
 		[Inline]
 		static T GetTypedValue<T>(Self self) where T : struct
 		{
 			if (self.JType == .NULL)
-				return default;// fail silently
+				return default; // fail silently
 
 			if (self.Value.VariantType == typeof(T))
 				return self.Value.Get<T>();
 			else
-				return default;// fail silently
+				return default; // fail silently
 		}
 
 		public void Dispose() mut

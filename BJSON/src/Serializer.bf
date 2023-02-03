@@ -74,7 +74,7 @@ namespace BJSON
 				return false;
 
 			String string = jsonVariant;
-			let quoted = string.QuoteString(.. scope String());
+			let quoted = string.Quote(.. scope String());
 
 			str.Append(quoted);
 
@@ -118,7 +118,7 @@ namespace BJSON
 
 			for (let item in obj)
 			{
-				let key = item.key.QuoteString(.. scope .());
+				let key = item.key.Quote(.. scope .());
 				key.Append(":");
 
 				str.Append(key);

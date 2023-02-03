@@ -11,20 +11,35 @@ namespace BJSON.Example
 			defer json2.Dispose();*/
 
 
-			var jsonString = @"""
-			{
-			  "firstName": "John",
-			  "lastName": "Smith",
-			  "isAlive": true,
-			  "age": 27
-			}
-			""";
+			var jsonString =
+				@"""
+				{
+				"nullTest": null,
+				"firstName": "John",
+				"lastName": "Smith",
+				"isAlive": true,
+				"age": 27,
+				"another" : {
+					"isItWorking": true,
+					"someArray": ["please", "work", "ok?", 98, 42, false]
+					}
+				}
+				""";
 
 			var person = Json.Deserialize(jsonString);
-			//int age = person["age"];
 
+			int ageVal = person["age"];
+
+			StringView name = person["lastName"];
+
+			bool isWorking = person["another"]["isItWorking"];
+
+			int arrayVal = person["another"]["someArray"][3];
 
 			return 0;
+
+
+
 			//JsonVariant testsss = default;
 
 			/*var json = JsonVariant();// root
