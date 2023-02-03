@@ -11,7 +11,7 @@ namespace BJSON.Example
 			defer json2.Dispose();*/
 
 
-			var jsonString =
+			let jsonString =
 				@"""
 				{
 				"nullTest": null,
@@ -21,20 +21,30 @@ namespace BJSON.Example
 				"age": 27,
 				"another" : {
 					"isItWorking": true,
-					"someArray": ["please", "work", "ok?", 98, 42, false]
+					"someArray": ["please", "work, "ok?", 98, 42, false]
 					}
 				}
 				""";
 
-			var person = Json.Deserialize(jsonString);
+			var result = Json.Deserialize(jsonString);
 
-			int ageVal = person["age"];
+			switch (result)
+			{
+			case .Ok(var value):
+				using (value)
+				{
+					int ageVal = value["age"];
 
-			StringView name = person["lastName"];
+					StringView name = value["lastName"];
 
-			bool isWorking = person["another"]["isItWorking"];
+					bool isWorking = value["another"]["isItWorking"];
 
-			int arrayVal = person["another"]["someArray"][3];
+					int arrayVal = value["another"]["someArray"][3];
+				}
+			case .Err(let err):
+				Console.WriteLine(err.ToString(.. scope String()));
+			}
+
 
 			return 0;
 
@@ -88,7 +98,7 @@ namespace BJSON.Example
 
 
 			//initialize as object
-			var json3 = JsonVariant()
+			/*var json3 = JsonVariant()
 				{
 					("firstName", "John"),
 					("lastName", "Smith"),
@@ -127,7 +137,7 @@ namespace BJSON.Example
 			String officeNumber = json3["phoneNumbers"][1]["number"];
 
 
-			return 0;
+			return 0;*/
 		}
 	}
 }

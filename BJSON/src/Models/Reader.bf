@@ -9,46 +9,60 @@ namespace BJSON.Models
 	{
 		IHandler _handler;
 
+		uint column = 1;
+		uint line = 1;
+
 		public this(IHandler handler)
 		{
 			this._handler = handler;
 		}
 
-		public Result<void> Parse(Stream stream)
+		public Result<void, JsonParsingError> Parse(Stream stream)
 		{
 			if (stream == null)
-				Runtime.FatalError("Stream can not be null!");
+				return .Err(.InputStreamIsNull);
 
 			SkipWhitespace(stream);
 
 			if (let c = stream.Peek<char8>())
 			{
-				if (c == 0)
-					return .Err;// Document empty
-				else
+				switch (c)
+				{
+				case '[','{':
 					return ParseValue(stream);
+				case 0:
+					return .Err(.DocumentIsEmpty); // Document empty
+				default: return .Err(.UnexpectedToken(line, column, "{ or ["));
+				}
 			}
 			else
-				return .Err;// Document empty
+				return .Err(.UnableToRead(line, column)); // Document empty
 		}
 
 		void SkipWhitespace(Stream stream)
 		{
-			while (stream.Peek<char8>() case .Ok(let c))
+			SKIP:while (stream.Peek<char8>() case .Ok(let c))
 			{
-				if (c.IsWhiteSpace)
+				switch (c)
+				{
+				case '\n':
 					stream.Skip(1);
-				else
-					break;
+					line++;
+					column = 1;
+				case ' ','\t','\r':
+					stream.Skip(1);
+					column++;
+				default: break SKIP;
+				}
 			}
 		}
 
-		Result<void> ParseValue(Stream stream)
+		Result<void, JsonParsingError> ParseValue(Stream stream)
 		{
 			switch (stream.Peek<char8>())
 			{
 			case .Err:
-				return .Err;
+				return .Err(.UnableToRead(line, column));
 			case .Ok(let val):
 				switch (val)
 				{
@@ -63,57 +77,53 @@ namespace BJSON.Models
 			}
 		}
 
-
-
-		Result<void> ParseNull(Stream stream)
+		Result<void, JsonParsingError> ParseNull(Stream stream)
 		{
-			if (Consume(stream, 'n') &&
-				Consume(stream, 'u') &&
-				Consume(stream, 'l') &&
-				Consume(stream, 'l'))
-			{
-				if (!_handler.Null())
-					return .Err;//invalid value
-				return .Ok;
-			}
+			Try!(Consume(stream, 'n'));
+			Try!(Consume(stream, 'u'));
+			Try!(Consume(stream, 'l'));
+			Try!(Consume(stream, 'l'));
 
-			return .Err;// unexpected token, Error Termination
+			if (!_handler.Null())
+				return .Err(.InvalidValue(line, column)); //invalid value
+
+			return .Ok;
 		}
 
-		Result<void> ParseBool(Stream stream)
+		Result<void, JsonParsingError> ParseBool(Stream stream)
 		{
-			if (let c = stream.Peek<char8>())// TODO: use read
+			if (let c = stream.Peek<char8>()) // TODO: use read
 				switch (c)
 				{
-				case 't':// parse true
-					if (Consume(stream, 't') &&// TODO: omit this in future
-						Consume(stream, 'r') &&
-						Consume(stream, 'u') &&
-						Consume(stream, 'e'))
-					{
-						if (!_handler.Bool(true))
-							return .Err;//invalid value
-						return .Ok;
-					}
-				case 'f':// parse true
-					if (Consume(stream, 'f') &&
-						Consume(stream, 'a') &&
-						Consume(stream, 'l') &&
-						Consume(stream, 's') &&
-						Consume(stream, 'e'))
-					{
-						if (!_handler.Bool(false))
-							return .Err;//invalid value
-						return .Ok;
-					}
+				case 't': // parse true
+					Try!(Consume(stream, 't'));
+					Try!(Consume(stream, 'r'));
+					Try!(Consume(stream, 'u'));
+					Try!(Consume(stream, 'e'));
+
+					if (!_handler.Bool(true))
+						return .Err(.InvalidValue(line, column)); //invalid value
+					return .Ok;
+
+				case 'f': // parse true
+					Try!(Consume(stream, 'f'));
+					Try!(Consume(stream, 'a'));
+					Try!(Consume(stream, 'l'));
+					Try!(Consume(stream, 's'));
+					Try!(Consume(stream, 'e'));
+
+					if (!_handler.Bool(false))
+						return .Err(.InvalidValue(line, column)); //invalid value
+
+					return .Ok;
 				}
 
-			return .Err;// unexpected token, Error Termination
+			return .Err(.UnexpectedToken(line, column, "")); // unexpected token, Error Termination
 		}
 
-		uint32 ParseHex4(Stream stream)
+		Result<uint32, JsonParsingError> ParseHex4(Stream stream)
 		{
-			uint32 codepoint = 0;//BUG! cant sum char32, report to Beefy
+			uint32 codepoint = 0; //BUG! cant sum char32, report to Beefy
 
 			for (let i in ...3)
 			{
@@ -128,36 +138,40 @@ namespace BJSON.Models
 						codepoint -= (.)'A' - 10;
 					else if (c >= 'a' && c <= 'f')
 						codepoint -= (.)'a' - 10;
-					else//TODO: make it more verbose
-						Runtime.FatalError("Invalid Unicode Hex Escape");
+					else
+						return .Err(.InvalidUnicodeHexEscape(line, column));
 
-					stream.Skip(1);// handle potential exception?
+					stream.Skip(1); // if we can peek, we can skip
+					column++;
 				}
 			}
 
-			return codepoint;
+			return .Ok(codepoint);
 		}
 
 
-		Result<void> ParseString(Stream stream, bool isKey = false)
+		Result<void, JsonParsingError> ParseString(Stream stream, bool isKey = false)
 		{
-			String str = scope .();
+			String str = scope .(); // TODO: make it StringView instead
 
 			if (let c = stream.Peek<char8>())
 			{
 				if (c == '"')
+				{
 					stream.Skip(1);
+					column++;
+				}
 				else
-					return .Err;// unexpected token, Error Termination
+					return .Err(.UnexpectedToken(line, column, "\"")); // unexpected token, Error Termination
 			}
 			else
-				return .Err;//Peek error
+				return .Err(.UnableToRead(line, column)); //Peek error
 
 			for (;;)
 			{
 				if (let c = stream.Peek<char8>())
 				{
-					if (c == '\\')// handle escaping
+					if (c == '\\') // handle escaping
 					{
 						stream.Skip(1);
 						if (let e = stream.Peek<char8>())
@@ -166,44 +180,52 @@ namespace BJSON.Models
 							{
 								str.Append(e);
 								stream.Skip(1);
+								column++;
 							}
 							else if (e == 'u')
 							{
 								stream.Skip(1);
+								column++;
 
-								uint32 codepoint = (.)ParseHex4(stream);
+								var codepoint = Try!(ParseHex4(stream));
 								if (codepoint >= 0xD800 && codepoint <= 0xDFFF)
 								{
 									// high surrogate, check if followed by valid low surrogate
 									if (codepoint <= 0xDBFF)
 									{
-										if (!Consume(stream, '\\') || !Consume(stream, 'u'))
-										{
-											return .Err;// Parse Error String Unicode Surrogate Invalid
-										}
+										if (Consume(stream, '\\') case .Ok)
+											return .Err(.InvalidStringSurrogate(line, column));
 
-										uint32 codepoint2 = ParseHex4(stream);
+										if (Consume(stream, '\\') case .Ok)
+											return .Err(.InvalidStringSurrogate(line, column));
+
+										/*if (!Consume(stream, '\\') || !Consume(stream, 'u'))
+										{
+											return .Err(.InvalidStringSurrogate(line, column)); // Parse Error String Unicode Surrogate Invalid
+										}*/
+
+										let codepoint2 =  Try!(ParseHex4(stream));
 										if (codepoint2 < 0xDC00 || codepoint2 > 0xDFFF)
 										{
-											return .Err;// Parse Error String Unicode Surrogate Invalid
+											return .Err(.InvalidStringSurrogate(line, column)); // Parse Error String Unicode Surrogate Invalid
 										}
 										codepoint = (((codepoint - 0xD800) << 10) | (codepoint2 - 0xDC00)) + 0x10000;
 									}
 									else
 									{
-										return .Err;// Parse Error String Unicode Surrogate Invalid
+										return .Err(.InvalidStringSurrogate(line, column)); // Parse Error String Unicode Surrogate Invalid
 									}
 								}
 
 								str.Append((char32)codepoint);
 							}
 							else
-								return .Err;// Error String Escape Invalid
+								return .Err(.InvalidEscapeToken(line, column)); // Error String Escape Invalid
 						}
 						else
-							return .Err;// peek error
+							return .Err(.UnableToRead(line, column)); // peek error
 					}
-					else if (c == '"')// Closing double quote
+					else if (c == '"') // Closing double quote
 					{
 						bool res = false;
 
@@ -213,44 +235,46 @@ namespace BJSON.Models
 							res = _handler.String(str, true);
 
 						stream.Skip(1);
+						column++;
 
-						return res ? .Ok : .Err;// OK or Parse Error Termination
+						return res ? .Ok : .Err(.InvalidValue(line, column)); // OK or Parse Error Termination
 					}
 					else if (c < (.)0x20)
 					{
 						if (c == '\0')
-							return .Err;// String Miss Quotation Mark
+							return .Err(.MissingQuotationMark(line, column)); // String Miss Quotation Mark
 						else
-							return .Err;// invalid encoding
+							return .Err(.InvalidEncoding(line, column)); // invalid encoding
 					}
 					else
 					{
 						str.Append(c);
 						stream.Skip(1);
+						column++;
 					}
 				}
 				else
-					return .Err;// peek error
+					return .Err(.UnableToRead(line, column)); // peek error
 			}
 		}
 
-		Result<void> ParseObject(Stream stream)
+		Result<void, JsonParsingError> ParseObject(Stream stream)
 		{
-			stream.Skip(1);//skip {
-
+			stream.Skip(1); //skip {
+			column++;
 			if (!_handler.StartObject())
 			{
-				return .Err;// Parse Error Termination
+				return .Err(.UnexpectedToken(line, column, "")); // Parse Error Termination
 			}
 
 			SkipWhitespace(stream);
 
-			if (Consume(stream, '}'))
+			if (Consume(stream, '}') case .Ok)
 			{
 				if (!_handler.EndObject())
-					return .Err;// Error Termination
+					return .Err(.UnexpectedToken(line, column, "")); // Error Termination
 
-				return .Ok;// empty object
+				return .Ok; // empty object
 			}
 
 			for (;;)
@@ -258,16 +282,15 @@ namespace BJSON.Models
 				if (let c = stream.Peek<char8>())
 				{
 					if (c != '"')
-						return .Err;// MISSING OBJECT NAME
+						return .Err(.UnexpectedToken(line, column, "\"")); // MISSING OBJECT NAME
 
-					ParseString(stream, true);
+					Try!(ParseString(stream, true));
 					SkipWhitespace(stream);
 
-					if (!Consume(stream, ':'))
-						return .Err;// Error Object Miss Colon
+					Try!(Consume(stream, ':'));
 
 					SkipWhitespace(stream);
-					ParseValue(stream);
+					Try!(ParseValue(stream));
 
 					SkipWhitespace(stream);
 
@@ -277,40 +300,43 @@ namespace BJSON.Models
 						{
 						case ',':
 							stream.Skip(1);
+							column++;
 							SkipWhitespace(stream);
 						case '}':
 							stream.Skip(1);
+							column++;
 							if (!_handler.EndObject())
-								return .Err;//Parse error termination
+								return .Err(.UnexpectedToken(line, column, "")); //Parse error termination
 							return .Ok;
 						default:
-							return .Err;// Object Miss Comma Or Curly Bracket
+							return .Err(.UnexpectedToken(line, column, ", or }")); // Object Miss Comma Or Curly Bracket
 
 						}
 					}
 				}
 				else
-					return .Err;// peek error
+					return .Err(.UnexpectedToken(line, column, ", or }")); // peek error
 			}
 		}
 
-		Result<void> ParseArray(Stream stream)
+		Result<void, JsonParsingError> ParseArray(Stream stream)
 		{
-			stream.Skip(1);//skip [
+			stream.Skip(1); //skip [
+			column++;
 
 			if (!_handler.StartArray())
 			{
-				return .Err;// Parse Error Termination
+				return .Err(.UnexpectedToken(line, column, "")); // Parse Error Termination
 			}
 
 			SkipWhitespace(stream);
 
-			if (Consume(stream, ']'))
+			if (Consume(stream, ']') case .Ok)
 			{
 				if (!_handler.EndArray())
-					return .Err;// Error termination
+					return .Err(.UnexpectedToken(line, column, "")); // Error termination
 				else
-					return .Ok;// empty array
+					return .Ok; // empty array
 			}
 
 			for (;;)
@@ -318,29 +344,29 @@ namespace BJSON.Models
 				Try!(ParseValue(stream));
 				SkipWhitespace(stream);
 
-				if (Consume(stream, ','))
+				if (Consume(stream, ',') case .Ok)
 				{
 					SkipWhitespace(stream);
 				}
-				else if (Consume(stream, ']'))
+				else if (Consume(stream, ']') case .Ok)
 				{
 					if (!_handler.EndArray())
-						return .Err;// Error termination
+						return .Err(.UnexpectedToken(line, column, "")); // Error termination
 					return .Ok;
 				}
 				else
-					return .Err;// Array Miss Comma Or Square Bracket
+					return .Err(.UnexpectedToken(line, column, ", or ]")); // Array Miss Comma Or Square Bracket
 			}
 		}
 
-		Result<void> ParseNumber(Stream stream)
+		Result<void, JsonParsingError> ParseNumber(Stream stream)
 		{
 			//TODO: can be avoided
 			String strNumber = scope .();
 
 			// Lazy way ... for testing
 			// TODO: Properly handle numbers
-			GETCHAR: while (stream.Peek<char8>() case .Ok(let c))
+			GETCHAR:while (stream.Peek<char8>() case .Ok(let c))
 			{
 				switch (c)
 				{
@@ -361,52 +387,40 @@ namespace BJSON.Models
 				case '-':
 					strNumber.Append(c);
 					stream.Skip(1);
+					column++;
+
 				default: break GETCHAR;
 				}
 			}
 
-			double number = double.Parse(strNumber);
-			if (!_handler.Double(number))
-				return .Err;// parse error termination
-
-			/*let minus = Consume(stream, '-');
-			if (minus)
+			if (let number = double.Parse(strNumber))
 			{
-				strNumber.Append('-');
+				if (!_handler.Double(number))
+					return .Err(.InvalidValue(line, column)); // parse error termination
 			}
-
-
-			if (let c = stream.Peek<char8>())
+			else
 			{
-				if (c == '0')
-				{
-					strNumber.Append(c);
-					stream.Skip(1);
-				}
+				return .Err(.InvalidValue(line, column));
 			}
-			else if (let c = stream.Peek<char8>())
-			{
-				if (c >= '1' && c <= '9')
-				{
-					strNumber.Append(c);
-					stream.Skip(1);
-				}
-			}*/
-
 
 			return .Ok;
 		}
 
-		bool Consume(Stream stream, char8 expected)
+		Result<void, JsonParsingError> Consume(Stream stream, char8 expected)
 		{
 			if (let c = stream.Peek<char8>())
+			{
 				if (c == expected)
 				{
 					stream.Skip(1);
-					return true;
+					column++;
+					return .Ok;
 				}
+				else
+					return .Err(.UnexpectedToken(line, column, scope $"{expected}"));
+			}
 
-			return false;
+			return .Err(.UnableToRead(line, column));
 		}
 	}
 }

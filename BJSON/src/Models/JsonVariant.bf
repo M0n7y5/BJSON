@@ -68,7 +68,7 @@ namespace BJSON.Models
 		[Inline]
 		public static implicit operator Self(int value)
 		{
-			// json supports only double
+			// json supports only double, just like javascript
 			return (double)value;
 		}
 
@@ -114,6 +114,12 @@ namespace BJSON.Models
 
 		[Inline]
 		public static implicit operator String(Self self)
+		{
+			return (.)GetTypedValue<String>(self);
+		}
+
+		[Inline]
+		public static implicit operator StringView(Self self)
 		{
 			return (.)GetTypedValue<String>(self);
 		}

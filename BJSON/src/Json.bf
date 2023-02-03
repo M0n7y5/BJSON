@@ -1,18 +1,16 @@
 using System;
 using BJSON.Models;
+using BJSON.Enums;
 
 namespace BJSON
 {
 	static class Json
 	{
-		public static JsonVariant Deserialize(String json)
+		public static Result<JsonVariant, JsonParsingError> Deserialize(StringView json)
 		{
 			let deserializer = scope Deserializer();
-			JsonVariant jsonVariant;
 
-			//TODO: return bool or result
-			deserializer.Deserialize(json, out jsonVariant, true);
-			return jsonVariant;
+			return deserializer.Deserialize(json);
 		}
 
 		public static bool Serialize(JsonVariant json, String outText)

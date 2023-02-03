@@ -16,24 +16,23 @@ namespace BJSON
 		}
 
 		Queue<(StringView key, JsonVariant value, JsonVariant* parrent, NodeState state)> treeStack = new .() ~ delete _;
-
 		StringView currentKey = .();
 
-		public bool Deserialize(StringView jsonText, out JsonVariant json, bool isRoot = false)
+		public Result<JsonVariant, JsonParsingError> Deserialize(StringView jsonText)
 		{
 			let reader = scope Reader(this);
 
-			reader.Parse(scope StringStream(jsonText, .Reference));
+			let result = reader.Parse(scope StringStream(jsonText, .Reference));
 
-			if (treeStack.Count != 1) // we should have only one root object at the end of parsing
+			switch (result)
 			{
-				json = .();
-				return false;
+			case .Ok:
+				return this.treeStack.Front.value;
+			case .Err(let err):
+				for (var item in treeStack)
+					item.value.Dispose();
+				return .Err(err);
 			}
-
-			json = this.treeStack.Front.value;
-
-			return true;
 		}
 
 		void Log(String msg)
@@ -44,6 +43,8 @@ namespace BJSON
 		public bool Null()
 		{
 			Log("Null value");
+
+			if (treeStack.Count == 0) return false;
 
 			let state = treeStack.Back.state;
 			var document = ref treeStack.Back.value;
@@ -73,6 +74,8 @@ namespace BJSON
 		{
 			Log(scope $"Bool value: {value}");
 
+			if (treeStack.Count == 0) return false;
+
 			let state = treeStack.Back.state;
 			var document = ref treeStack.Back.value;
 
@@ -100,6 +103,8 @@ namespace BJSON
 		{
 			Log(scope $"Double value: {value}");
 
+			if (treeStack.Count == 0) return false;
+
 			let state = treeStack.Back.state;
 			var document = ref treeStack.Back.value;
 
@@ -126,6 +131,8 @@ namespace BJSON
 		public bool String(StringView value, bool copy)
 		{
 			Log(scope $"String value: {value}");
+
+			if (treeStack.Count == 0) return false;
 
 			let state = treeStack.Back.state;
 			var document = ref treeStack.Back.value;
