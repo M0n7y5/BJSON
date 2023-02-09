@@ -15,8 +15,16 @@ namespace BJSON
 			ARRAY
 		}
 
-		Queue<(StringView key, JsonVariant value, JsonVariant* parrent, NodeState state)> treeStack = new .() ~ delete _;
-		StringView currentKey = .();
+		struct NodeInfo : this(
+			String key, JsonVariant value, // use parent index
+			int parentIdx, NodeState state)
+		{
+		}
+
+		Queue<NodeInfo> treeStack = new .(1024) ~ delete _;
+		String currentKey = null;
+
+		BumpAllocator keyAlloc = new .() ~ delete _;
 
 		public Result<JsonVariant, JsonParsingError> Deserialize(StringView jsonText)
 		{
@@ -35,6 +43,7 @@ namespace BJSON
 			}
 		}
 
+		//[SkipCall]
 		void Log(String msg)
 		{
 			Console.WriteLine(msg);
@@ -55,12 +64,11 @@ namespace BJSON
 				document = Variant();
 				break;
 			case .OBJECT:
-				if (currentKey.IsEmpty)
+				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document[currentKey.ToString(.. scope .())] = Variant();
-
-				currentKey.Clear();
+				document[currentKey] = Variant();
+				currentKey = null;
 				break;
 			case .ARRAY:
 				document.Add(Variant());
@@ -85,11 +93,11 @@ namespace BJSON
 				document = value;
 				break;
 			case .OBJECT:
-				if (currentKey.IsEmpty)
+				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document[currentKey.ToString(.. scope .())] = value;
-				currentKey.Clear();
+				document[currentKey] = value;
+				currentKey = null;
 				break;
 			case .ARRAY:
 				document.Add(value);
@@ -114,11 +122,11 @@ namespace BJSON
 				document = value;
 				break;
 			case .OBJECT:
-				if (currentKey.IsEmpty)
+				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document[currentKey.ToString(.. scope .())] = value;
-				currentKey.Clear();
+				document[currentKey] = value;
+				currentKey = null;
 				break;
 			case .ARRAY:
 				document.Add(value);
@@ -143,11 +151,11 @@ namespace BJSON
 				document = value;
 				break;
 			case .OBJECT:
-				if (currentKey.IsEmpty)
+				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document[currentKey.ToString(.. scope .())] = value;
-				currentKey.Clear();
+				document[currentKey] = value;
+				currentKey = null;
 				break;
 			case .ARRAY:
 				document.Add(value);
@@ -162,19 +170,19 @@ namespace BJSON
 			Log("Start Object");
 
 			// we are (g)root
-			if (currentKey.IsEmpty)
+			if (currentKey == null)
 			{
-				treeStack.Add((null, .(), null, .OBJECT));
+				treeStack.Add(.(null, .(), -1, .OBJECT));
 			}
 			else
 			{
-				let parrent = &treeStack.Back.value;
+				let parrentIdx = treeStack.Count - 1;
 
-				if (parrent == null)
+				if (parrentIdx == -1)
 					return false; // this should not happen
 
-				treeStack.Add((currentKey, .(), parrent, .OBJECT));
-				currentKey.Clear();
+				treeStack.Add(.(currentKey, .(), parrentIdx, .OBJECT));
+				currentKey = null;
 			}
 
 			return true;
@@ -184,7 +192,7 @@ namespace BJSON
 		{
 			Log(scope $"Key value: {str}");
 
-			currentKey = str;
+			currentKey = new:keyAlloc String(str);
 
 			return true;
 		}
@@ -198,14 +206,12 @@ namespace BJSON
 
 			if (treeStack.TryPopBack() case .Ok(let val))
 			{
-				let key = val.key;
-				(*val.parrent)[key.ToString(.. scope .())] = val.value;
+				treeStack[val.parentIdx].value[val.key] = val.value;
 			}
 			else
 			{
 				return false;
 			}
-
 
 			return true;
 		}
@@ -214,19 +220,19 @@ namespace BJSON
 		{
 			Log("Start Array");
 
-			if (currentKey.IsEmpty)
+			if (currentKey == null)
 			{
-				treeStack.Add((null, .(), null, .ARRAY));
+				treeStack.Add(.(null, .(), -1, .ARRAY));
 			}
 			else
 			{
-				let parrent = &treeStack.Back.value;
+				let parrentIdx = treeStack.Count - 1;
 
-				if (parrent == null)
-					return false; // this should not happen
+				if (parrentIdx == -1)
+					return false;
 
-				treeStack.Add((currentKey, .(), parrent, .ARRAY));
-				currentKey.Clear();
+				treeStack.Add(.(currentKey, .(), parrentIdx, .ARRAY));
+				currentKey = null;
 			}
 
 			return true;
@@ -241,8 +247,7 @@ namespace BJSON
 
 			if (treeStack.TryPopBack() case .Ok(let val))
 			{
-				let key = val.key;
-				(*val.parrent)[key.ToString(.. scope .())] = val.value;
+				treeStack[val.parentIdx].value[val.key] = val.value;
 			}
 			else
 			{

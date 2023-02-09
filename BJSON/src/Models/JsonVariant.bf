@@ -33,6 +33,10 @@ namespace BJSON.Models
 		{
 		}
 
+		public this(StringView key, Self value) : this(new JsonObject() { (new String(key), value) })
+		{
+		}
+
 		public this(JsonObject value) : this(.Create(value, true), .OBJECT)
 		{
 		}
@@ -198,6 +202,7 @@ namespace BJSON.Models
 			case .OBJECT:
 				{
 					let obj = this.Value.Get<JsonObject>();
+
 					if (obj.ContainsKey(key))
 					{
 						return ref obj[key];

@@ -21,7 +21,7 @@ namespace BJSON.Example
 				"age": 27,
 				"another" : {
 					"isItWorking": true,
-					"someArray": ["please", "work, "ok?", 98, 42, false]
+					"someArray": ["please", "work", "ok?", 98, 42, false]
 					}
 				}
 				""";
@@ -40,6 +40,8 @@ namespace BJSON.Example
 					bool isWorking = value["another"]["isItWorking"];
 
 					int arrayVal = value["another"]["someArray"][3];
+
+					Console.WriteLine(scope $"{ageVal}, {name}, {isWorking}, {arrayVal}");
 				}
 			case .Err(let err):
 				Console.WriteLine(err.ToString(.. scope String()));
