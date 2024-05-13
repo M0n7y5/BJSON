@@ -6,14 +6,14 @@ namespace BJSON
 {
 	static class Json
 	{
-		public static Result<JsonVariant, JsonParsingError> Deserialize(StringView json)
+		public static Result<JsonValue, JsonParsingError> Deserialize(StringView json)
 		{
 			let deserializer = scope Deserializer();
 
 			return deserializer.Deserialize(json);
 		}
 
-		public static bool Serialize(JsonVariant json, String outText)
+		public static bool Serialize(JsonValue json, String outText)
 		{
 			let serializer = scope Serializer();
 

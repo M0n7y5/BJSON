@@ -3,21 +3,18 @@ using BJSON.Models;
 using System.Collections;
 namespace BJSON.Enums
 {
-	enum JsonType
+	enum JsonType : uint8
 	{
-		case NULL;
-
-		//Complex data
-		case OBJECT;
-		case ARRAY;
-
-		case STRING;
+		NULL = 0,
 
 		// Simple Data
-		case NUMBER;
-		case BOOL;
-
-		public Type GetType
+		BOOL = 1,
+		NUMBER = 2,
+		STRING = 4,
+		//Complex data
+		OBJECT = 8,
+		ARRAY = 16,
+		/*public Type GetType
 		{
 			get
 			{
@@ -29,9 +26,8 @@ namespace BJSON.Enums
 				case .STRING: return typeof(String);
 				case .BOOL: return typeof(bool);
 				case .NULL: return null;
-
 				}
 			}
-		}
+		}*/
 	}
 }

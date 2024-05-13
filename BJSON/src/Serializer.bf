@@ -11,9 +11,9 @@ namespace BJSON
 		}
 
 		//TODO: Return a result with ErrorEnum
-		public bool Serialize(JsonVariant json, String outText, bool isRoot = false)
+		public bool Serialize(JsonValue json, String outText, bool isRoot = false)
 		{
-			switch (json.JType)
+			switch (json.type)
 			{
 			case .NULL:
 				return SerializeNull(json, outText, isRoot);
@@ -34,7 +34,7 @@ namespace BJSON
 			}
 		}
 
-		bool SerializeNull(JsonVariant jsonVariant, String str, bool isRoot)
+		bool SerializeNull(JsonValue value, String str, bool isRoot)
 		{
 			if (isRoot)
 				return false;
@@ -44,49 +44,46 @@ namespace BJSON
 			return true;
 		}
 
-		bool SerializeBoolean(JsonVariant jsonVariant, String str, bool isRoot)
+		bool SerializeBoolean(JsonValue value, String str, bool isRoot)
 		{
 			if (isRoot)
 				return false;
 
-			let boolean = jsonVariant;
+			bool boolean = value;
 
 			str.Append(boolean ? TrueLiteral : FalseLiteral);
 
 			return true;
 		}
 
-		bool SerializeNumber(JsonVariant jsonVariant, String str, bool isRoot)
+		bool SerializeNumber(JsonValue value, String str, bool isRoot)
 		{
 			if (isRoot)
 				return false;
 
-			double number = jsonVariant;
+			double number = value;
 
 			str.Append(number.ToString(.. scope .()));
 
 			return true;
 		}
 
-		bool SerializeString(JsonVariant jsonVariant, String str, bool isRoot)
+		bool SerializeString(JsonValue value, String str, bool isRoot)
 		{
 			if (isRoot)
 				return false;
 
-			String string = jsonVariant;
-			let quoted = string.Quote(.. scope String());
+			StringView string = value;
+			let quoted = string.QuoteString(.. scope String());
 
 			str.Append(quoted);
 
 			return true;
 		}
 
-
-		bool SerializeArray(JsonVariant jsonVariant, String str, bool isRoot)
+		bool SerializeArray(JsonValue value, String str, bool isRoot)
 		{
-			JsonArray array = jsonVariant;
-			if (array == null)
-				return false;
+			let array = value.AsArray().Value;
 
 			str.Append((char8)JsonToken.LEFT_SQUARE_BRACKET);
 
@@ -99,7 +96,7 @@ namespace BJSON
 				str.Append((char8)JsonToken.COMMA);
 			}
 
-			// handle trailing comma
+				// handle trailing comma
 			if (str[str.Length - 1] == ',')
 				str[str.Length - 1] = (char8)JsonToken.RIGHT_SQUARE_BRACKET;
 			else
@@ -108,11 +105,9 @@ namespace BJSON
 			return true;
 		}
 
-		bool SerializeObject(JsonVariant jsonVariant, String str, bool isRoot)
+		bool SerializeObject(JsonValue value, String str, bool isRoot)
 		{
-			JsonObject obj = jsonVariant;
-			if (obj == null)
-				return false;
+			let obj = value.AsObject().Value;
 
 			str.Append((char8)JsonToken.LEFT_CURLY_BRACKET);
 
@@ -129,7 +124,7 @@ namespace BJSON
 				str.Append((char8)JsonToken.COMMA);
 			}
 
-			// handle trailing comma
+				// handle trailing comma
 			if (str[str.Length - 1] == ',')
 				str[str.Length - 1] = (char8)JsonToken.RIGHT_CURLY_BRACKET;
 			else

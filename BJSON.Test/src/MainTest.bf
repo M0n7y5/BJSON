@@ -7,32 +7,25 @@ namespace BJSON.Test
 		[Test]
 		public static void Array_T()
 		{
-			var json2 = JsonVariant() { 2, 44, 65 };
+			var json2 = JsonArray() { 2, 44, 65 };
 			defer json2.Dispose();
-
-
-			var json = JsonVariant();// root
+			var json = JsonArray()
+				{
+					"Eyyyyyyy lmao",
+					"Sheesh",
+					1345,
+					999999
+				};
 			defer json.Dispose();
 
-			json[42] = "Eyyyyyyy lmao";
-			json[99] = "Sheesh";
-			json[100] = 1345;
-			json[142] = 999999;
-
-			// should be null
-			String noTruth = json[155]["entry"];
-			Test.Assert(noTruth == null);
-
-			json[155]["entry"] = "Is it working?";
-
-			Test.Assert(json[42] == "Eyyyyyyy lmao");
-			Test.Assert(json[99] == "Sheesh");
-			Test.Assert(json[100] == 1345);
-			Test.Assert(json[142] == 999999);
+			Test.Assert(json[0] == StringView("Eyyyyyyy lmao"));
+			Test.Assert(json[1] == StringView("Sheesh"));
+			Test.Assert(json[2] == 1345);
+			Test.Assert(json[3] == 999999);
 		}
 
 
-		/*[Test]
+		//[Test]
 		public static void TestMe()
 		{
 			/*var jsonString = @"""
@@ -47,7 +40,7 @@ namespace BJSON.Test
 			var person = Json.Deserialize(jsonString);
 			int age = person["age"];*/
 
-			var json = JsonVariant(); // root
+			var json = JsonObject(); // root
 
 			json["name"] = "lmao"; // create key-pair value
 			json[3] = "Hello";
@@ -58,32 +51,33 @@ namespace BJSON.Test
 			json["window"][2]["name"] = "Amogus";
 
 			// initialize as array
-			let json2 = JsonVariant() { 2, 44, 65 };
+			let json2 = JsonArray() { 2, 44, 65 };
 
 			//initialize as object
-			var json3 = JsonVariant()
+			var json3 = JsonObject()
 				{
 					("firstName", "John"),
 					("lastName", "Smith"),
 					("isAlive", true),
 					("age", 27),
-					("phoneNumbers", JsonVariant() {
-						JsonVariant()
+					("phoneNumbers", JsonArray()
 						{
-							("type", "home"),
-							("number", "212 555-1234")
-						},
-						JsonVariant()
-						{
-							("type", "office"),
-							("number", "646 555-4567")
-						}
-					})
+							JsonObject()
+								{
+									("type", "home"),
+									("number", "212 555-1234")
+								},
+							JsonObject()
+								{
+									("type", "office"),
+									("number", "646 555-4567")
+								}
+						})
 				};
-			String officeNumber = json3["phoneNumbers"][1]["number"];
+			StringView officeNumber = json3["phoneNumbers"][1]["number"];
 
 			Test.Assert(false);
-		}*/
+		}
 
 		/*{
 		  "firstName": "John",

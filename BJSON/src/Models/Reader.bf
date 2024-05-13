@@ -406,7 +406,7 @@ namespace BJSON.Models
 			return .Ok;
 		}
 
-		Result<void, JsonParsingError> Consume(Stream stream, char8 expected)
+		Result<void, JsonParsingError> Consume(Stream stream, char32 expected)
 		{
 			if (let c = stream.Peek<char8>())
 			{

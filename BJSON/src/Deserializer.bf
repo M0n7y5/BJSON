@@ -8,25 +8,13 @@ namespace BJSON
 {
 	public class Deserializer : IHandler
 	{
-		enum NodeState
-		{
-			VALUE,
-			OBJECT,
-			ARRAY
-		}
+		// this will gonna contain only container types
+		Queue<JsonValue> treeStack = new .(32) ~ delete _;
 
-		struct NodeInfo : this(
-			String key, JsonVariant value, // use parent index
-			int parentIdx, NodeState state)
-		{
-		}
-
-		Queue<NodeInfo> treeStack = new .(1024) ~ delete _;
 		String currentKey = null;
-
 		BumpAllocator keyAlloc = new .() ~ delete _;
 
-		public Result<JsonVariant, JsonParsingError> Deserialize(StringView jsonText)
+		public Result<JsonValue, JsonParsingError> Deserialize(StringView jsonText)
 		{
 			let reader = scope Reader(this);
 
@@ -35,10 +23,10 @@ namespace BJSON
 			switch (result)
 			{
 			case .Ok:
-				return this.treeStack.Front.value;
+				return this.treeStack.Front;
 			case .Err(let err):
 				for (var item in treeStack)
-					item.value.Dispose();
+					item.Dispose();
 				return .Err(err);
 			}
 		}
@@ -55,24 +43,23 @@ namespace BJSON
 
 			if (treeStack.Count == 0) return false;
 
-			let state = treeStack.Back.state;
-			var document = ref treeStack.Back.value;
+			var document = ref treeStack.Back;
 
-			switch (state)
+			let jVal = JsonNull();
+
+			switch (document.type)
 			{
-			case .VALUE:
-				document = Variant();
-				break;
 			case .OBJECT:
 				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document[currentKey] = Variant();
+				document.As<JsonObject>()[currentKey] = jVal;
 				currentKey = null;
 				break;
 			case .ARRAY:
-				document.Add(Variant());
+				document.As<JsonArray>().Add(jVal);
 				break;
+			default: return false;
 			}
 
 			return true;
@@ -84,24 +71,23 @@ namespace BJSON
 
 			if (treeStack.Count == 0) return false;
 
-			let state = treeStack.Back.state;
-			var document = ref treeStack.Back.value;
+			var document = ref treeStack.Back;
 
-			switch (state)
+			let jVal = JsonBool(value);
+
+			switch (document.type)
 			{
-			case .VALUE:
-				document = value;
-				break;
 			case .OBJECT:
 				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document[currentKey] = value;
+				document.As<JsonObject>()[currentKey] = jVal;
 				currentKey = null;
 				break;
 			case .ARRAY:
-				document.Add(value);
+				document.As<JsonArray>().Add(jVal);
 				break;
+			default: return false;
 			}
 
 			return true;
@@ -113,24 +99,23 @@ namespace BJSON
 
 			if (treeStack.Count == 0) return false;
 
-			let state = treeStack.Back.state;
-			var document = ref treeStack.Back.value;
+			var document = ref treeStack.Back;
 
-			switch (state)
+			let jVal = JsonNumber(value);
+
+			switch (document.type)
 			{
-			case .VALUE:
-				document = value;
-				break;
 			case .OBJECT:
 				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document[currentKey] = value;
+				document.As<JsonObject>()[currentKey] = jVal;
 				currentKey = null;
 				break;
 			case .ARRAY:
-				document.Add(value);
+				document.As<JsonArray>().Add(jVal);
 				break;
+			default: return false;
 			}
 
 			return true;
@@ -142,24 +127,23 @@ namespace BJSON
 
 			if (treeStack.Count == 0) return false;
 
-			let state = treeStack.Back.state;
-			var document = ref treeStack.Back.value;
+			var document = ref treeStack.Back;
 
-			switch (state)
+			let jVal = JsonString(value);
+
+			switch (document.type)
 			{
-			case .VALUE:
-				document = value;
-				break;
 			case .OBJECT:
 				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document[currentKey] = value;
+				document.As<JsonObject>()[currentKey] = jVal;
 				currentKey = null;
 				break;
 			case .ARRAY:
-				document.Add(value);
+				document.As<JsonArray>().Add(jVal);
 				break;
+			default: return false;
 			}
 
 			return true;
@@ -169,20 +153,38 @@ namespace BJSON
 		{
 			Log("Start Object");
 
-			// we are (g)root
-			if (currentKey == null)
+			if (treeStack.Count == 0)
 			{
-				treeStack.Add(.(null, .(), -1, .OBJECT));
+				// we are root here
+				// root cant have key
+				if(currentKey!= null)
+					return false;
+
+				treeStack.Add(JsonObject());
 			}
 			else
 			{
-				let parrentIdx = treeStack.Count - 1;
+				var document = ref treeStack.Back;
 
-				if (parrentIdx == -1)
-					return false; // this should not happen
+				let jVal = JsonObject();
 
-				treeStack.Add(.(currentKey, .(), parrentIdx, .OBJECT));
-				currentKey = null;
+				switch (document.type)
+				{
+				case .OBJECT:
+					if (currentKey == null)
+						return false; //TODO: notify invalid key error
+
+					document.As<JsonObject>()[currentKey] = jVal;
+					currentKey = null;
+					break;
+				case .ARRAY:
+					document.As<JsonArray>().Add(jVal);
+					break;
+				default: return false;
+				}
+
+				// add it to stack as current container
+				treeStack.Add(jVal);
 			}
 
 			return true;
@@ -201,16 +203,19 @@ namespace BJSON
 		{
 			Log("End Object");
 
+			if (treeStack.Count == 0)
+				return false;
+
+			//we dont pop root container
 			if (treeStack.Count == 1)
 				return true;
 
 			if (treeStack.TryPopBack() case .Ok(let val))
 			{
-				treeStack[val.parentIdx].value[val.key] = val.value;
-			}
-			else
-			{
-				return false;
+				// if the latest container we want to pop is not
+				// an object then its a bad input
+				if(val.type != .OBJECT)
+					return false;
 			}
 
 			return true;
@@ -220,19 +225,38 @@ namespace BJSON
 		{
 			Log("Start Array");
 
-			if (currentKey == null)
+			if (treeStack.Count == 0)
 			{
-				treeStack.Add(.(null, .(), -1, .ARRAY));
+				// we are root here
+				// root cant have key
+				if(currentKey!= null)
+					return false;
+
+				treeStack.Add(JsonArray());
 			}
 			else
 			{
-				let parrentIdx = treeStack.Count - 1;
+				var document = ref treeStack.Back;
 
-				if (parrentIdx == -1)
-					return false;
+				let jVal = JsonArray();
 
-				treeStack.Add(.(currentKey, .(), parrentIdx, .ARRAY));
-				currentKey = null;
+				switch (document.type)
+				{
+				case .OBJECT:
+					if (currentKey == null)
+						return false; //TODO: notify invalid key error
+
+					document.As<JsonObject>()[currentKey] = jVal;
+					currentKey = null;
+					break;
+				case .ARRAY:
+					document.As<JsonArray>().Add(jVal);
+					break;
+				default: return false;
+				}
+
+				// add it to stack as current container
+				treeStack.Add(jVal);
 			}
 
 			return true;
@@ -242,16 +266,15 @@ namespace BJSON
 		{
 			Log("End Array");
 
-			if (treeStack.Count == 1)
-				return true;
+			if (treeStack.Count == 0)
+				return false;
 
 			if (treeStack.TryPopBack() case .Ok(let val))
 			{
-				treeStack[val.parentIdx].value[val.key] = val.value;
-			}
-			else
-			{
-				return false;
+				// if the latest container we want to pop is not
+				// an object then its a bad input
+				if(val.type != .ARRAY)
+					return false;
 			}
 
 			return true;
