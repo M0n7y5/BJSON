@@ -41,11 +41,16 @@ namespace BJSON
 		{
 			Log("Null value");
 
-			if (treeStack.Count == 0) return false;
+			let jVal = JsonNull();
+
+			// root value
+			if (treeStack.Count == 0)
+			{
+				treeStack.Add(jVal);
+				return true;
+			}
 
 			var document = ref treeStack.Back;
-
-			let jVal = JsonNull();
 
 			switch (document.type)
 			{
@@ -69,11 +74,16 @@ namespace BJSON
 		{
 			Log(scope $"Bool value: {value}");
 
-			if (treeStack.Count == 0) return false;
+			let jVal = JsonBool(value);
+
+			// root value
+			if (treeStack.Count == 0)
+			{
+				treeStack.Add(jVal);
+				return true;
+			}
 
 			var document = ref treeStack.Back;
-
-			let jVal = JsonBool(value);
 
 			switch (document.type)
 			{
@@ -97,11 +107,16 @@ namespace BJSON
 		{
 			Log(scope $"Double value: {value}");
 
-			if (treeStack.Count == 0) return false;
+			let jVal = JsonNumber(value);
+
+			// root value
+			if (treeStack.Count == 0)
+			{
+				treeStack.Add(jVal);
+				return true;
+			}
 
 			var document = ref treeStack.Back;
-
-			let jVal = JsonNumber(value);
 
 			switch (document.type)
 			{
@@ -125,11 +140,16 @@ namespace BJSON
 		{
 			Log(scope $"String value: {value}");
 
-			if (treeStack.Count == 0) return false;
+			let jVal = JsonString(value);
+
+			// root value
+			if (treeStack.Count == 0)
+			{
+				treeStack.Add(jVal);
+				return true;
+			}
 
 			var document = ref treeStack.Back;
-
-			let jVal = JsonString(value);
 
 			switch (document.type)
 			{
@@ -157,7 +177,7 @@ namespace BJSON
 			{
 				// we are root here
 				// root cant have key
-				if(currentKey!= null)
+				if (currentKey != null)
 					return false;
 
 				treeStack.Add(JsonObject());
@@ -214,7 +234,7 @@ namespace BJSON
 			{
 				// if the latest container we want to pop is not
 				// an object then its a bad input
-				if(val.type != .OBJECT)
+				if (val.type != .OBJECT)
 					return false;
 			}
 
@@ -229,7 +249,7 @@ namespace BJSON
 			{
 				// we are root here
 				// root cant have key
-				if(currentKey!= null)
+				if (currentKey != null)
 					return false;
 
 				treeStack.Add(JsonArray());
@@ -273,7 +293,7 @@ namespace BJSON
 			{
 				// if the latest container we want to pop is not
 				// an object then its a bad input
-				if(val.type != .ARRAY)
+				if (val.type != .ARRAY)
 					return false;
 			}
 

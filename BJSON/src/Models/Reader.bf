@@ -26,14 +26,16 @@ namespace BJSON.Models
 
 			if (let c = stream.Peek<char8>())
 			{
-				switch (c)
+				return ParseValue(stream);
+
+				/*switch (c)
 				{
 				case '[','{':
 					return ParseValue(stream);
 				case 0:
 					return .Err(.DocumentIsEmpty); // Document empty
 				default: return .Err(.UnexpectedToken(line, column, "{ or ["));
-				}
+				}*/
 			}
 			else
 				return .Err(.UnableToRead(line, column)); // Document empty

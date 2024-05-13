@@ -11,6 +11,8 @@ namespace BJSON.Example
 			/*var json2 = JsonVariant() { 2, 44, 65 };
 			defer json2.Dispose();*/
 
+			
+
 			let jsonString =
 				@"""
 				{
@@ -59,6 +61,7 @@ namespace BJSON.Example
 			defer json2.Dispose();
 
 			let str2 = scope String();
+
 			Json.Serialize(json2, str2);
 
 			var json22 = JsonObject()
