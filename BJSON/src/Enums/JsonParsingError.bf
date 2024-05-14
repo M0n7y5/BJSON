@@ -5,6 +5,7 @@ namespace BJSON.Enums
 	{
 		case InputStreamIsNull;
 		case DocumentIsEmpty;
+		case InvalidDocument;
 		case UnableToRead(uint line, uint column);
 		case InvalidValue(uint line, uint column);
 		case UnexpectedToken(uint line, uint column, StringView expected);
@@ -20,6 +21,8 @@ namespace BJSON.Enums
 			{
 			case InputStreamIsNull:
 				string.Append("Provided Stream is null!");
+			case InvalidDocument:
+				string.Append("Parsed document is not valid!");
 			case DocumentIsEmpty:
 				string.Append("Attempt to parse empty string!");
 			case UnableToRead(let line, let column):

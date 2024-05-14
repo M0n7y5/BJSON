@@ -1,5 +1,7 @@
 using System;
 using BJSON.Models;
+using System.IO;
+using System.Diagnostics;
 namespace BJSON.Test
 {
 	class MainTest
@@ -7,7 +9,62 @@ namespace BJSON.Test
 		[Test]
 		public static void Array_T()
 		{
-			var json2 = JsonArray() { 2, 44, 65 };
+			let currentPath = Directory.GetCurrentDirectory(.. scope .());
+
+			Path.Combine(currentPath, "test_files");
+
+			let files = Directory.EnumerateFiles(currentPath);
+			int idx = 0;
+			for (let file in files)
+			{
+				let filePath = file.GetFilePath(.. scope .());
+
+				let fileName = file.GetFileName(.. scope .());
+
+				if (fileName[0] == 'i')
+				{
+					continue;
+				}
+
+				bool shouldFail = fileName[0] == 'n';
+
+				let stream = scope FileStream();
+
+				if (stream.Open(filePath, .Read) case .Ok)
+				{
+					Console.WriteLine(scope $"---> {fileName}");
+					Debug.WriteLine(scope $"---> {fileName}");
+
+					var result = Json.Deserialize(stream);
+
+					Console.WriteLine();
+
+					result.Dispose();
+
+					if (idx == 116)
+					{
+						let ll = 1;
+					}
+
+					if (result case .Ok)
+					{
+						Test.Assert(shouldFail == false, scope $"This file should not be successfully parsed! {fileName}");
+					}
+					else
+					{
+						Test.Assert(shouldFail, scope $"This file should not fail to parse! {fileName}");
+					}
+
+					Debug.WriteLine(scope $"{idx++} Done testing file: {fileName}");
+				}
+				else
+				{
+					Test.Assert(false, scope $"Unable to open file {fileName}");
+				}
+			}
+
+
+			/*var json2 = JsonArray() { 2, 44, 65 };
 			defer json2.Dispose();
 			var json = JsonArray()
 				{
@@ -21,7 +78,7 @@ namespace BJSON.Test
 			Test.Assert(json[0] == StringView("Eyyyyyyy lmao"));
 			Test.Assert(json[1] == StringView("Sheesh"));
 			Test.Assert(json[2] == 1345);
-			Test.Assert(json[3] == 999999);
+			Test.Assert(json[3] == 999999);*/
 		}
 
 

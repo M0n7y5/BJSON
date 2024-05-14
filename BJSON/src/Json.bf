@@ -1,6 +1,7 @@
 using System;
 using BJSON.Models;
 using BJSON.Enums;
+using System.IO;
 
 namespace BJSON
 {
@@ -11,6 +12,13 @@ namespace BJSON
 			let deserializer = scope Deserializer();
 
 			return deserializer.Deserialize(json);
+		}
+
+		public static Result<JsonValue, JsonParsingError> Deserialize(Stream stream)
+		{
+			let deserializer = scope Deserializer();
+
+			return deserializer.Deserialize(stream);
 		}
 
 		public static bool Serialize(JsonValue json, String outText)

@@ -431,6 +431,11 @@ namespace BJSON.Models
 			data.object.Add(new String(kv.key), kv.value);
 		}
 
+		public bool ContainsKey(StringView key)
+		{
+			return data.object.ContainsKeyAlt(key);
+		}
+
 		public void Remove(String key)
 		{
 			data.object.Remove(key);

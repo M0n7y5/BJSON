@@ -6,6 +6,27 @@ using System.Diagnostics;
 using System.Collections;
 namespace BJSON
 {
+	public enum DuplicateKeyBehavior
+	{
+		/// Return error if duplicate key is found
+		ThrowError,
+		/// Skip the duplicate
+		Ignore,
+		/// Rewrite previous value with the duplicate
+		AlwaysRewrite
+	}
+
+	public struct DeserializerConfig
+	{
+		/// Enable support for comments in json string.
+		/// This enables support for trailing and inline comments
+		public bool EnableComments = false;
+
+		/// Choose behavior if multiple objects with the same key
+		/// are found during parsing
+		public DuplicateKeyBehavior DuplicateBehavior = .Ignore;
+	}
+
 	public class Deserializer : IHandler
 	{
 		// this will gonna contain only container types
@@ -13,6 +34,18 @@ namespace BJSON
 
 		String currentKey = null;
 		BumpAllocator keyAlloc = new .() ~ delete _;
+
+		bool IsIgnoringDuplicate = false;
+		int IgnoredDepthCounter = 0;
+
+		public DeserializerConfig Config = .();
+
+		public this() { }
+
+		public this(DeserializerConfig config)
+		{
+			this.Config = config;
+		}
 
 		public Result<JsonValue, JsonParsingError> Deserialize(StringView jsonText)
 		{
@@ -23,7 +56,44 @@ namespace BJSON
 			switch (result)
 			{
 			case .Ok:
-				return this.treeStack.Front;
+				{
+					if (this.treeStack.Count == 0)
+					{
+						for (var item in treeStack)
+							item.Dispose();
+
+						return .Err(.InvalidDocument);
+					}
+
+					return this.treeStack.Front;
+				}
+			case .Err(let err):
+				for (var item in treeStack)
+					item.Dispose();
+				return .Err(err);
+			}
+		}
+
+		public Result<JsonValue, JsonParsingError> Deserialize(Stream stream)
+		{
+			let reader = scope Reader(this);
+
+			let result = reader.Parse(stream);
+
+			switch (result)
+			{
+			case .Ok:
+				{
+					if (this.treeStack.Count == 0)
+					{
+						for (var item in treeStack)
+							item.Dispose();
+
+						return .Err(.InvalidDocument);
+					}
+
+					return this.treeStack.Front;
+				}
 			case .Err(let err):
 				for (var item in treeStack)
 					item.Dispose();
@@ -41,12 +111,10 @@ namespace BJSON
 		{
 			Log("Null value");
 
-			let jVal = JsonNull();
-
 			// root value
 			if (treeStack.Count == 0)
 			{
-				treeStack.Add(jVal);
+				treeStack.Add(JsonNull());
 				return true;
 			}
 
@@ -58,11 +126,21 @@ namespace BJSON
 				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document.As<JsonObject>()[currentKey] = jVal;
+				if (IsIgnoringDuplicate)
+				{
+					return true;
+				}
+
+				document.As<JsonObject>()[currentKey] = JsonNull();
 				currentKey = null;
 				break;
 			case .ARRAY:
-				document.As<JsonArray>().Add(jVal);
+				if (IsIgnoringDuplicate)
+				{
+					return true;
+				}
+
+				document.As<JsonArray>().Add(JsonNull());
 				break;
 			default: return false;
 			}
@@ -74,12 +152,10 @@ namespace BJSON
 		{
 			Log(scope $"Bool value: {value}");
 
-			let jVal = JsonBool(value);
-
 			// root value
 			if (treeStack.Count == 0)
 			{
-				treeStack.Add(jVal);
+				treeStack.Add(JsonBool(value));
 				return true;
 			}
 
@@ -91,11 +167,21 @@ namespace BJSON
 				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document.As<JsonObject>()[currentKey] = jVal;
+				if (IsIgnoringDuplicate)
+				{
+					return true;
+				}
+
+				document.As<JsonObject>()[currentKey] = JsonBool(value);
 				currentKey = null;
 				break;
 			case .ARRAY:
-				document.As<JsonArray>().Add(jVal);
+				if (IsIgnoringDuplicate)
+				{
+					return true;
+				}
+
+				document.As<JsonArray>().Add(JsonBool(value));
 				break;
 			default: return false;
 			}
@@ -107,12 +193,10 @@ namespace BJSON
 		{
 			Log(scope $"Double value: {value}");
 
-			let jVal = JsonNumber(value);
-
 			// root value
 			if (treeStack.Count == 0)
 			{
-				treeStack.Add(jVal);
+				treeStack.Add(JsonNumber(value));
 				return true;
 			}
 
@@ -124,11 +208,21 @@ namespace BJSON
 				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document.As<JsonObject>()[currentKey] = jVal;
+				if (IsIgnoringDuplicate)
+				{
+					return true;
+				}
+
+				document.As<JsonObject>()[currentKey] = JsonNumber(value);
 				currentKey = null;
 				break;
 			case .ARRAY:
-				document.As<JsonArray>().Add(jVal);
+				if (IsIgnoringDuplicate)
+				{
+					return true;
+				}
+
+				document.As<JsonArray>().Add(JsonNumber(value));
 				break;
 			default: return false;
 			}
@@ -140,12 +234,10 @@ namespace BJSON
 		{
 			Log(scope $"String value: {value}");
 
-			let jVal = JsonString(value);
-
 			// root value
 			if (treeStack.Count == 0)
 			{
-				treeStack.Add(jVal);
+				treeStack.Add(JsonString(value));
 				return true;
 			}
 
@@ -157,13 +249,26 @@ namespace BJSON
 				if (currentKey == null)
 					return false; //TODO: notify invalid key error
 
-				document.As<JsonObject>()[currentKey] = jVal;
+				if (IsIgnoringDuplicate)
+				{
+					currentKey = null;
+					return true;
+				}
+
+				document.As<JsonObject>()[currentKey] = JsonString(value);
 				currentKey = null;
 				break;
 			case .ARRAY:
-				document.As<JsonArray>().Add(jVal);
+				if (IsIgnoringDuplicate)
+				{
+					currentKey = null;
+					return true;
+				}
+
+				document.As<JsonArray>().Add(JsonString(value));
 				break;
-			default: return false;
+			default:
+				return false;
 			}
 
 			return true;
@@ -181,12 +286,11 @@ namespace BJSON
 					return false;
 
 				treeStack.Add(JsonObject());
+				return true;
 			}
 			else
 			{
 				var document = ref treeStack.Back;
-
-				let jVal = JsonObject();
 
 				switch (document.type)
 				{
@@ -194,20 +298,66 @@ namespace BJSON
 					if (currentKey == null)
 						return false; //TODO: notify invalid key error
 
-					document.As<JsonObject>()[currentKey] = jVal;
+					if (IsIgnoringDuplicate)
+					{
+						currentKey = null;
+						IgnoredDepthCounter++;
+						return true;
+					}
+
+					let jObj = document.As<JsonObject>();
+
+					if (jObj.ContainsKey(currentKey) == false)
+					{
+						let jVal = JsonObject();
+						jObj.Add(currentKey, jVal);
+						// add it to stack as current container
+						treeStack.Add(jVal);
+					}
+					else
+					{
+						switch (Config.DuplicateBehavior)
+						{
+						case .ThrowError:
+							{
+								return false;
+							}
+						case .Ignore:
+							{
+								IsIgnoringDuplicate = true;
+							}
+						case .AlwaysRewrite:
+							{
+								// dispose the old content
+								jObj[currentKey].Dispose();
+
+								let jVal = JsonObject();
+								jObj.Add(currentKey, jVal);
+								// add it to stack as current container
+								treeStack.Add(jVal);
+							}
+						}
+					}
+
 					currentKey = null;
-					break;
+					return true;
 				case .ARRAY:
+					if (IsIgnoringDuplicate)
+					{
+						IgnoredDepthCounter++;
+						return true;
+					}
+					let jVal = JsonObject();
 					document.As<JsonArray>().Add(jVal);
-					break;
-				default: return false;
+
+					// add it to stack as current container
+					treeStack.Add(jVal);
+
+					return true;
+				default:
+					return false;
 				}
-
-				// add it to stack as current container
-				treeStack.Add(jVal);
 			}
-
-			return true;
 		}
 
 		public bool Key(StringView str, bool copy)
@@ -222,6 +372,19 @@ namespace BJSON
 		public bool EndObject()
 		{
 			Log("End Object");
+
+			if (IsIgnoringDuplicate)
+			{
+				if (IgnoredDepthCounter == 0)
+				{
+					// we are ending the ignored object with duplicated key
+					IsIgnoringDuplicate = false;
+					return true;
+				}
+
+				IgnoredDepthCounter--;
+				return true;
+			}
 
 			if (treeStack.Count == 0)
 				return false;
@@ -245,6 +408,7 @@ namespace BJSON
 		{
 			Log("Start Array");
 
+
 			if (treeStack.Count == 0)
 			{
 				// we are root here
@@ -253,12 +417,11 @@ namespace BJSON
 					return false;
 
 				treeStack.Add(JsonArray());
+				return true;
 			}
 			else
 			{
 				var document = ref treeStack.Back;
-
-				let jVal = JsonArray();
 
 				switch (document.type)
 				{
@@ -266,28 +429,56 @@ namespace BJSON
 					if (currentKey == null)
 						return false; //TODO: notify invalid key error
 
+					if (IsIgnoringDuplicate)
+					{
+						IgnoredDepthCounter++;
+						return true;
+					}
+
+					let jVal = JsonArray();
 					document.As<JsonObject>()[currentKey] = jVal;
 					currentKey = null;
-					break;
+
+					// add it to stack as current container
+					treeStack.Add(jVal);
+
+					return true;
 				case .ARRAY:
+					if (IsIgnoringDuplicate)
+					{
+						IgnoredDepthCounter++;
+						return true;
+					}
+
+					let jVal = JsonArray();
 					document.As<JsonArray>().Add(jVal);
-					break;
-				default: return false;
+
+					// add it to stack as current container
+					treeStack.Add(jVal);
+
+					return true;
+				default:
+					return false;
 				}
-
-				// add it to stack as current container
-				treeStack.Add(jVal);
 			}
-
-			return true;
 		}
 
 		public bool EndArray()
 		{
 			Log("End Array");
 
+			if (IsIgnoringDuplicate)
+			{
+				IgnoredDepthCounter--;
+				return true;
+			}
+
 			if (treeStack.Count == 0)
 				return false;
+
+			//we dont pop root container
+			if (treeStack.Count == 1)
+				return true;
 
 			if (treeStack.TryPopBack() case .Ok(let val))
 			{

@@ -24,18 +24,23 @@ namespace BJSON.Models
 
 			SkipWhitespace(stream);
 
-			if (let c = stream.Peek<char8>())
+			if (stream.Peek<char8>() case .Ok)
 			{
-				return ParseValue(stream);
+				let res = ParseValue(stream);
 
-				/*switch (c)
+				SkipWhitespace(stream);
+
+				let pos = stream.Position;
+				let len = stream.Length;
+
+				if (pos != len)
 				{
-				case '[','{':
-					return ParseValue(stream);
-				case 0:
-					return .Err(.DocumentIsEmpty); // Document empty
-				default: return .Err(.UnexpectedToken(line, column, "{ or ["));
-				}*/
+					let peek = TrySilent!(stream.Peek<char8>());
+
+					return .Err(.UnexpectedToken(line + 1, column, "} or ]"));
+				}
+
+				return res;
 			}
 			else
 				return .Err(.UnableToRead(line, column)); // Document empty
@@ -47,14 +52,14 @@ namespace BJSON.Models
 			{
 				switch (c)
 				{
-				case '\n':
-					stream.Skip(1);
-					line++;
-					column = 1;
-				case ' ','\t','\r':
-					stream.Skip(1);
-					column++;
-				default: break SKIP;
+					case '\n':
+						stream.Skip(1);
+						line++;
+						column = 1;
+					case ' ','\t','\r':
+						stream.Skip(1);
+						column++;
+					default: break SKIP;
 				}
 			}
 		}
@@ -63,19 +68,19 @@ namespace BJSON.Models
 		{
 			switch (stream.Peek<char8>())
 			{
-			case .Err:
-				return .Err(.UnableToRead(line, column));
-			case .Ok(let val):
-				switch (val)
-				{
-				case 'n': return ParseNull(stream);
-				case 't': return ParseBool(stream);
-				case 'f': return ParseBool(stream);
-				case '"': return ParseString(stream);
-				case '{': return ParseObject(stream);
-				case '[': return ParseArray(stream);
-				default: return ParseNumber(stream);
-				}
+				case .Err:
+					return .Err(.UnableToRead(line, column));
+				case .Ok(let val):
+					switch (val)
+					{
+						case 'n': return ParseNull(stream);
+						case 't': return ParseBool(stream);
+						case 'f': return ParseBool(stream);
+						case '"': return ParseString(stream);
+						case '{': return ParseObject(stream);
+						case '[': return ParseArray(stream);
+						default: return ParseNumber(stream);
+					}
 			}
 		}
 
@@ -97,27 +102,27 @@ namespace BJSON.Models
 			if (let c = stream.Peek<char8>()) // TODO: use read
 				switch (c)
 				{
-				case 't': // parse true
-					Try!(Consume(stream, 't'));
-					Try!(Consume(stream, 'r'));
-					Try!(Consume(stream, 'u'));
-					Try!(Consume(stream, 'e'));
+					case 't': // parse true
+						Try!(Consume(stream, 't'));
+						Try!(Consume(stream, 'r'));
+						Try!(Consume(stream, 'u'));
+						Try!(Consume(stream, 'e'));
 
-					if (!_handler.Bool(true))
-						return .Err(.InvalidValue(line, column)); //invalid value
-					return .Ok;
+						if (!_handler.Bool(true))
+							return .Err(.InvalidValue(line, column)); //invalid value
+						return .Ok;
 
-				case 'f': // parse true
-					Try!(Consume(stream, 'f'));
-					Try!(Consume(stream, 'a'));
-					Try!(Consume(stream, 'l'));
-					Try!(Consume(stream, 's'));
-					Try!(Consume(stream, 'e'));
+					case 'f': // parse true
+						Try!(Consume(stream, 'f'));
+						Try!(Consume(stream, 'a'));
+						Try!(Consume(stream, 'l'));
+						Try!(Consume(stream, 's'));
+						Try!(Consume(stream, 'e'));
 
-					if (!_handler.Bool(false))
-						return .Err(.InvalidValue(line, column)); //invalid value
+						if (!_handler.Bool(false))
+							return .Err(.InvalidValue(line, column)); //invalid value
 
-					return .Ok;
+						return .Ok;
 				}
 
 			return .Err(.UnexpectedToken(line, column, "")); // unexpected token, Error Termination
@@ -300,18 +305,18 @@ namespace BJSON.Models
 					{
 						switch (nextC)
 						{
-						case ',':
-							stream.Skip(1);
-							column++;
-							SkipWhitespace(stream);
-						case '}':
-							stream.Skip(1);
-							column++;
-							if (!_handler.EndObject())
-								return .Err(.UnexpectedToken(line, column, "")); //Parse error termination
-							return .Ok;
-						default:
-							return .Err(.UnexpectedToken(line, column, ", or }")); // Object Miss Comma Or Curly Bracket
+							case ',':
+								stream.Skip(1);
+								column++;
+								SkipWhitespace(stream);
+							case '}':
+								stream.Skip(1);
+								column++;
+								if (!_handler.EndObject())
+									return .Err(.UnexpectedToken(line, column, "")); //Parse error termination
+								return .Ok;
+							default:
+								return .Err(.UnexpectedToken(line, column, ", or }")); // Object Miss Comma Or Curly Bracket
 
 						}
 					}
@@ -361,38 +366,248 @@ namespace BJSON.Models
 			}
 		}
 
-		Result<void, JsonParsingError> ParseNumber(Stream stream)
+		enum NumberParserState
+		{
+			Minus,
+			Int,
+			Frac,
+			Exp
+		}
+
+		Result<void, JsonParsingError>  ParseNumber(Stream stream)
 		{
 			//TODO: can be avoided
 			String strNumber = scope .();
-
+			NumberParserState state = .Minus;
+			bool startsWithMinus = false;
+			bool startsWithZero = false;
 			// Lazy way ... for testing
 			// TODO: Properly handle numbers
+			char8 prevChar = 0;
 			GETCHAR:while (stream.Peek<char8>() case .Ok(let c))
 			{
+				// general check if we actually are parsing number
 				switch (c)
 				{
-				case '0': fallthrough;
-				case '1': fallthrough;
-				case '2': fallthrough;
-				case '3': fallthrough;
-				case '4': fallthrough;
-				case '5': fallthrough;
-				case '6': fallthrough;
-				case '7': fallthrough;
-				case '8': fallthrough;
-				case '9': fallthrough;
-				case '.': fallthrough;
-				case 'E': fallthrough;
-				case 'e': fallthrough;
-				case '+': fallthrough;
-				case '-':
-					strNumber.Append(c);
-					stream.Skip(1);
-					column++;
+					case '0': fallthrough;
+					case '1': fallthrough;
+					case '2': fallthrough;
+					case '3': fallthrough;
+					case '4': fallthrough;
+					case '5': fallthrough;
+					case '6': fallthrough;
+					case '7': fallthrough;
+					case '8': fallthrough;
+					case '9': fallthrough;
+					case '.': fallthrough;
+					case 'E': fallthrough;
+					case 'e': fallthrough;
+					case '+': fallthrough;
+					case '-': break;
+					case 0:
+						return .Err(.InvalidValue(line, column));
 
-				default: break GETCHAR;
+					default: break GETCHAR;
 				}
+
+				switch (state)
+				{
+					case .Minus:
+						{
+							switch (c)
+							{
+								case '0': fallthrough;
+								case '1': fallthrough;
+								case '2': fallthrough;
+								case '3': fallthrough;
+								case '4': fallthrough;
+								case '5': fallthrough;
+								case '6': fallthrough;
+								case '7': fallthrough;
+								case '8': fallthrough;
+								case '9':
+									state = .Int;
+								case '-':
+									strNumber.Append(c);
+									stream.Skip(1);
+									column++;
+									state = .Int;
+									startsWithMinus = true;
+								default:
+									return .Err(.UnexpectedToken(line, column, "number or -"));
+							}
+						}
+					case .Int:
+						switch (c)
+						{
+							case '0':
+								if (startsWithMinus)
+								{
+									return .Err(.UnexpectedToken(line, column, ""));
+								}
+
+								if(strNumber.IsEmpty)
+								{
+									startsWithZero = true;
+								}
+								fallthrough;
+							case '1': fallthrough;
+							case '2': fallthrough;
+							case '3': fallthrough;
+							case '4': fallthrough;
+							case '5': fallthrough;
+							case '6': fallthrough;
+							case '7': fallthrough;
+							case '8': fallthrough;
+							case '9':
+								if(startsWithZero)
+								{
+									return .Err(.UnexpectedToken(line, column, "fraction"));
+								}
+
+								strNumber.Append(c);
+								stream.Skip(1);
+								column++;
+							case '.':
+								switch (prevChar)
+								{
+									case '1': fallthrough;
+									case '2': fallthrough;
+									case '3': fallthrough;
+									case '4': fallthrough;
+									case '5': fallthrough;
+									case '6': fallthrough;
+									case '7': fallthrough;
+									case '8': fallthrough;
+									case '9': break;
+									default:
+										return .Err(.UnexpectedToken(line, column, "number"));
+								}
+
+								state = .Frac;
+								strNumber.Append(c);
+								stream.Skip(1);
+								column++;
+							case 'E': fallthrough;
+							case 'e':
+								if (prevChar == '.')
+								{
+									return .Err(.UnexpectedToken(line, column, "number"));
+								}
+
+								state = .Exp;
+								strNumber.Append(c);
+								stream.Skip(1);
+								column++;
+
+								// we will try to get minus or plus here so we don't
+								// need to check that later
+								if (stream.Peek<char8>() case .Ok(let minusPlus))
+								{
+									if (minusPlus == '.')
+									{
+										return .Err(.UnexpectedToken(line, column, "exponent, + or -"));
+									}
+
+									if (minusPlus == '-' || minusPlus == '+')
+									{
+										strNumber.Append(minusPlus);
+										stream.Skip(1);
+										column++;
+									}
+								}
+								else
+								{
+									return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
+								}
+
+							default:
+								return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
+
+						}
+					case .Frac:
+						switch (c)
+						{
+							case '1': fallthrough;
+							case '2': fallthrough;
+							case '3': fallthrough;
+							case '4': fallthrough;
+							case '5': fallthrough;
+							case '6': fallthrough;
+							case '7': fallthrough;
+							case '8': fallthrough;
+							case '9':
+								strNumber.Append(c);
+								stream.Skip(1);
+								column++;
+							case 'E': fallthrough;
+							case 'e':
+								if (prevChar == '.')
+								{
+									return .Err(.UnexpectedToken(line, column, "number"));
+								}
+
+								state = .Exp;
+								strNumber.Append(c);
+								stream.Skip(1);
+								column++;
+
+									// we will try to get minus or plus here so we don't
+									// need to check that later
+								if (stream.Peek<char8>() case .Ok(let minusPlus))
+								{
+									if (minusPlus == '.')
+									{
+										return .Err(.UnexpectedToken(line, column, "exponent, + or -"));
+									}
+
+									if (minusPlus == '-' || minusPlus == '+')
+									{
+										strNumber.Append(minusPlus);
+										stream.Skip(1);
+										column++;
+									}
+								}
+								else
+								{
+									return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
+								}
+
+							default:
+								return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
+						}
+					case .Exp:
+						switch (c)
+						{
+							case '1': fallthrough;
+							case '2': fallthrough;
+							case '3': fallthrough;
+							case '4': fallthrough;
+							case '5': fallthrough;
+							case '6': fallthrough;
+							case '7': fallthrough;
+							case '8': fallthrough;
+							case '9':
+								strNumber.Append(c);
+								stream.Skip(1);
+								column++;
+							default:
+								return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
+
+						}
+				}
+
+				prevChar = c;
+			}
+
+			if (strNumber.IsEmpty)
+			{
+				return .Err(.UnexpectedToken(line, column, "number")); // parse error termination
+			}
+
+			if (strNumber.EndsWith('.'))
+			{
+				return .Err(.UnexpectedToken(line, column, "number or exponent")); // parse error termination
 			}
 
 			if (let number = double.Parse(strNumber))
