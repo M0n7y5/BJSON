@@ -27,3 +27,4 @@ BfSIMDSetting = "SSE41"
 
 [Configs.Test.Win64]
 BfSIMDSetting = "SSE41"
+ArithmeticCheck = true

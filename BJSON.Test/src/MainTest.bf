@@ -30,21 +30,21 @@ namespace BJSON.Test
 
 				let stream = scope FileStream();
 
-				if (stream.Open(filePath, .Read) case .Ok)
+				if (stream.Open(filePath, .Read, .Read) case .Ok)
 				{
 					Console.WriteLine(scope $"---> {fileName}");
-					Debug.WriteLine(scope $"---> {fileName}");
+					Debug.WriteLine(scope $"---> {idx++} {fileName}");
+
+					if (idx == 233)
+					{
+						let ll = 1;
+					}
 
 					var result = Json.Deserialize(stream);
 
 					Console.WriteLine();
 
 					result.Dispose();
-
-					if (idx == 116)
-					{
-						let ll = 1;
-					}
 
 					if (result case .Ok)
 					{
@@ -55,7 +55,7 @@ namespace BJSON.Test
 						Test.Assert(shouldFail, scope $"This file should not fail to parse! {fileName}");
 					}
 
-					Debug.WriteLine(scope $"{idx++} Done testing file: {fileName}");
+					Debug.WriteLine(scope $"{idx} Done testing file: {fileName}");
 				}
 				else
 				{
@@ -63,22 +63,7 @@ namespace BJSON.Test
 				}
 			}
 
-
-			/*var json2 = JsonArray() { 2, 44, 65 };
-			defer json2.Dispose();
-			var json = JsonArray()
-				{
-					"Eyyyyyyy lmao",
-					"Sheesh",
-					1345,
-					999999
-				};
-			defer json.Dispose();
-
-			Test.Assert(json[0] == StringView("Eyyyyyyy lmao"));
-			Test.Assert(json[1] == StringView("Sheesh"));
-			Test.Assert(json[2] == 1345);
-			Test.Assert(json[3] == 999999);*/
+			Debug.WriteLine("ALL TEST COMPLETED SUCESSFULLY!");
 		}
 
 

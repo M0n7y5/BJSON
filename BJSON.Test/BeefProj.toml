@@ -9,3 +9,6 @@ StartupObject = "BJSON.Test.Program"
 [Configs.Test.Win64]
 BeefLibType = "DynamicDebug"
 PostBuildCmds = ["CopyFilesIfNewer(\"$(ProjectDir)/test_files/*\", \"$(BuildDir)/test_files\")"]
+
+[[Configs.Test.Win64.DistinctOptions]]
+Filter = ""

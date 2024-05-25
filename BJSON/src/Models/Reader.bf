@@ -11,6 +11,9 @@ namespace BJSON.Models
 
 		uint column = 1;
 		uint line = 1;
+		uint currentDepth = 0;
+
+		public const uint MaximumDepth = 900;
 
 		public this(IHandler handler)
 		{
@@ -183,13 +186,7 @@ namespace BJSON.Models
 						stream.Skip(1);
 						if (let e = stream.Peek<char8>())
 						{
-							if (JsonEscapes.IsEscape(e))
-							{
-								str.Append(e);
-								stream.Skip(1);
-								column++;
-							}
-							else if (e == 'u')
+							if (e == 'u')
 							{
 								stream.Skip(1);
 								column++;
@@ -200,10 +197,10 @@ namespace BJSON.Models
 									// high surrogate, check if followed by valid low surrogate
 									if (codepoint <= 0xDBFF)
 									{
-										if (Consume(stream, '\\') case .Ok)
+										if (Consume(stream, '\\') case .Err)
 											return .Err(.InvalidStringSurrogate(line, column));
 
-										if (Consume(stream, '\\') case .Ok)
+										if (Consume(stream, 'u') case .Err)
 											return .Err(.InvalidStringSurrogate(line, column));
 
 										/*if (!Consume(stream, '\\') || !Consume(stream, 'u'))
@@ -225,6 +222,12 @@ namespace BJSON.Models
 								}
 
 								str.Append((char32)codepoint);
+							}
+							else if (JsonEscapes.AllowedToEscape(e))
+							{
+								str.Append(e);
+								stream.Skip(1);
+								column++;
 							}
 							else
 								return .Err(.InvalidEscapeToken(line, column)); // Error String Escape Invalid
@@ -269,9 +272,17 @@ namespace BJSON.Models
 		{
 			stream.Skip(1); //skip {
 			column++;
+
 			if (!_handler.StartObject())
 			{
 				return .Err(.UnexpectedToken(line, column, "")); // Parse Error Termination
+			}
+
+			currentDepth++;
+
+			if (currentDepth > MaximumDepth)
+			{
+				return .Err(.MaximumDepthReached);
 			}
 
 			SkipWhitespace(stream);
@@ -314,6 +325,9 @@ namespace BJSON.Models
 								column++;
 								if (!_handler.EndObject())
 									return .Err(.UnexpectedToken(line, column, "")); //Parse error termination
+
+								currentDepth--;
+
 								return .Ok;
 							default:
 								return .Err(.UnexpectedToken(line, column, ", or }")); // Object Miss Comma Or Curly Bracket
@@ -334,6 +348,13 @@ namespace BJSON.Models
 			if (!_handler.StartArray())
 			{
 				return .Err(.UnexpectedToken(line, column, "")); // Parse Error Termination
+			}
+
+			currentDepth++;
+
+			if (currentDepth > MaximumDepth)
+			{
+				return .Err(.MaximumDepthReached);
 			}
 
 			SkipWhitespace(stream);
@@ -359,6 +380,8 @@ namespace BJSON.Models
 				{
 					if (!_handler.EndArray())
 						return .Err(.UnexpectedToken(line, column, "")); // Error termination
+
+					currentDepth--;
 					return .Ok;
 				}
 				else
@@ -410,7 +433,7 @@ namespace BJSON.Models
 					default: break GETCHAR;
 				}
 
-				switch (state)
+				MAINSTATE:switch (state)
 				{
 					case .Minus:
 						{
@@ -440,54 +463,6 @@ namespace BJSON.Models
 					case .Int:
 						switch (c)
 						{
-							case '0':
-								if (startsWithMinus)
-								{
-									return .Err(.UnexpectedToken(line, column, ""));
-								}
-
-								if(strNumber.IsEmpty)
-								{
-									startsWithZero = true;
-								}
-								fallthrough;
-							case '1': fallthrough;
-							case '2': fallthrough;
-							case '3': fallthrough;
-							case '4': fallthrough;
-							case '5': fallthrough;
-							case '6': fallthrough;
-							case '7': fallthrough;
-							case '8': fallthrough;
-							case '9':
-								if(startsWithZero)
-								{
-									return .Err(.UnexpectedToken(line, column, "fraction"));
-								}
-
-								strNumber.Append(c);
-								stream.Skip(1);
-								column++;
-							case '.':
-								switch (prevChar)
-								{
-									case '1': fallthrough;
-									case '2': fallthrough;
-									case '3': fallthrough;
-									case '4': fallthrough;
-									case '5': fallthrough;
-									case '6': fallthrough;
-									case '7': fallthrough;
-									case '8': fallthrough;
-									case '9': break;
-									default:
-										return .Err(.UnexpectedToken(line, column, "number"));
-								}
-
-								state = .Frac;
-								strNumber.Append(c);
-								stream.Skip(1);
-								column++;
 							case 'E': fallthrough;
 							case 'e':
 								if (prevChar == '.')
@@ -520,6 +495,81 @@ namespace BJSON.Models
 								{
 									return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
 								}
+							case '0':
+								if (prevChar == '-')
+								{
+									strNumber.Append(c);
+									stream.Skip(1);
+									column++;
+
+									if (stream.Peek<char8>() case .Ok(let dot))
+									{
+										switch (dot)
+										{
+											case '.':
+												state = .Frac;
+												strNumber.Append(dot);
+												stream.Skip(1);
+												column++;
+												break;
+											case ']': fallthrough;
+											case '}': fallthrough;
+											case ',':
+												break MAINSTATE;
+											default:
+												return .Err(.UnexpectedToken(line, column, ""));
+										}
+									}
+								}
+								else
+								{
+									if (strNumber.IsEmpty)
+									{
+										startsWithZero = true;
+									}
+
+									strNumber.Append(c);
+									stream.Skip(1);
+									column++;
+								}
+								break;
+							case '1': fallthrough;
+							case '2': fallthrough;
+							case '3': fallthrough;
+							case '4': fallthrough;
+							case '5': fallthrough;
+							case '6': fallthrough;
+							case '7': fallthrough;
+							case '8': fallthrough;
+							case '9':
+								if (startsWithZero)
+								{
+									return .Err(.UnexpectedToken(line, column, "fraction"));
+								}
+
+								strNumber.Append(c);
+								stream.Skip(1);
+								column++;
+							case '.':
+								switch (prevChar)
+								{
+									case '1': fallthrough;
+									case '2': fallthrough;
+									case '3': fallthrough;
+									case '4': fallthrough;
+									case '5': fallthrough;
+									case '6': fallthrough;
+									case '7': fallthrough;
+									case '8': fallthrough;
+									case '9': break;
+									default:
+										return .Err(.UnexpectedToken(line, column, "number"));
+								}
+
+								state = .Frac;
+								strNumber.Append(c);
+								stream.Skip(1);
+								column++;
 
 							default:
 								return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
@@ -528,6 +578,7 @@ namespace BJSON.Models
 					case .Frac:
 						switch (c)
 						{
+							case '0': fallthrough;
 							case '1': fallthrough;
 							case '2': fallthrough;
 							case '3': fallthrough;

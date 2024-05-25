@@ -406,7 +406,7 @@ namespace BJSON.Models
 
 			set
 			{
-				data.object[new String(key)] = value;
+				data.object[key] = value;
 			}
 		}
 
