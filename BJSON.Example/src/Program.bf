@@ -1,17 +1,52 @@
 using System;
 using BJSON.Models;
 using System.IO;
+using BJSON.Attributes;
 
 namespace BJSON.Example
 {
 	class Program
 	{
+		/*[JsonObject("red")]
+		class Bar
+		{
+			public float Damage = 25.f;
+		}*/
+
+		[JsonObject("red")]
+		class Foo
+		{
+			public bool? IsSus = true;
+
+			public int8 Health = (.)100;
+
+			//public Bar bar = new .() ~ delete _;
+
+		}
+
+		class BindBong { };
+
+		class Test
+		{
+			Result<BindBong> bb = new BindBong() ~ delete _.Value;
+		}
+
+		public static (int64 Quotient, int64 Remainder) DivRem2(int64 left, int64 right)
+		{
+			int64 quotient = left / right;
+			return (quotient, left - (quotient * right));
+		}
+
 		public static int Main(String[] args)
 		{
 			/*var json2 = JsonVariant() { 2, 44, 65 };
 			defer json2.Dispose();*/
 
-			
+			let q1 = Math.DivRem(int64.MaxValue, (int64)2000, let rem1);
+
+			let (q2, rem2) = DivRem2(int64.MaxValue, (int64)2000);
+
+			let tt = scope Foo();
 
 			let jsonString =
 				@"""
@@ -28,37 +63,47 @@ namespace BJSON.Example
 				}
 				""";
 
-			var result = Json.Deserialize(jsonString);
+			var result = Json.Deserialize<Foo>(jsonString);
 			//var result = Json.Deserialize(Yamanote);
 
 			switch (result)
 			{
-			case .Ok(var value):
-				using (value)
-				{
-					int ageVal = value["age"];
+				case .Ok(var value):
+					using (value)
+					{
+						int ageVal = value["age"];
 
-					StringView name = value["lastName"];
+						StringView name = value["lastName"];
 
-					bool isWorking = value["another"]["isItWorking"];
+						bool isWorking = value["another"]["isItWorking"];
 
-					var another = (value["another"]);
-					var someArray = (another["someArray"]);
+						var another = (value["another"]);
+						var someArray = (another["someArray"]);
 
-					int arrayVal = (someArray[3]);
-					//int arrayVal2 = (someArray[9]);
+						int arrayVal = (someArray[3]);
+						//int arrayVal2 = (someArray[9]);
 
-					//let aa = arrayVal + arrayVal2;
+						//let aa = arrayVal + arrayVal2;
 
-					Console.WriteLine(scope $"{ageVal}, {name}, {isWorking}, {arrayVal}");
-				}
-			case .Err(let err):
-				Console.WriteLine(err.ToString(.. scope String()));
+						Console.WriteLine(scope $"{ageVal}, {name}, {isWorking}, {arrayVal}");
+					}
+				case .Err(let err):
+					Console.WriteLine(err.ToString(.. scope String()));
 			}
 
 			// initialize as array
 			var json2 = JsonArray() { 2, 44, 65 };
 			defer json2.Dispose();
+			{
+				// ...
+
+				var strrrr = new String();
+
+				//defer delete strrrr;
+
+
+				// ...
+			}
 
 			let str2 = scope String();
 

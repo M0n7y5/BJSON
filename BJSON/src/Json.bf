@@ -14,6 +14,13 @@ namespace BJSON
 			return deserializer.Deserialize(json);
 		}
 
+		public static Result<JsonValue, JsonParsingError> Deserialize<T>(StringView json) where T : IJsonSerializable
+		{
+			let deserializer = scope Deserializer();
+
+			return deserializer.Deserialize(json);
+		}
+
 		public static Result<JsonValue, JsonParsingError> Deserialize(Stream stream)
 		{
 			let deserializer = scope Deserializer();

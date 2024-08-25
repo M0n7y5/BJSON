@@ -6,7 +6,7 @@ namespace BJSON.Test
 {
 	class MainTest
 	{
-		[Test]
+		[Test(Profile=true)]
 		public static void Array_T()
 		{
 			let currentPath = Directory.GetCurrentDirectory(.. scope .());
@@ -21,11 +21,12 @@ namespace BJSON.Test
 
 				let fileName = file.GetFileName(.. scope .());
 
-				if (fileName[0] == 'i')
+				/*if (fileName[0] == 'i')
 				{
 					continue;
-				}
+				}*/
 
+				bool ignoreResult = fileName[0] == 'i';
 				bool shouldFail = fileName[0] == 'n';
 
 				let stream = scope FileStream();
@@ -35,10 +36,10 @@ namespace BJSON.Test
 					Console.WriteLine(scope $"---> {fileName}");
 					Debug.WriteLine(scope $"---> {idx++} {fileName}");
 
-					if (idx == 233)
+					/*if (idx == 233)
 					{
 						let ll = 1;
-					}
+					}*/
 
 					var result = Json.Deserialize(stream);
 
@@ -46,16 +47,19 @@ namespace BJSON.Test
 
 					result.Dispose();
 
-					if (result case .Ok)
+					if(ignoreResult == false)
 					{
-						Test.Assert(shouldFail == false, scope $"This file should not be successfully parsed! {fileName}");
-					}
-					else
-					{
-						Test.Assert(shouldFail, scope $"This file should not fail to parse! {fileName}");
+						if (result case .Ok)
+						{
+							Test.Assert(shouldFail == false, scope $"This file should not be successfully parsed! {fileName}");
+						}
+						else
+						{
+							Test.Assert(shouldFail, scope $"This file should not fail to parse! {fileName}");
+						}
 					}
 
-					Debug.WriteLine(scope $"{idx} Done testing file: {fileName}");
+					Debug.WriteLine(scope $"{idx} Done testing file: {fileName} Result: {result case .Ok ? "Ok" : "Err"}");
 				}
 				else
 				{
