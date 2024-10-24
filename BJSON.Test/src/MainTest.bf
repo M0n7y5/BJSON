@@ -7,7 +7,7 @@ namespace BJSON.Test
 	class MainTest
 	{
 		[Test]
-		public static void Array_T()
+		public static void T_FuzzyTests()
 		{
 			let currentPath = Directory.GetCurrentDirectory(.. scope .());
 
