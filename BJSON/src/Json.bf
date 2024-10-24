@@ -35,6 +35,10 @@ namespace BJSON
 			return serializer.Serialize(json, outText, true);
 		}
 
-
+		public static bool Stringify(String outText)
+		{
+			let stringifier = scope Stringifier();
+			return stringifier.Stringify(outText);
+		}
 	}
 }
