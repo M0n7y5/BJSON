@@ -7,11 +7,13 @@ namespace BJSON.Test
 	class MainTest
 	{
 		[Test]
-		public static void T_FuzzyTests()
+		public static void T_TestSuite1()
 		{
+			// https://github.com/nst/JSONTestSuite
+
 			let currentPath = Directory.GetCurrentDirectory(.. scope .());
 
-			Path.Combine(currentPath, "test_files");
+			Path.Combine(currentPath, "TestSuites", "Suite1");
 
 			let files = Directory.EnumerateFiles(currentPath);
 			int idx = 0;
@@ -20,11 +22,6 @@ namespace BJSON.Test
 				let filePath = file.GetFilePath(.. scope .());
 
 				let fileName = file.GetFileName(.. scope .());
-
-				/*if (fileName[0] == 'i')
-				{
-					continue;
-				}*/
 
 				bool ignoreResult = fileName[0] == 'i';
 				bool shouldFail = fileName[0] == 'n';
@@ -36,18 +33,13 @@ namespace BJSON.Test
 					Console.WriteLine(scope $"---> {fileName}");
 					Debug.WriteLine(scope $"---> {idx++} {fileName}");
 
-					/*if (idx == 233)
-					{
-						let ll = 1;
-					}*/
-
 					var result = Json.Deserialize(stream);
 
 					Console.WriteLine();
 
 					result.Dispose();
 
-					if(ignoreResult == false)
+					if (ignoreResult == false)
 					{
 						if (result case .Ok)
 						{
@@ -57,6 +49,63 @@ namespace BJSON.Test
 						{
 							Test.Assert(shouldFail, scope $"This file should not fail to parse! {fileName}");
 						}
+					}
+
+					Debug.WriteLine(scope $"{idx} Done testing file: {fileName} Result: {result case .Ok ? "Ok" : "Err"}");
+				}
+				else
+				{
+					Test.Assert(false, scope $"Unable to open file {fileName}");
+				}
+			}
+
+			Debug.WriteLine("ALL TEST COMPLETED SUCESSFULLY!");
+		}
+
+		[Test]
+		public static void T_TestSuite2()
+		{
+			// https://json.org/JSON_checker/
+
+			let currentPath = Directory.GetCurrentDirectory(.. scope .());
+
+			Path.Combine(currentPath, "TestSuites", "Suite2");
+
+			let files = Directory.EnumerateFiles(currentPath);
+			int idx = 0;
+			for (let file in files)
+			{
+				let filePath = file.GetFilePath(.. scope .());
+
+				let fileName = file.GetFileName(.. scope .());
+
+				if(fileName.StartsWith("fail1"))
+				{
+					//this test is not RFC 8259 compliant
+					continue;
+				}
+
+				bool shouldFail = fileName.StartsWith("fail");
+
+				let stream = scope FileStream();
+
+				if (stream.Open(filePath, .Read, .Read) case .Ok)
+				{
+					Console.WriteLine(scope $"---> {fileName}");
+					Debug.WriteLine(scope $"---> {idx++} {fileName}");
+
+					var result = Json.Deserialize(stream);
+					defer result.Dispose();
+
+					Console.WriteLine();
+
+					if (result case .Ok)
+					{
+						Test.Assert(shouldFail == false, scope $"This file should not be successfully parsed! {fileName}");
+					}
+					else
+					{
+						Test.Assert(shouldFail, scope $"This file should not fail to parse! {fileName}");
 					}
 
 					Debug.WriteLine(scope $"{idx} Done testing file: {fileName} Result: {result case .Ok ? "Ok" : "Err"}");

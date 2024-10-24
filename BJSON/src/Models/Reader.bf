@@ -631,6 +631,7 @@ namespace BJSON.Models
 					case .Exp:
 						switch (c)
 						{
+							case '0': fallthrough;
 							case '1': fallthrough;
 							case '2': fallthrough;
 							case '3': fallthrough;
