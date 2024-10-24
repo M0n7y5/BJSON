@@ -10,7 +10,6 @@ namespace BJSON
 		public static Result<JsonValue, JsonParsingError> Deserialize(StringView json)
 		{
 			let deserializer = scope Deserializer();
-
 			return deserializer.Deserialize(json);
 		}
 
@@ -31,10 +30,13 @@ namespace BJSON
 		public static bool Serialize(JsonValue json, String outText)
 		{
 			let serializer = scope Serializer();
-
 			return serializer.Serialize(json, outText, true);
 		}
 
-
+		public static bool Stringify(String outText)
+		{
+			let stringifier = scope Stringifier();
+			return stringifier.Stringify(outText);
+		}
 	}
 }

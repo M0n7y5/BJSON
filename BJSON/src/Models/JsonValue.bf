@@ -245,6 +245,12 @@ namespace BJSON.Models
 		{
 			return .();
 		}
+
+		public override void ToString(String strBuffer)
+		{
+			Json.Serialize(this, strBuffer);
+			Json.Stringify(strBuffer);
+		}
 	}
 
 	public struct JsonNull : JsonValue, IParseable<JsonNull>
