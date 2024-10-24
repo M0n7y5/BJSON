@@ -441,6 +441,16 @@ namespace BJSON.Models
 			data.object.Remove(key);
 		}
 
+		public Result<JsonValue> GetValue(StringView key)
+		{
+			if(data.object.TryGetValueAlt(key, let val))
+			{
+				return val;
+			}
+
+			return .Err;
+		}
+
 		public new static Result<JsonObject> Parse(StringView val)
 		{
 			return default;
