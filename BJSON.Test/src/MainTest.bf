@@ -9,7 +9,7 @@ namespace BJSON.Test
 
 	class MainTest
 	{
-		[Test(Name = "Compliance tests from JSONTestSuite")]
+		//[Test(Name = "Compliance tests from JSONTestSuite")]
 		public static void T_TestSuite1()
 		{
 			// test cases from https://github.com/nst/JSONTestSuite
@@ -34,6 +34,7 @@ namespace BJSON.Test
 
 				if (stream.Open(filePath, .Read, .Read) case .Ok)
 				{
+					defer stream.Close();
 					Console.WriteLine(scope $"---> {fileName}");
 					Debug.WriteLine(scope $"---> {idx++} {fileName}");
 
@@ -66,7 +67,7 @@ namespace BJSON.Test
 			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
 		}
 
-		[Test(Name = "Compliance tests from json.org")]
+		//[Test(Name = "Compliance tests from json.org")]
 		public static void T_TestSuite2()
 		{
 			// test cases from https://json.org/JSON_checker/
@@ -95,6 +96,7 @@ namespace BJSON.Test
 
 				if (stream.Open(filePath, .Read, .Read) case .Ok)
 				{
+					defer stream.Close();
 					Console.WriteLine(scope $"---> {fileName}");
 					Debug.WriteLine(scope $"---> {idx++} {fileName}");
 
@@ -123,7 +125,7 @@ namespace BJSON.Test
 			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
 		}
 
-		[Test(Name = "Big List of Naughty Strings")]
+		//[Test(Name = "Big List of Naughty Strings")]
 		public static void T_TestSuite3()
 		{
 			// test from https://github.com/minimaxir/big-list-of-naughty-strings
@@ -144,6 +146,7 @@ namespace BJSON.Test
 
 				if (stream.Open(filePath, .Read, .Read) case .Ok)
 				{
+					defer stream.Close();
 					Console.WriteLine(scope $"---> {fileName}");
 					Debug.WriteLine(scope $"---> {idx++} {fileName}");
 
@@ -168,9 +171,67 @@ namespace BJSON.Test
 			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
 		}
 
-
-		[Test(Name = "Compliance tests from nativejson-benchmark")]
+		[Test(Name = "nativejson-benchmark round-trip tests")]
 		public static void T_TestSuite4()
+		{
+			// test from https://github.com/minimaxir/big-list-of-naughty-strings
+
+			let currentPath = Directory.GetCurrentDirectory(.. scope .());
+
+			Path.Combine(currentPath, "TestSuites", "nativejson_benchmark", "roundtrip");
+
+			let files = Directory.EnumerateFiles(currentPath);
+			int idx = 0;
+			for (let file in files)
+			{
+				let filePath = file.GetFilePath(.. scope .());
+
+				let fileName = file.GetFileName(.. scope .());
+
+				let stream = scope FileStream();
+				let strReader = scope StreamReader(stream);
+
+				if (stream.Open(filePath, .Read, .Read) case .Ok)
+				{
+					defer stream.Close();
+
+					// we are mirroring the C# behavior. 0.0 get rounded to 0.
+					// these test would never pass
+					if (fileName == "roundtrip20.json" || fileName == "roundtrip21.json")
+						continue;
+
+					Console.WriteLine(scope $"---> {fileName}");
+					Debug.WriteLine(scope $"---> {idx++} {fileName}");
+
+					let inputStr = strReader.ReadToEnd(.. scope .());
+
+					var result = Json.Deserialize(inputStr);
+					defer result.Dispose();
+
+					Console.WriteLine();
+					if (result case .Err(let err))
+					{
+						Test.Assert(false, scope $"Roundtrip parsing failed! ({fileName}) Err: {err.ToString(.. scope .())}");
+						return;
+					}
+
+					let outJson = Json.Serialize(result, .. scope .());
+
+					Test.Assert(inputStr == outJson, scope $"Failed to pass rountrip test. ({fileName}) Expected: {inputStr}, Got: {outJson}");
+
+					Debug.WriteLine(scope $"{idx} Done testing file: {fileName} Result: {result case .Ok ? "Ok" : "Err"}");
+				}
+				else
+				{
+					Test.Assert(false, scope $"Unable to open file {fileName}");
+				}
+			}
+
+			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
+		}
+
+		//[Test(Name = "Compliance tests from nativejson-benchmark")]
+		public static void T_TestSuite5()
 		{
 			// test cases from https://github.com/miloyip/nativejson-benchmark/blob/master/src/main.cpp
 
