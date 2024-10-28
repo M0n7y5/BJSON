@@ -12,11 +12,6 @@ namespace BJSON.Models
 			return default;
 		}
 
-		public bool Double(double d)
-		{
-			return default;
-		}
-
 		public bool String(System.StringView str, bool copy)
 		{
 			return default;
@@ -43,6 +38,25 @@ namespace BJSON.Models
 		}
 
 		public bool EndArray()
+		{
+			return default;
+		}
+
+		public bool Number(double n)
+		{
+			return default;
+		}
+
+		public bool Number(int64 n)
+		{
+			return default;
+		}
+
+		public bool Number(uint64 n)
+		{
+			return default;
+		}
+		public bool Number(float n)
 		{
 			return default;
 		}

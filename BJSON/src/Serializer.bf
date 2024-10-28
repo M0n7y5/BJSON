@@ -21,6 +21,12 @@ namespace BJSON
 				return SerializeBoolean(json, outText, isRoot);
 			case .NUMBER:
 				return SerializeNumber(json, outText, isRoot);
+			case .NUMBER_FLOAT:
+				return SerializeNumber(json, outText, isRoot);
+			case .NUMBER_SIGNED:
+				return SerializeNumber(json, outText, isRoot);
+			case .NUMBER_UNSIGNED:
+				return SerializeNumber(json, outText, isRoot);
 			case .STRING:
 				return SerializeString(json, outText, isRoot);
 			case .ARRAY:
@@ -61,9 +67,19 @@ namespace BJSON
 			if (isRoot)
 				return false;
 
-			double number = value;
-
-			str.Append(number.ToString(.. scope .()));
+			switch (value.type)
+			{
+			case .NUMBER_UNSIGNED:
+				str.Append(value.data.unsignedNumber.ToString(.. scope .()));
+			case .NUMBER_SIGNED:
+				str.Append(value.data.signedNumber.ToString(.. scope .()));
+			case .NUMBER_FLOAT:
+				str.Append(value.data.numberFloat.ToString(.. scope .()));
+			case .NUMBER:
+				str.Append(value.data.number.ToString(.. scope .(), "R", null));
+			default:
+				return false;
+			}
 
 			return true;
 		}
@@ -128,7 +144,7 @@ namespace BJSON
 			if (str[str.Length - 1] == ',')
 				str[str.Length - 1] = (char8)JsonToken.RIGHT_CURLY_BRACKET;
 			else
-				str.Append((char8)JsonToken.LEFT_CURLY_BRACKET);
+				str.Append((char8)JsonToken.RIGHT_CURLY_BRACKET);
 
 			return true;
 		}

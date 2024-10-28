@@ -36,6 +36,18 @@ namespace BJSON.Example
 			/*var json2 = JsonVariant() { 2, 44, 65 };
 			defer json2.Dispose();*/
 
+			let testObj = JsonArray(){
+				JsonNumber(5e-324)
+			};
+
+			defer testObj.Dispose();
+
+			let outt = Json.Serialize(testObj, .. scope .());
+
+			return 0;
+
+
+
 			let tt = scope Foo();
 
 			let jsonString =

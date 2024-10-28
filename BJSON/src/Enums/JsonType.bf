@@ -9,25 +9,19 @@ namespace BJSON.Enums
 
 		// Simple Data
 		BOOL = 1,
+
+		//Number types
 		NUMBER = 2,
-		STRING = 4,
+		NUMBER_FLOAT = 3,
+		NUMBER_SIGNED = 4,
+		NUMBER_UNSIGNED = 5,
+
+		// String
+		STRING = 6,
+
 		//Complex data
-		OBJECT = 8,
-		ARRAY = 16,
-		/*public Type GetType
-		{
-			get
-			{
-				switch (this)
-				{
-				case .OBJECT: return typeof(JsonObject);
-				case .ARRAY: return typeof(JsonArray);
-				case .NUMBER: return typeof(double);
-				case .STRING: return typeof(String);
-				case .BOOL: return typeof(bool);
-				case .NULL: return null;
-				}
-			}
-		}*/
+		OBJECT = 7,
+		ARRAY = 8,
+
 	}
 }
