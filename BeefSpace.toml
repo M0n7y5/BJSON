@@ -26,5 +26,6 @@ BfSIMDSetting = "SSE41"
 BfSIMDSetting = "SSE41"
 
 [Configs.Test.Win64]
+Toolset = "LLVM"
 BfSIMDSetting = "SSE41"
 ArithmeticCheck = true
