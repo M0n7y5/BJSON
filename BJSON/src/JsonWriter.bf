@@ -4,35 +4,35 @@ using BJSON.Constants;
 using BJSON.Enums;
 namespace BJSON
 {
-	class Serializer
+	class JsonWriter
 	{
 		public this()
 		{
 		}
 
 		//TODO: Return a result with ErrorEnum
-		public bool Serialize(JsonValue json, String outText, bool isRoot = false)
+		public bool Write(JsonValue json, String outText, bool isRoot = false)
 		{
 			switch (json.type)
 			{
 			case .NULL:
-				return SerializeNull(json, outText, isRoot);
+				return WriteNull(json, outText, isRoot);
 			case .BOOL:
-				return SerializeBoolean(json, outText, isRoot);
+				return WriteBoolean(json, outText, isRoot);
 			case .NUMBER:
-				return SerializeNumber(json, outText, isRoot);
-			case .NUMBER_FLOAT:
-				return SerializeNumber(json, outText, isRoot);
+				return WriteNumber(json, outText, isRoot);
+			/*case .NUMBER_FLOAT:
+				return SerializeNumber(json, outText, isRoot);*/
 			case .NUMBER_SIGNED:
-				return SerializeNumber(json, outText, isRoot);
+				return WriteNumber(json, outText, isRoot);
 			case .NUMBER_UNSIGNED:
-				return SerializeNumber(json, outText, isRoot);
+				return WriteNumber(json, outText, isRoot);
 			case .STRING:
-				return SerializeString(json, outText, isRoot);
+				return WriteString(json, outText, isRoot);
 			case .ARRAY:
-				return SerializeArray(json, outText, isRoot);
+				return WriteArray(json, outText, isRoot);
 			case .OBJECT:
-				return SerializeObject(json, outText, isRoot);
+				return WriteObject(json, outText, isRoot);
 
 			default:
 				return false;
@@ -40,7 +40,7 @@ namespace BJSON
 			}
 		}
 
-		bool SerializeNull(JsonValue value, String str, bool isRoot)
+		bool WriteNull(JsonValue value, String str, bool isRoot)
 		{
 			if (isRoot)
 				return false;
@@ -50,7 +50,7 @@ namespace BJSON
 			return true;
 		}
 
-		bool SerializeBoolean(JsonValue value, String str, bool isRoot)
+		bool WriteBoolean(JsonValue value, String str, bool isRoot)
 		{
 			if (isRoot)
 				return false;
@@ -62,7 +62,7 @@ namespace BJSON
 			return true;
 		}
 
-		bool SerializeNumber(JsonValue value, String str, bool isRoot)
+		bool WriteNumber(JsonValue value, String str, bool isRoot)
 		{
 			if (isRoot)
 				return false;
@@ -73,10 +73,20 @@ namespace BJSON
 				str.Append(value.data.unsignedNumber.ToString(.. scope .()));
 			case .NUMBER_SIGNED:
 				str.Append(value.data.signedNumber.ToString(.. scope .()));
-			case .NUMBER_FLOAT:
-				str.Append(value.data.numberFloat.ToString(.. scope .()));
+			/*case .NUMBER_FLOAT:
+				str.Append(value.data.numberFloat.ToString(.. scope .()));*/
 			case .NUMBER:
-				str.Append(value.data.number.ToString(.. scope .(), "R", null));
+				let number = value.data.number;
+
+				if(number.IsNaN || number.IsInfinity)
+				{
+					//for now return false
+					return false;
+				}
+
+				char8[25] buff;
+				BJSON.Internal.dtoa(value.data.number, &buff);
+				str.Append(&buff);
 			default:
 				return false;
 			}
@@ -84,7 +94,7 @@ namespace BJSON
 			return true;
 		}
 
-		bool SerializeString(JsonValue value, String str, bool isRoot)
+		bool WriteString(JsonValue value, String str, bool isRoot)
 		{
 			if (isRoot)
 				return false;
@@ -97,7 +107,7 @@ namespace BJSON
 			return true;
 		}
 
-		bool SerializeArray(JsonValue value, String str, bool isRoot)
+		bool WriteArray(JsonValue value, String str, bool isRoot)
 		{
 			let array = value.AsArray().Value;
 
@@ -105,7 +115,7 @@ namespace BJSON
 
 			for (let item in array)
 			{
-				if (!Serialize(item, str))
+				if (!Write(item, str))
 					return false;
 
 				//WARN: for now this will create trailing comma
@@ -121,7 +131,7 @@ namespace BJSON
 			return true;
 		}
 
-		bool SerializeObject(JsonValue value, String str, bool isRoot)
+		bool WriteObject(JsonValue value, String str, bool isRoot)
 		{
 			let obj = value.AsObject().Value;
 
@@ -134,7 +144,7 @@ namespace BJSON
 
 				str.Append(key);
 
-				if (!Serialize(item.value, str))
+				if (!Write(item.value, str))
 					return false;
 
 				str.Append((char8)JsonToken.COMMA);

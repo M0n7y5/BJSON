@@ -3,9 +3,10 @@ using System.IO;
 using BJSON.Constants;
 using BJSON.Enums;
 using System.Text;
-namespace BJSON.Models
+using BJSON.Models;
+namespace BJSON
 {
-	class Reader
+	class JsonReader
 	{
 		IHandler _handler;
 
@@ -133,7 +134,7 @@ namespace BJSON.Models
 
 		Result<uint32, JsonParsingError> ParseHex4(Stream stream)
 		{
-			uint32 codepoint = 0; //BUG! cant sum char32, report to Beefy
+			uint32 codepoint = 0;
 
 			for (let i in ...3)
 			{
@@ -588,7 +589,7 @@ namespace BJSON.Models
 
 					}
 				case .Frac:
-					state = .Frac;
+					type = .Float;
 					switch (c)
 					{
 					case '0': fallthrough;
@@ -641,6 +642,7 @@ namespace BJSON.Models
 						return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
 					}
 				case .Exp:
+					type = .Float;
 					switch (c)
 					{
 					case '0': fallthrough;
@@ -698,51 +700,14 @@ namespace BJSON.Models
 					return .Err(.InvalidValue(line, column));
 				}
 			case .Float:
-				//TODO: Count this when parsing whole number
-				int significantDigits = 0;
-				bool isInExponent = false;
-
-				// Iterate through each character to count significant digits
-				for (let c in strNumber.RawChars)
+				if (let number = double.Parse(strNumber))
 				{
-					if (c == 'e' || c == 'E')
-					{
-						isInExponent = true;
-					}
-					else if (c >= '0' && c <= '9' && !isInExponent && !(significantDigits == 0 && c == '0'))
-					{
-						// Count digit only if it's in the significant part (before exponent) and non-zero
-						significantDigits++;
-					}
-				}
-
-				if (significantDigits <= 9)
-				{
-					if (let number = float.Parse(strNumber))
-					{
-						if (!_handler.Number(number))
-							return .Err(.InvalidValue(line, column)); // parse error termination
-					}
-					else
-					{
-						return .Err(.InvalidValue(line, column));
-					}
-				}
-				else if (significantDigits <= 17)
-				{
-					if (let number = double.Parse(strNumber))
-					{
-						if (!_handler.Number(number))
-							return .Err(.InvalidValue(line, column)); // parse error termination
-					}
-					else
-					{
-						return .Err(.InvalidValue(line, column));
-					}
+					if (!_handler.Number(number))
+						return .Err(.InvalidValue(line, column)); // parse error termination
 				}
 				else
 				{
-					return .Err(.TooBigPrecisionNumber);
+					return .Err(.InvalidValue(line, column));
 				}
 			}
 

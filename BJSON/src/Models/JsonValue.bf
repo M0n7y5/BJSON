@@ -16,7 +16,7 @@ namespace BJSON.Models
 
 			public uint64 unsignedNumber;
 			public int64 signedNumber;
-			public double numberFloat;
+			//public double numberFloat;
 			public double number;
 
 			public String string;
@@ -323,12 +323,6 @@ namespace BJSON.Models
 		{
 			type = .NUMBER;
 			data.number = value;
-		}
-
-		public this(float value)
-		{
-			type = .NUMBER_FLOAT;
-			data.numberFloat = value;
 		}
 
 		public this(uint64 value)

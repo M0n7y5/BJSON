@@ -30,9 +30,9 @@ namespace BJSON
 
 		public static bool Serialize(JsonValue json, String outText)
 		{
-			let serializer = scope Serializer();
+			let serializer = scope JsonWriter();
 
-			return serializer.Serialize(json, outText, true);
+			return serializer.Write(json, outText, true);
 		}
 
 

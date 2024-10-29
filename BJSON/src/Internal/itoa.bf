@@ -97,7 +97,7 @@ static
 		return buffer;
 	}
 
-	static char8* i32toa(int32 value, char8* buffer)
+	public static char8* i32toa(int32 value, char8* buffer)
 	{
 		Runtime.Assert(buffer != null);
 		var buffer;
@@ -293,7 +293,7 @@ static
 		return buffer;
 	}
 
-	static char8* i64toa(int64 value, char8* buffer)
+	public static char8* i64toa(int64 value, char8* buffer)
 	{
 		Runtime.Assert(buffer != null);
 		var buffer;

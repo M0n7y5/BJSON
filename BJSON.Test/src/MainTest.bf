@@ -195,11 +195,6 @@ namespace BJSON.Test
 				{
 					defer stream.Close();
 
-					// we are mirroring the C# behavior. 0.0 get rounded to 0.
-					// these test would never pass
-					if (fileName == "roundtrip20.json" || fileName == "roundtrip21.json")
-						continue;
-
 					Console.WriteLine(scope $"---> {fileName}");
 					Debug.WriteLine(scope $"---> {idx++} {fileName}");
 
@@ -230,7 +225,7 @@ namespace BJSON.Test
 			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
 		}
 
-		//[Test(Name = "Compliance tests from nativejson-benchmark")]
+		[Test(Name = "Compliance tests from nativejson-benchmark")]
 		public static void T_TestSuite5()
 		{
 			// test cases from https://github.com/miloyip/nativejson-benchmark/blob/master/src/main.cpp
