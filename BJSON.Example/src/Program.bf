@@ -36,6 +36,8 @@ namespace BJSON.Example
 			/*var json2 = JsonVariant() { 2, 44, 65 };
 			defer json2.Dispose();*/
 
+			/*
+
 			let tt = scope Foo();
 
 			let jsonString =
@@ -109,6 +111,7 @@ namespace BJSON.Example
 			defer json22.Dispose();
 			let str22 = scope String();
 			Json.Serialize(json22, str22);
+			*/
 
 			//initialize as object
 			var json3 = JsonObject()
@@ -137,6 +140,13 @@ namespace BJSON.Example
 			let str3 = scope String();
 			Json.Serialize(json3, str3);
 
+			Json.Stringify(str3);
+
+			Console.WriteLine(str3);
+
+			while(true){}
+
+			/*
 			StringView firstName = json3["firstName"];
 			StringView lastName = json3["lastName"];
 
@@ -145,6 +155,7 @@ namespace BJSON.Example
 
 			StringView numberType = json3["phoneNumbers"][1]["type"];
 			StringView officeNumber = json3["phoneNumbers"][1]["number"];
+			*/
 
 			return 0;
 		}

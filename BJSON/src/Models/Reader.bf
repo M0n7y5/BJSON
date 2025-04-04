@@ -38,8 +38,7 @@ namespace BJSON.Models
 
 				if (pos != len)
 				{
-					let peek = TrySilent!(stream.Peek<char8>());
-
+					//let peek = TrySilent!(stream.Peek<char8>());
 					return .Err(.UnexpectedToken(line + 1, column, "} or ]"));
 				}
 

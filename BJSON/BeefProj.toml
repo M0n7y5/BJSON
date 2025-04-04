@@ -4,3 +4,11 @@ FileVersion = 1
 Name = "BJSON"
 TargetType = "BeefLib"
 StartupObject = "BJSON.Program"
+
+[[ProjectFolder.Items]]
+Type = "AutoFolder"
+Name = "Models"
+
+[[ProjectFolder.Items.Items]]
+Type = "IgnoreSource"
+Name = "JsonValueOld.bf"

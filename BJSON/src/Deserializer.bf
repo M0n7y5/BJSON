@@ -98,10 +98,10 @@ namespace BJSON
 			}
 		}
 
-		//[SkipCall]
+		//[SkipCall]5
 		void Log(String msg)
 		{
-			Console.WriteLine(msg);
+			//Console.WriteLine(msg);
 		}
 
 		public bool Null()
