@@ -50,7 +50,7 @@ namespace BJSON
 
 		public Result<JsonValue, JsonParsingError> Deserialize(StringView jsonText)
 		{
-			let reader = scope Reader(this);
+			let reader = scope JsonReader(this);
 
 			let result = reader.Parse(scope StringStream(jsonText, .Reference));
 
@@ -75,7 +75,7 @@ namespace BJSON
 
 		public Result<JsonValue, JsonParsingError> Deserialize(Stream stream)
 		{
-			let reader = scope Reader(this);
+			let reader = scope JsonReader(this);
 
 			let result = reader.Parse(stream);
 
@@ -98,10 +98,10 @@ namespace BJSON
 			}
 		}
 
-		//[SkipCall]5
+		//[SkipCall]
 		void Log(String msg)
 		{
-			//Console.WriteLine(msg);
+			Console.WriteLine(msg);
 		}
 
 		public bool Null()
@@ -243,7 +243,144 @@ namespace BJSON
 			return true;
 		}
 
-		public bool Double(double value)
+		public bool Number(double value)
+		{
+			Log(scope $"Double value: {value}");
+
+			// root value
+			if (treeStack.Count == 0)
+			{
+				treeStack.Add(JsonNumber(value));
+				return true;
+			}
+
+			var document = ref treeStack.Back;
+
+			switch (document.type)
+			{
+				case .OBJECT:
+					if (currentKey == null)
+						return false; //TODO: notify invalid key error
+
+					if (IsIgnoringDuplicate)
+					{
+						return true;
+					}
+
+					let jObj = document.As<JsonObject>();
+
+					if (jObj.ContainsKey(currentKey) == false)
+					{
+						document.As<JsonObject>().Add(currentKey, JsonNumber(value));
+					}
+					else
+					{
+						switch (Config.DuplicateBehavior)
+						{
+							case .ThrowError:
+								{
+									return false;
+								}
+							case .Ignore:
+								{
+									return true;
+									//IsIgnoringDuplicate = true;
+								}
+							case .AlwaysRewrite:
+								{
+									// dispose the old content
+									jObj[currentKey].Dispose();
+
+									document.As<JsonObject>()[currentKey] = JsonNumber(value);
+								}
+						}
+					}
+					currentKey = null;
+					break;
+				case .ARRAY:
+					if (IsIgnoringDuplicate)
+					{
+						return true;
+					}
+
+					document.As<JsonArray>().Add(JsonNumber(value));
+					break;
+				default: return false;
+			}
+
+			return true;
+		}
+
+		public bool Number(uint64 value)
+		{
+			Log(scope $"Double value: {value}");
+
+			// root value
+			if (treeStack.Count == 0)
+			{
+				treeStack.Add(JsonNumber(value));
+				return true;
+			}
+
+			var document = ref treeStack.Back;
+
+			switch (document.type)
+			{
+				case .OBJECT:
+					if (currentKey == null)
+						return false; //TODO: notify invalid key error
+
+					if (IsIgnoringDuplicate)
+					{
+						return true;
+					}
+
+					let jObj = document.As<JsonObject>();
+
+					if (jObj.ContainsKey(currentKey) == false)
+					{
+						document.As<JsonObject>().Add(currentKey, JsonNumber(value));
+					}
+					else
+					{
+						switch (Config.DuplicateBehavior)
+						{
+							case .ThrowError:
+								{
+									return false;
+								}
+							case .Ignore:
+								{
+									return true;
+									//IsIgnoringDuplicate = true;
+								}
+							case .AlwaysRewrite:
+								{
+									// dispose the old content
+									jObj[currentKey].Dispose();
+
+									document.As<JsonObject>()[currentKey] = JsonNumber(value);
+								}
+						}
+					}
+					currentKey = null;
+					break;
+				case .ARRAY:
+					if (IsIgnoringDuplicate)
+					{
+						return true;
+					}
+
+					document.As<JsonArray>().Add(JsonNumber(value));
+					break;
+				default: return false;
+			}
+
+			return true;
+		}
+		
+
+		public bool Number(int64 value)
 		{
 			Log(scope $"Double value: {value}");
 

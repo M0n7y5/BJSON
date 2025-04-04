@@ -8,26 +8,31 @@ namespace BJSON.Models
 {
 	public struct JsonValue : IDisposable
 	{
-		public const JsonValue Empty = .();
-
 		[Union]
 		public struct JsonData
 		{
 			// values
 			public bool boolean;
+
+			public uint64 unsignedNumber;
+			public int64 signedNumber;
+			//public double numberFloat;
 			public double number;
+
 			public String string;
 
 			// containers
 			public Dictionary<String, JsonValue> object;
 			public List<JsonValue> array;
 
-			public char8[15] reserved;
+			public char8[8] reserved;
 		}
+
+		public const JsonValue Empty = .();
 
 		public JsonData data = default;
 
-		[Bitfield<JsonType>(.Public, .Bits(6), "type")]
+		[Bitfield<JsonType>(.Public, .Bits(4), "type")]
 		[Bitfield<bool>(.Public, .Bits(1), "smallString")]
 		private int8 mBitfield;
 
@@ -56,7 +61,7 @@ namespace BJSON.Models
 
 		public bool IsNull() => type == .NULL;
 		public bool IsBool() => type == .BOOL;
-		public bool IsNumber() => type == .NUMBER;
+		public bool IsNumber() => type == .NUMBER || type == .NUMBER_SIGNED || type == .NUMBER_UNSIGNED;
 		public bool IsString() => type == .STRING;
 		public bool IsObject() => type == .OBJECT;
 		public bool IsArray() => type == .ARRAY;
@@ -320,6 +325,18 @@ namespace BJSON.Models
 			data.number = value;
 		}
 
+		public this(uint64 value)
+		{
+			type = .NUMBER_UNSIGNED;
+			data.unsignedNumber = value;
+		}
+
+		public this(int64 value)
+		{
+			type = .NUMBER_SIGNED;
+			data.signedNumber = value;
+		}
+
 		public override void ToString(String strBuffer)
 		{
 			strBuffer.Append(data.number);
@@ -443,7 +460,7 @@ namespace BJSON.Models
 
 		public Result<JsonValue> GetValue(StringView key)
 		{
-			if(data.object.TryGetValueAlt(key, let val))
+			if (data.object.TryGetValueAlt(key, let val))
 			{
 				return val;
 			}

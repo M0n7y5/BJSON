@@ -1,3 +1,4 @@
+#pragma warning disable 168
 using System;
 using BJSON.Models;
 using System.IO;
