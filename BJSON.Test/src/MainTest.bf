@@ -9,7 +9,7 @@ namespace BJSON.Test
 
 	class MainTest
 	{
-		//[Test(Name = "Compliance tests from JSONTestSuite")]
+		[Test(Name = "Compliance tests from JSONTestSuite")]
 		public static void T_TestSuite1()
 		{
 			// test cases from https://github.com/nst/JSONTestSuite
@@ -67,7 +67,7 @@ namespace BJSON.Test
 			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
 		}
 
-		//[Test(Name = "Compliance tests from json.org")]
+		[Test(Name = "Compliance tests from json.org")]
 		public static void T_TestSuite2()
 		{
 			// test cases from https://json.org/JSON_checker/
@@ -125,7 +125,7 @@ namespace BJSON.Test
 			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
 		}
 
-		//[Test(Name = "Big List of Naughty Strings")]
+		[Test(Name = "Big List of Naughty Strings")]
 		public static void T_TestSuite3()
 		{
 			// test from https://github.com/minimaxir/big-list-of-naughty-strings
@@ -181,7 +181,7 @@ namespace BJSON.Test
 			Path.Combine(currentPath, "TestSuites", "nativejson_benchmark", "roundtrip");
 
 			let files = Directory.EnumerateFiles(currentPath);
-			int idx = 0;
+			int idx = 1;
 			for (let file in files)
 			{
 				let filePath = file.GetFilePath(.. scope .());
