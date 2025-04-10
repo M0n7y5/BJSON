@@ -39,7 +39,7 @@ namespace BJSON
 
 				if (pos != len)
 				{
-					//let peek = TrySilent!(stream.Peek<char8>());
+					let peek = TrySilent!(stream.Peek<char8>());
 
 					return .Err(.UnexpectedToken(line + 1, column, "} or ]"));
 				}
@@ -578,8 +578,8 @@ namespace BJSON
 							return .Err(.UnexpectedToken(line, column, "number"));
 						}
 
-
 						type = .Float;
+						state = .Frac;
 						strNumber.Append(c);
 						stream.Skip(1);
 						column++;
@@ -677,41 +677,62 @@ namespace BJSON
 				return .Err(.UnexpectedToken(line, column, "number or exponent")); // parse error termination
 			}
 
-			switch (type)
-			{
-			case .Unsigned:
-				if (let number = uint64.Parse(strNumber))
-				{
-					if (!_handler.Number(number))
-						return .Err(.InvalidValue(line, column)); // parse error termination
-				}
-				else
-				{
-					return .Err(.InvalidValue(line, column));
-				}
-			case .Signed:
-				if (let number = int64.Parse(strNumber))
-				{
-					if (!_handler.Number(number))
-						return .Err(.InvalidValue(line, column)); // parse error termination
-				}
-				else
-				{
-					return .Err(.InvalidValue(line, column));
-				}
-			case .Float:
-				if (let number = double.Parse(strNumber))
-				{
-					if (!_handler.Number(number))
-						return .Err(.InvalidValue(line, column)); // parse error termination
-				}
-				else
-				{
-					return .Err(.InvalidValue(line, column));
-				}
-			}
 
-			return .Ok;
+
+			repeat
+			{
+				switch (type)
+				{
+				case .Unsigned:
+					switch (uint64.Parse(strNumber))
+					{
+					case .Ok(let number):
+						if (!_handler.Number(number))
+							return .Err(.InvalidValue(line, column)); // parse error termination
+
+						return .Ok;
+					case .Err(let err):
+						if (err == .Overflow)
+						{
+							// force it to double type to handle overflow
+							type = .Float;
+							continue;
+						}
+						else
+							return .Err(.InvalidValue(line, column));
+					}
+				case .Signed:
+					switch (int64.Parse(strNumber))
+					{
+					case .Ok(let number):
+						if (!_handler.Number(number))
+							return .Err(.InvalidValue(line, column)); // parse error termination
+						return .Ok;
+					case .Err(let err):
+						if (err == .Overflow)
+						{
+							// force it to double type to handle overflow
+							type = .Float;
+							continue;
+						}
+						else
+						{
+							return .Err(.InvalidValue(line, column));
+						}
+					}
+				case .Float:
+					if (let number = double.Parse(strNumber))
+					{
+						if (!_handler.Number(number))
+							return .Err(.InvalidValue(line, column)); // parse error termination
+						return .Ok;
+					}
+					else
+					{
+						return .Err(.InvalidValue(line, column));
+					}
+				}
+			} while (true);
 		}
 
 		Result<void, JsonParsingError> Consume(Stream stream, char32 expected)
