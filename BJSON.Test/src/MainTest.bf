@@ -9,6 +9,8 @@ namespace BJSON.Test
 
 	class MainTest
 	{
+		static int idx = 1;
+
 		[Test(Name = "Compliance tests from JSONTestSuite")]
 		public static void T_TestSuite1()
 		{
@@ -22,7 +24,6 @@ namespace BJSON.Test
 			Path.Combine(currentPath, "TestSuites", "nst_json_testsuite");
 
 			let files = Directory.EnumerateFiles(currentPath);
-			int idx = 1;
 			for (let file in files)
 			{
 				let filePath = file.GetFilePath(.. scope .());
@@ -37,8 +38,6 @@ namespace BJSON.Test
 				if (stream.Open(filePath, .Read, .Read) case .Ok)
 				{
 					defer stream.Close();
-					/*Debug.WriteLine(scope $"---> {idx} {fileName}");*/
-
 					var result = Json.Deserialize(stream);
 
 					result.Dispose();
@@ -79,7 +78,6 @@ namespace BJSON.Test
 			Path.Combine(currentPath, "TestSuites", "json_org_testsuite");
 
 			let files = Directory.EnumerateFiles(currentPath);
-			int idx = 1;
 			for (let file in files)
 			{
 				let filePath = file.GetFilePath(.. scope .());
@@ -99,8 +97,6 @@ namespace BJSON.Test
 				if (stream.Open(filePath, .Read, .Read) case .Ok)
 				{
 					defer stream.Close();
-					/*Console.WriteLine(scope $"---> {fileName}");
-					Debug.WriteLine(scope $"---> {idx} {fileName}");*/
 
 					var result = Json.Deserialize(stream);
 					defer result.Dispose();
@@ -140,7 +136,6 @@ namespace BJSON.Test
 			Path.Combine(currentPath, "TestSuites", "big_list_of_naughty_strings");
 
 			let files = Directory.EnumerateFiles(currentPath);
-			int idx = 1;
 			for (let file in files)
 			{
 				let filePath = file.GetFilePath(.. scope .());
@@ -152,8 +147,6 @@ namespace BJSON.Test
 				if (stream.Open(filePath, .Read, .Read) case .Ok)
 				{
 					defer stream.Close();
-					/*Console.WriteLine(scope $"---> {fileName}");
-					Debug.WriteLine(scope $"---> {idx} {fileName}");*/
 
 					var result = Json.Deserialize(stream);
 					defer result.Dispose();
@@ -188,11 +181,9 @@ namespace BJSON.Test
 			Path.Combine(currentPath, "TestSuites", "nativejson_benchmark", "roundtrip");
 
 			let files = Directory.EnumerateFiles(currentPath);
-			int idx = 1;
 			for (let file in files)
 			{
 				let filePath = file.GetFilePath(.. scope .());
-
 				let fileName = file.GetFileName(.. scope .());
 
 				let stream = scope FileStream();
@@ -201,9 +192,6 @@ namespace BJSON.Test
 				if (stream.Open(filePath, .Read, .Read) case .Ok)
 				{
 					defer stream.Close();
-
-					/*Console.WriteLine(scope $"---> {fileName}");
-					Debug.WriteLine(scope $"---> {idx++} {fileName}");*/
 
 					let inputStr = strReader.ReadToEnd(.. scope .());
 
@@ -238,7 +226,6 @@ namespace BJSON.Test
 		{
 			Debug.WriteLine("Compliance tests from nativejson-benchmark ...");
 			// test cases from https://github.com/miloyip/nativejson-benchmark/blob/master/src/main.cpp
-			static int idx = 1;
 
 			static void TEST_DOUBLE(StringView json_string, double expected)
 			{
