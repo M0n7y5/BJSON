@@ -35,7 +35,7 @@ namespace BJSON.Example
 
 			//let ds = BJSON.Internal.clzll(6686186116816);
 
-			char8[25] buff;
+			/*char8[25] buff;
 
 			BJSON.Internal.dtoa(5e-324, &buff);
 			var str = StringView(&buff);
@@ -53,7 +53,7 @@ namespace BJSON.Example
 
 			let outt = Json.Deserialize("[-0.0]");
 
-			return 0;
+			return 0;*/
 
 
 
@@ -61,21 +61,21 @@ namespace BJSON.Example
 
 			let jsonString =
 				@"""
-{
-"nullTest": null,
-"firstName": "John",
-"lastName": "Smith",
-"isAlive": true,
-"age": 27,
-"another" : {
-	"isItWorking": true,
-	"someArray": ["please", "work", "ok?", 98, 42, false]
-	}
-}
-""";
+				{
+				"nullTest": null,
+				"firstName": "John",
+				"lastName": "Smith",
+				"isAlive": true,
+				"age": 27,
+				"another" : {
+				"isItWorking": true,
+				"someArray": ["please", "work", "ok?", 98, 42, false]
+				}
+				}
+				""";
 
-			var result = Json.Deserialize<Foo>("[2e+00]");
-			//var result = Json.Deserialize(Yamanote);
+			//var result = Json.Deserialize<Foo>("[2e+00]");
+			var result = Json.Deserialize(jsonString);
 
 			switch (result)
 			{
@@ -102,13 +102,15 @@ namespace BJSON.Example
 				Console.WriteLine(err.ToString(.. scope String()));
 			}
 
+			return 0;
+
 			// initialize as array
 			var json2 = JsonArray() { 2, 44, 65 };
 			defer json2.Dispose();
 			{
 				// ...
 
-				var strrrr = new String();
+				var strrrr = scope String();
 
 				//defer delete strrrr;
 

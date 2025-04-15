@@ -15,12 +15,14 @@ namespace BJSON.Test
 			// test cases from https://github.com/nst/JSONTestSuite
 			// https://seriot.ch/projects/parsing_json.html
 
+			Debug.WriteLine("Compliance tests from JSONTestSuite ...");
+
 			let currentPath = Directory.GetCurrentDirectory(.. scope .());
 
 			Path.Combine(currentPath, "TestSuites", "nst_json_testsuite");
 
 			let files = Directory.EnumerateFiles(currentPath);
-			int idx = 0;
+			int idx = 1;
 			for (let file in files)
 			{
 				let filePath = file.GetFilePath(.. scope .());
@@ -35,12 +37,9 @@ namespace BJSON.Test
 				if (stream.Open(filePath, .Read, .Read) case .Ok)
 				{
 					defer stream.Close();
-					Console.WriteLine(scope $"---> {fileName}");
-					Debug.WriteLine(scope $"---> {idx++} {fileName}");
+					/*Debug.WriteLine(scope $"---> {idx} {fileName}");*/
 
 					var result = Json.Deserialize(stream);
-
-					Console.WriteLine();
 
 					result.Dispose();
 
@@ -62,6 +61,8 @@ namespace BJSON.Test
 				{
 					Test.Assert(false, scope $"Unable to open file {fileName}");
 				}
+
+				idx++;
 			}
 
 			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
@@ -71,13 +72,14 @@ namespace BJSON.Test
 		public static void T_TestSuite2()
 		{
 			// test cases from https://json.org/JSON_checker/
-
+			
+			Debug.WriteLine("Compliance tests from json.org ...");
 			let currentPath = Directory.GetCurrentDirectory(.. scope .());
 
 			Path.Combine(currentPath, "TestSuites", "json_org_testsuite");
 
 			let files = Directory.EnumerateFiles(currentPath);
-			int idx = 0;
+			int idx = 1;
 			for (let file in files)
 			{
 				let filePath = file.GetFilePath(.. scope .());
@@ -97,8 +99,8 @@ namespace BJSON.Test
 				if (stream.Open(filePath, .Read, .Read) case .Ok)
 				{
 					defer stream.Close();
-					Console.WriteLine(scope $"---> {fileName}");
-					Debug.WriteLine(scope $"---> {idx++} {fileName}");
+					/*Console.WriteLine(scope $"---> {fileName}");
+					Debug.WriteLine(scope $"---> {idx} {fileName}");*/
 
 					var result = Json.Deserialize(stream);
 					defer result.Dispose();
@@ -120,6 +122,8 @@ namespace BJSON.Test
 				{
 					Test.Assert(false, scope $"Unable to open file {fileName}");
 				}
+
+				idx++;
 			}
 
 			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
@@ -130,12 +134,13 @@ namespace BJSON.Test
 		{
 			// test from https://github.com/minimaxir/big-list-of-naughty-strings
 
+			Debug.WriteLine("Big List of Naughty Strings ...");
 			let currentPath = Directory.GetCurrentDirectory(.. scope .());
 
 			Path.Combine(currentPath, "TestSuites", "big_list_of_naughty_strings");
 
 			let files = Directory.EnumerateFiles(currentPath);
-			int idx = 0;
+			int idx = 1;
 			for (let file in files)
 			{
 				let filePath = file.GetFilePath(.. scope .());
@@ -147,8 +152,8 @@ namespace BJSON.Test
 				if (stream.Open(filePath, .Read, .Read) case .Ok)
 				{
 					defer stream.Close();
-					Console.WriteLine(scope $"---> {fileName}");
-					Debug.WriteLine(scope $"---> {idx++} {fileName}");
+					/*Console.WriteLine(scope $"---> {fileName}");
+					Debug.WriteLine(scope $"---> {idx} {fileName}");*/
 
 					var result = Json.Deserialize(stream);
 					defer result.Dispose();
@@ -166,6 +171,7 @@ namespace BJSON.Test
 				{
 					Test.Assert(false, scope $"Unable to open file {fileName}");
 				}
+				idx++;
 			}
 
 			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
@@ -176,6 +182,7 @@ namespace BJSON.Test
 		{
 			// test from https://github.com/minimaxir/big-list-of-naughty-strings
 
+			Debug.WriteLine("nativejson-benchmark round-trip tests ...");
 			let currentPath = Directory.GetCurrentDirectory(.. scope .());
 
 			Path.Combine(currentPath, "TestSuites", "nativejson_benchmark", "roundtrip");
@@ -195,8 +202,8 @@ namespace BJSON.Test
 				{
 					defer stream.Close();
 
-					Console.WriteLine(scope $"---> {fileName}");
-					Debug.WriteLine(scope $"---> {idx++} {fileName}");
+					/*Console.WriteLine(scope $"---> {fileName}");
+					Debug.WriteLine(scope $"---> {idx++} {fileName}");*/
 
 					let inputStr = strReader.ReadToEnd(.. scope .());
 
@@ -220,6 +227,7 @@ namespace BJSON.Test
 				{
 					Test.Assert(false, scope $"Unable to open file {fileName}");
 				}
+				idx++;
 			}
 
 			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
@@ -228,7 +236,9 @@ namespace BJSON.Test
 		[Test(Name = "Compliance tests from nativejson-benchmark")]
 		public static void T_TestSuite5()
 		{
+			Debug.WriteLine("Compliance tests from nativejson-benchmark ...");
 			// test cases from https://github.com/miloyip/nativejson-benchmark/blob/master/src/main.cpp
+			static int idx = 1;
 
 			static void TEST_DOUBLE(StringView json_string, double expected)
 			{
@@ -239,8 +249,10 @@ namespace BJSON.Test
 				{
 				case .Ok(let val):
 					double number = val[0];
-					Test.Assert(number == expected);
+					Test.Assert(number == expected, scope $"Expected: {expected}, Got: {number}");
 
+					Debug.WriteLine(scope $"{idx} Done testing {json_string}.");
+					idx++;
 				case .Err(let err):
 					Test.Assert(false, scope $"Parsing double failed! String: {json_string}, Err: {err.ToString(.. scope .())}");
 				}

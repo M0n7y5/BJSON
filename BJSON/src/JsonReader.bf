@@ -39,7 +39,7 @@ namespace BJSON
 
 				if (pos != len)
 				{
-					let peek = TrySilent!(stream.Peek<char8>());
+					TrySilent!(stream.Peek<char8>());
 
 					return .Err(.UnexpectedToken(line + 1, column, "} or ]"));
 				}
@@ -83,7 +83,7 @@ namespace BJSON
 				case '"': return ParseString(stream);
 				case '{': return ParseObject(stream);
 				case '[': return ParseArray(stream);
-				default: return ParseNumber(stream);
+				default: return ParseNumberEx(stream);
 				}
 			}
 		}
@@ -100,6 +100,7 @@ namespace BJSON
 
 			return .Ok;
 		}
+
 
 		Result<void, JsonParsingError> ParseBool(Stream stream)
 		{
@@ -390,349 +391,364 @@ namespace BJSON
 			}
 		}
 
-		enum NumberParserState
+		Result<void, JsonParsingError> ParseNumberEx(Stream stream)
 		{
-			Minus,
-			Int,
-			Frac,
-			Exp
-		}
+			String strNumber = scope .(8);
+			bool isNegative = false;
+			bool hasFracPart = false;
+			bool hasExpPart = false;
+			uint startColumn = column;
 
-		enum NumberType
-		{
-			Unsigned,
-			Signed,
-			Float
-		}
-
-		Result<void, JsonParsingError>  ParseNumber(Stream stream)
-		{
-			//TODO: can be avoided
-			String strNumber = scope .();
-			NumberParserState state = .Minus;
-			NumberType type = .Unsigned;
-
-			bool startsWithMinus = false;
-			bool startsWithZero = false;
-			// Lazy way ... for testing
-			// TODO: Properly handle numbers
-			char8 prevChar = 0;
-			GETCHAR:while (stream.Peek<char8>() case .Ok(let c))
 			{
-				// general check if we actually are parsing number
-				switch (c)
-				{
-				case '0': fallthrough;
-				case '1': fallthrough;
-				case '2': fallthrough;
-				case '3': fallthrough;
-				case '4': fallthrough;
-				case '5': fallthrough;
-				case '6': fallthrough;
-				case '7': fallthrough;
-				case '8': fallthrough;
-				case '9': fallthrough;
-				case '.': fallthrough;
-				case 'E': fallthrough;
-				case 'e': fallthrough;
-				case '+': fallthrough;
-				case '-': break;
-				case 0:
-					return .Err(.InvalidValue(line, column));
-
-				default: break GETCHAR;
+				// Check for minus sign
+				if (stream.Peek<char8>() case .Ok(let c)) {
+				    if (c == '-') {
+				        isNegative = true;
+				        strNumber.Append('-');
+				        stream.Skip(1);
+				        column++;
+				    }
+				} else {
+				    return .Err(.UnableToRead(line, column));
 				}
+			}
 
-				MAINSTATE:switch (state)
+
+			// Parse integer part
+			bool hasDigit = false;
+			bool leadingZero = false;
+
+			while (stream.Peek<char8>() case .Ok(let c)) {
+			    if (c >= '0' && c <= '9') {
+			        hasDigit = true;
+			        
+			        // Check for leading zero followed by digit
+			        if (strNumber.Length == (isNegative ? 1 : 0) && c == '0') {
+			            leadingZero = true;
+			        } else if (leadingZero && c >= '0' && c <= '9') {
+			            return .Err(.UnexpectedToken(line, column, "fraction or exponent"));
+			        }
+			        
+			        strNumber.Append(c);
+			        stream.Skip(1);
+			        column++;
+			    } else if (c == '.') {
+			        hasFracPart = true;
+			        strNumber.Append('.');
+			        stream.Skip(1);
+			        column++;
+			        
+			        // Parse fractional part
+			        bool hasFracDigit = false;
+			        
+			        while (stream.Peek<char8>() case .Ok(let fracC)) {
+			            if (fracC >= '0' && fracC <= '9') {
+			                hasFracDigit = true;
+			                strNumber.Append(fracC);
+			                stream.Skip(1);
+			                column++;
+			            } else if (fracC == 'e' || fracC == 'E') {
+			                hasExpPart = true;
+			                strNumber.Append(fracC);
+			                stream.Skip(1);
+			                column++;
+			                break;
+			            } else {
+			                break;
+			            }
+			        }
+			        
+			        if (!hasFracDigit) {
+			            return .Err(.UnexpectedToken(line, column, "digit after decimal point"));
+			        }
+			        
+			        if (hasExpPart) {
+			            // Handle exponent part
+			            if (!ParseExponentToString(stream, strNumber)) {
+			                return .Err(.UnexpectedToken(line, column, "exponent value"));
+			            }
+			        }
+			        
+			        break;
+			    } else if (c == 'e' || c == 'E') {
+			        hasExpPart = true;
+			        strNumber.Append(c);
+			        stream.Skip(1);
+			        column++;
+			        
+			        // Handle exponent part
+			        if (!ParseExponentToString(stream, strNumber)) {
+			            return .Err(.UnexpectedToken(line, column, "exponent value"));
+			        }
+			        
+			        break;
+			    } else {
+			        break; // End of number
+			    }
+			}
+
+			if (!hasDigit) {
+			    return .Err(.UnexpectedToken(line, column, "digit"));
+			}
+
+			// Determine if we're dealing with an extreme case that needs precise handling
+			bool isExtreme = hasExpPart && strNumber.Contains('e');
+
+			// For extreme cases or floating point numbers, use the built-in parser
+			if (isExtreme || hasFracPart || hasExpPart) {
+			    if (let value = double.Parse(strNumber)) {
+			        if (!_handler.Number(value)) {
+			            return .Err(.InvalidValue(line, startColumn));
+			        }
+			    } else {
+			        return .Err(.InvalidValue(line, startColumn));
+			    }
+			} else {
+			    // For integers, parse directly
+			    if (isNegative) {
+			        if (let value = int64.Parse(strNumber)) {
+			            if (!_handler.Number(value)) {
+			                return .Err(.InvalidValue(line, startColumn));
+			            }
+			        } else {
+			            // Try as double if int64 parsing fails (overflow)
+			            if (let value = double.Parse(strNumber)) {
+			                if (!_handler.Number(value)) {
+			                    return .Err(.InvalidValue(line, startColumn));
+			                }
+			            } else {
+			                return .Err(.InvalidValue(line, startColumn));
+			            }
+			        }
+			    } else {
+			        if (let value = uint64.Parse(strNumber)) {
+			            if (!_handler.Number(value)) {
+			                return .Err(.InvalidValue(line, startColumn));
+			            }
+			        } else {
+			            // Try as double if uint64 parsing fails (overflow)
+			            if (let value = double.Parse(strNumber)) {
+			                if (!_handler.Number(value)) {
+			                    return .Err(.InvalidValue(line, startColumn));
+			                }
+			            } else {
+			                return .Err(.InvalidValue(line, startColumn));
+			            }
+			        }
+			    }
+			}
+
+			return .Ok;
+		}
+
+		// Helper method to parse exponent into the string representation
+		bool ParseExponentToString(Stream stream, String strNumber)
+		{
+		    // Check for +/- sign
+		    if (stream.Peek<char8>() case .Ok(let sign)) {
+		        if (sign == '-' || sign == '+') {
+		            strNumber.Append(sign);
+		            stream.Skip(1);
+		            column++;
+		        }
+		    }
+		    
+		    // Parse exponent digits
+		    bool hasExpDigit = false;
+		    
+		    while (stream.Peek<char8>() case .Ok(let expC)) {
+		        if (expC >= '0' && expC <= '9') {
+		            hasExpDigit = true;
+		            strNumber.Append(expC);
+		            stream.Skip(1);
+		            column++;
+		        } else {
+		            break;
+		        }
+		    }
+		    
+		    return hasExpDigit;
+		}
+
+		// Helper method to parse the exponent part of a number
+		bool ParseExponent(Stream stream, ref int16 exp, ref bool expNegative)
+		{
+			// Check for +/- sign
+			if (stream.Peek<char8>() case .Ok(let sign))
+			{
+				if (sign == '-')
 				{
-				case .Minus:
-					{
-						switch (c)
-						{
-						case '0': fallthrough;
-						case '1': fallthrough;
-						case '2': fallthrough;
-						case '3': fallthrough;
-						case '4': fallthrough;
-						case '5': fallthrough;
-						case '6': fallthrough;
-						case '7': fallthrough;
-						case '8': fallthrough;
-						case '9':
-							state = .Int;
-						case '-':
-							strNumber.Append(c);
-							stream.Skip(1);
-							column++;
-							state = .Int;
-							startsWithMinus = true;
-							type = .Signed;
-						default:
-							return .Err(.UnexpectedToken(line, column, "number or -"));
-						}
-					}
-				case .Int:
-					switch (c)
-					{
-					case 'E': fallthrough;
-					case 'e':
-						if (prevChar == '.')
-						{
-							return .Err(.UnexpectedToken(line, column, "number"));
-						}
+					expNegative = true;
+					stream.Skip(1);
+					column++;
+				} else if (sign == '+')
+				{
+					stream.Skip(1);
+					column++;
+				}
+			}
 
-						state = .Exp;
-						strNumber.Append(c);
+			// Parse exponent digits
+			bool hasExpDigit = false;
+
+			while (stream.Peek<char8>() case .Ok(let expC))
+			{
+				if (expC >= '0' && expC <= '9')
+				{
+					hasExpDigit = true;
+
+					// Check for exponent overflow
+					if (exp > int16.MaxValue / 10)
+					{
+						// Exponent too large, clamp to maximum
+						exp = expNegative ? int16.MinValue : int16.MaxValue;
 						stream.Skip(1);
 						column++;
 
-								// we will try to get minus or plus here so we don't
-								// need to check that later
-						if (stream.Peek<char8>() case .Ok(let minusPlus))
+						// Skip remaining digits
+						while (stream.Peek<char8>() case .Ok(let skipC))
 						{
-							if (minusPlus == '.')
+							if (skipC >= '0' && skipC <= '9')
 							{
-								return .Err(.UnexpectedToken(line, column, "exponent, + or -"));
-							}
-
-							if (minusPlus == '-' || minusPlus == '+')
-							{
-								strNumber.Append(minusPlus);
 								stream.Skip(1);
 								column++;
-							}
-						}
-						else
-						{
-							return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
-						}
-					case '0':
-						if (prevChar == '-')
-						{
-							strNumber.Append(c);
-							stream.Skip(1);
-							column++;
-
-							if (stream.Peek<char8>() case .Ok(let dot))
+							} else
 							{
-								switch (dot)
-								{
-								case '.':
-									state = .Frac;
-									strNumber.Append(dot);
-									stream.Skip(1);
-									column++;
-									break;
-								case ']': fallthrough;
-								case '}': fallthrough;
-								case ',':
-									break MAINSTATE;
-								default:
-									return .Err(.UnexpectedToken(line, column, ""));
-								}
+								break;
 							}
 						}
-						else
-						{
-							if (strNumber.IsEmpty)
-							{
-								startsWithZero = true;
-							}
 
-							strNumber.Append(c);
-							stream.Skip(1);
-							column++;
+						return true;
+					}
+
+					exp = (int16)(exp * 10 + (expC - '0'));
+					stream.Skip(1);
+					column++;
+				} else
+				{
+					break;
+				}
+			}
+
+			return hasExpDigit;
+		}
+
+		// Helper method to continue parsing a number as double after integer overflow
+		Result<void, JsonParsingError> ParseNumberAsDouble(Stream stream, double currentValue, bool isNegative)
+		{
+			var currentValue;
+			bool hasFracPart = false;
+			bool hasExpPart = false;
+			int16 exp = 0;
+			bool expNegative = false;
+
+			// Continue parsing digits for the integer part
+			while (stream.Peek<char8>() case .Ok(let c))
+			{
+				if (c >= '0' && c <= '9')
+				{
+					currentValue = currentValue * 10 + (c - '0');
+					stream.Skip(1);
+					column++;
+				} else if (c == '.')
+				{
+					hasFracPart = true;
+					stream.Skip(1);
+					column++;
+					break;
+				} else if (c == 'e' || c == 'E')
+				{
+					hasExpPart = true;
+					stream.Skip(1);
+					column++;
+					if (!ParseExponent(stream, ref exp, ref expNegative))
+					{
+						return .Err(.UnexpectedToken(line, column, "exponent value"));
+					}
+					break;
+				} else
+				{
+					break; // End of number
+				}
+			}
+
+			// Parse fractional part if present
+			if (hasFracPart)
+			{
+				double div = 0.1;
+				bool hasFracDigit = false;
+
+				while (stream.Peek<char8>() case .Ok(let fracC))
+				{
+					if (fracC >= '0' && fracC <= '9')
+					{
+						hasFracDigit = true;
+						currentValue += (fracC - '0') * div;
+						div *= 0.1;
+						stream.Skip(1);
+						column++;
+					} else if (fracC == 'e' || fracC == 'E')
+					{
+						hasExpPart = true;
+						stream.Skip(1);
+						column++;
+						if (!ParseExponent(stream, ref exp, ref expNegative))
+						{
+							return .Err(.UnexpectedToken(line, column, "exponent value"));
 						}
 						break;
-					case '1': fallthrough;
-					case '2': fallthrough;
-					case '3': fallthrough;
-					case '4': fallthrough;
-					case '5': fallthrough;
-					case '6': fallthrough;
-					case '7': fallthrough;
-					case '8': fallthrough;
-					case '9':
-						if (startsWithZero)
-						{
-							return .Err(.UnexpectedToken(line, column, "fraction"));
-						}
-
-						strNumber.Append(c);
-						stream.Skip(1);
-						column++;
-					case '.':
-						switch (prevChar)
-						{
-						case '0': fallthrough;
-						case '1': fallthrough;
-						case '2': fallthrough;
-						case '3': fallthrough;
-						case '4': fallthrough;
-						case '5': fallthrough;
-						case '6': fallthrough;
-						case '7': fallthrough;
-						case '8': fallthrough;
-						case '9': break;
-						default:
-							return .Err(.UnexpectedToken(line, column, "number"));
-						}
-
-						type = .Float;
-						state = .Frac;
-						strNumber.Append(c);
-						stream.Skip(1);
-						column++;
-
-					default:
-						return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
-
-					}
-				case .Frac:
-					type = .Float;
-					switch (c)
+					} else
 					{
-					case '0': fallthrough;
-					case '1': fallthrough;
-					case '2': fallthrough;
-					case '3': fallthrough;
-					case '4': fallthrough;
-					case '5': fallthrough;
-					case '6': fallthrough;
-					case '7': fallthrough;
-					case '8': fallthrough;
-					case '9':
-						strNumber.Append(c);
-						stream.Skip(1);
-						column++;
-					case 'E': fallthrough;
-					case 'e':
-						if (prevChar == '.')
-						{
-							return .Err(.UnexpectedToken(line, column, "number"));
-						}
-
-						state = .Exp;
-						strNumber.Append(c);
-						stream.Skip(1);
-						column++;
-
-									// we will try to get minus or plus here so we don't
-									// need to check that later
-						if (stream.Peek<char8>() case .Ok(let minusPlus))
-						{
-							if (minusPlus == '.')
-							{
-								return .Err(.UnexpectedToken(line, column, "exponent, + or -"));
-							}
-
-							if (minusPlus == '-' || minusPlus == '+')
-							{
-								strNumber.Append(minusPlus);
-								stream.Skip(1);
-								column++;
-							}
-						}
-						else
-						{
-							return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
-						}
-
-					default:
-						return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
-					}
-				case .Exp:
-					type = .Float;
-					switch (c)
-					{
-					case '0': fallthrough;
-					case '1': fallthrough;
-					case '2': fallthrough;
-					case '3': fallthrough;
-					case '4': fallthrough;
-					case '5': fallthrough;
-					case '6': fallthrough;
-					case '7': fallthrough;
-					case '8': fallthrough;
-					case '9':
-						strNumber.Append(c);
-						stream.Skip(1);
-						column++;
-					default:
-						return .Err(.UnexpectedToken(line, column, "number, fraction or exponent"));
-
+						break;
 					}
 				}
 
-				prevChar = c;
-			}
-
-			if (strNumber.IsEmpty)
-			{
-				return .Err(.UnexpectedToken(line, column, "number")); // parse error termination
-			}
-
-			if (strNumber.EndsWith('.'))
-			{
-				return .Err(.UnexpectedToken(line, column, "number or exponent")); // parse error termination
-			}
-
-
-
-			repeat
-			{
-				switch (type)
+				if (!hasFracDigit)
 				{
-				case .Unsigned:
-					switch (uint64.Parse(strNumber))
-					{
-					case .Ok(let number):
-						if (!_handler.Number(number))
-							return .Err(.InvalidValue(line, column)); // parse error termination
+					return .Err(.UnexpectedToken(line, column, "digit after decimal point"));
+				}
+			}
 
-						return .Ok;
-					case .Err(let err):
-						if (err == .Overflow)
-						{
-							// force it to double type to handle overflow
-							type = .Float;
-							continue;
-						}
-						else
-							return .Err(.InvalidValue(line, column));
-					}
-				case .Signed:
-					switch (int64.Parse(strNumber))
+			// Parse exponent if not already parsed
+			if (hasExpPart && exp == 0 && !expNegative)
+			{
+				if (!ParseExponent(stream, ref exp, ref expNegative))
+				{
+					return .Err(.UnexpectedToken(line, column, "exponent value"));
+				}
+			}
+
+			// Apply exponent
+			if (hasExpPart)
+			{
+				if (expNegative)
+				{
+					for (int16 i = 0; i < exp; i++)
 					{
-					case .Ok(let number):
-						if (!_handler.Number(number))
-							return .Err(.InvalidValue(line, column)); // parse error termination
-						return .Ok;
-					case .Err(let err):
-						if (err == .Overflow)
-						{
-							// force it to double type to handle overflow
-							type = .Float;
-							continue;
-						}
-						else
-						{
-							return .Err(.InvalidValue(line, column));
-						}
+						currentValue *= 0.1;
 					}
-				case .Float:
-					if (let number = double.Parse(strNumber))
+				} else
+				{
+					for (int16 i = 0; i < exp; i++)
 					{
-						if (!_handler.Number(number))
-							return .Err(.InvalidValue(line, column)); // parse error termination
-						return .Ok;
-					}
-					else
-					{
-						return .Err(.InvalidValue(line, column));
+						currentValue *= 10;
 					}
 				}
-			} while (true);
+			}
+
+			// Apply sign
+			if (isNegative)
+			{
+				currentValue = -currentValue;
+			}
+
+			// Hand off to handler
+			if (!_handler.Number(currentValue))
+			{
+				return .Err(.InvalidValue(line, column));
+			}
+
+			return .Ok;
 		}
 
 		Result<void, JsonParsingError> Consume(Stream stream, char32 expected)

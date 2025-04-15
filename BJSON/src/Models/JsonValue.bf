@@ -53,7 +53,6 @@ namespace BJSON.Models
 			T val = default;
 			val.data = this.data;
 			val.mBitfield = this.mBitfield;
-
 			return val;
 		}
 
@@ -142,37 +141,69 @@ namespace BJSON.Models
 		[Inline]
 		public static implicit operator uint(Self self)
 		{
-			if (self.type != .NUMBER)
+			switch (self.type)
+			{
+			case .NUMBER:
+				return uint(self.data.number);
+			case .NUMBER_SIGNED:
+				return uint(self.data.signedNumber);
+			case .NUMBER_UNSIGNED:
+				return self.data.unsignedNumber;
+			default:
 				return default;
 
-			return (uint)self.data.number;
+			}
 		}
 
 		[Inline]
 		public static implicit operator int(Self self)
 		{
-			if (self.type != .NUMBER)
+			switch (self.type)
+			{
+			case .NUMBER:
+				return int(self.data.number);
+			case .NUMBER_SIGNED:
+				return self.data.signedNumber;
+			case .NUMBER_UNSIGNED:
+				return int(self.data.unsignedNumber);
+			default:
 				return default;
 
-			return (int)self.data.number;
+			}
 		}
 
 		[Inline]
 		public static implicit operator float(Self self)
 		{
-			if (self.type != .NUMBER)
+			switch (self.type)
+			{
+			case .NUMBER:
+				return float(self.data.number);
+			case .NUMBER_SIGNED:
+				return float(self.data.signedNumber);
+			case .NUMBER_UNSIGNED:
+				return float(self.data.unsignedNumber);
+			default:
 				return default;
 
-			return (float)self.data.number;
+			}
 		}
 
 		[Inline]
 		public static implicit operator double(Self self)
 		{
-			if (self.type != .NUMBER)
+			switch (self.type)
+			{
+			case .NUMBER:
+				return self.data.number;
+			case .NUMBER_SIGNED:
+				return double(self.data.signedNumber);
+			case .NUMBER_UNSIGNED:
+				return double(self.data.unsignedNumber);
+			default:
 				return default;
 
-			return self.data.number;
+			}
 		}
 
 		[Inline]
