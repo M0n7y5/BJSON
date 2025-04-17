@@ -18,7 +18,7 @@ namespace BJSON.Example
 		{
 			public bool? IsSus = true;
 
-			public int8 Health = (.)100;
+			public float Health = (.)100;
 		}
 
 		class BindBong { };
@@ -55,7 +55,15 @@ namespace BJSON.Example
 
 			return 0;*/
 
+			bool? lool = true;
 
+			let typ = lool.GetType();
+
+			let isNull = typ.IsNullable;
+
+			let isBool = typeof(Nullable<bool>) == typ;
+
+			
 
 			let tt = scope Foo();
 
