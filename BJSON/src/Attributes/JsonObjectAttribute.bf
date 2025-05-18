@@ -62,16 +62,17 @@ public struct JsonObjectAttribute : Attribute, IOnTypeInit, IOnTypeDone, IOnMeth
 		//Compiler.EmitTypeBody(type, scope $"[JsonDesImplGen({type.GetName(.. scope .())}, \"{Name}\")]\n");
 
 		Compiler.EmitTypeBody(type, """
-    public System.Result<void> BJSON.IJsonSerializable.JsonDeserialize(JsonValue value)
-    {
-    	if (value.IsObject() == false)
-    		return .Err;
+		    public System.Result<void> BJSON.IJsonSerializable.JsonDeserialize(JsonValue value)
+		    {
+		    	if (value.IsObject() == false)
+		    		return .Err;
+		
+		    	let scopeObject = Try!(value.AsObject());\n
+		    """);
 
-    	// Main Object Part
-    	let mainObject = Try!(value.AsObject());\n
-    """);
+		let thisObjectName = this.Name.Length == 0 ? type.GetName(.. scope .()) : this.Name;
 
-		Compiler.EmitTypeBody(type, scope $"\tlet thisClassObject = Try!(Try!(mainObject.GetValue(\"{type.GetName(.. scope .())}\")).AsObject());\n\n");
+		Compiler.EmitTypeBody(type, scope $"\tlet thisClassObject = Try!(Try!(scopeObject.GetValue(\"{thisObjectName}\")).AsObject());\n\n");
 
 
 		for (let field in type.GetFields())
@@ -85,28 +86,31 @@ public struct JsonObjectAttribute : Attribute, IOnTypeInit, IOnTypeDone, IOnMeth
 			var isValidObject = false;
 			let fType = field.FieldType;
 
-			/*let IsOptional = fType.IsNullable;
+			let IsOptional = fType.IsNullable;
 
-			if(IsOptional)
+			Type fieldType = fType;
+
+			if (IsOptional)
 			{
-				let lol = fType.UnderlyingType;
-			}*/
+				let nullType = (SpecializedGenericType)fType.TypeDeclaration.ResolvedType;
+				let genType = nullType.GetGenericArg(0);
+				fieldType = genType;
+				Compiler.EmitTypeBody(type, scope $"\t//{fieldType.GetName(.. scope .())}\n");
+			}
 
-			
-
-			if (fType.[Friend]mTypeCode == .Boolean)
+			if (fieldType.[Friend]mTypeCode == .Boolean)
 			{
 				isCheck.Append(".IsBool()");
 			}
-			else if (fType.IsInteger || fType.IsFloatingPoint)
+			else if (fieldType.IsInteger || fieldType.IsFloatingPoint)
 			{
 				isCheck.Append(".IsNumber()");
 			}
-			else if (fType == typeof(String))
+			else if (fieldType == typeof(String))
 			{
 				isCheck.Append(".IsString()");
 			}
-			/*else if (fType is Object || fType.IsStruct)
+			/*else if (fieldType is Object || fieldType.IsStruct)
 			{
 				if (fType.HasCustomAttribute<JsonObjectAttribute>())
 				{
@@ -115,16 +119,14 @@ public struct JsonObjectAttribute : Attribute, IOnTypeInit, IOnTypeDone, IOnMeth
 				}
 			}*/
 
-
-
-			isCheck.Append(" == false)\n");
-
-			if (fType.IsNullable)
+			if (IsOptional)
 			{
+				isCheck.Append(")\n");
 				isCheck.Append("\t{\n\t");
 			}
 			else
 			{
+				isCheck.Append(" == false)\n");
 				isCheck.Append("\t\treturn .Err;\n\n");
 			}
 

@@ -98,7 +98,7 @@ namespace BJSON
 			}
 		}
 
-		//[SkipCall]
+		[SkipCall]
 		void Log(String msg)
 		{
 			Console.WriteLine(msg);

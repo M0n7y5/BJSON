@@ -6,35 +6,43 @@ using System.IO;
 
 namespace BJSON.Models
 {
+	[Union]
+	public struct JsonData
+	{
+		// values
+		public bool boolean;
+
+		public uint64 unsignedNumber;
+		public int64 signedNumber;
+		//public double numberFloat;
+		public double number;
+
+		public String string;
+
+		// containers
+		public Dictionary<String, JsonValue> object;
+		public List<JsonValue> array;
+
+		public char8[15] reserved;
+	}
+
 	public struct JsonValue : IDisposable
 	{
-		[Union]
-		public struct JsonData
-		{
-			// values
-			public bool boolean;
+		const int sizeCheck = sizeof(JsonValue);
+		const int sizeCheckData = sizeof(JsonData);
 
-			public uint64 unsignedNumber;
-			public int64 signedNumber;
-			//public double numberFloat;
-			public double number;
+		/*
+		Since we are 
+		*/
 
-			public String string;
-
-			// containers
-			public Dictionary<String, JsonValue> object;
-			public List<JsonValue> array;
-
-			public char8[8] reserved;
-		}
 
 		public const JsonValue Empty = .();
 
-		public JsonData data = default;
-
 		[Bitfield<JsonType>(.Public, .Bits(4), "type")]
 		[Bitfield<bool>(.Public, .Bits(1), "smallString")]
-		private int8 mBitfield;
+		private uint8 mBitfield;
+
+		public JsonData data = default;
 
 		public this()
 		{
@@ -53,11 +61,8 @@ namespace BJSON.Models
 			T val = default;
 			val.data = this.data;
 			val.mBitfield = this.mBitfield;
-
 			return val;
 		}
-
-		const int sizeCheck = sizeof(JsonValue);
 
 		public bool IsNull() => type == .NULL;
 		public bool IsBool() => type == .BOOL;
@@ -142,37 +147,69 @@ namespace BJSON.Models
 		[Inline]
 		public static implicit operator uint(Self self)
 		{
-			if (self.type != .NUMBER)
+			switch (self.type)
+			{
+			case .NUMBER:
+				return uint(self.data.number);
+			case .NUMBER_SIGNED:
+				return uint(self.data.signedNumber);
+			case .NUMBER_UNSIGNED:
+				return self.data.unsignedNumber;
+			default:
 				return default;
 
-			return (uint)self.data.number;
+			}
 		}
 
 		[Inline]
 		public static implicit operator int(Self self)
 		{
-			if (self.type != .NUMBER)
+			switch (self.type)
+			{
+			case .NUMBER:
+				return int(self.data.number);
+			case .NUMBER_SIGNED:
+				return self.data.signedNumber;
+			case .NUMBER_UNSIGNED:
+				return int(self.data.unsignedNumber);
+			default:
 				return default;
 
-			return (int)self.data.number;
+			}
 		}
 
 		[Inline]
 		public static implicit operator float(Self self)
 		{
-			if (self.type != .NUMBER)
+			switch (self.type)
+			{
+			case .NUMBER:
+				return float(self.data.number);
+			case .NUMBER_SIGNED:
+				return float(self.data.signedNumber);
+			case .NUMBER_UNSIGNED:
+				return float(self.data.unsignedNumber);
+			default:
 				return default;
 
-			return (float)self.data.number;
+			}
 		}
 
 		[Inline]
 		public static implicit operator double(Self self)
 		{
-			if (self.type != .NUMBER)
+			switch (self.type)
+			{
+			case .NUMBER:
+				return self.data.number;
+			case .NUMBER_SIGNED:
+				return double(self.data.signedNumber);
+			case .NUMBER_UNSIGNED:
+				return double(self.data.unsignedNumber);
+			default:
 				return default;
 
-			return self.data.number;
+			}
 		}
 
 		[Inline]
@@ -277,7 +314,7 @@ namespace BJSON.Models
 		}
 	}
 
-	public struct JsonBool : JsonValue, IParseable<JsonBool>
+	public struct JsonBool : JsonValue
 	{
 		public this(bool value)
 		{
@@ -289,35 +326,9 @@ namespace BJSON.Models
 		{
 			strBuffer.Append(data.boolean ? "true" : "false");
 		}
-
-		public new static Result<JsonBool> Parse(StringView val)
-		{
-			switch (val)
-			{
-			case "true":
-				return JsonBool(true);
-			case "false":
-				return JsonBool(false);
-			default: return .Err;
-			}
-		}
-
-		public new static Result<JsonBool> Parse(Stream stream)
-		{
-			let toParse = stream.ReadStrSized32(5, .. scope .());
-
-			/*case
-
-			if(toParse[4] == '\"')
-			{
-				// in case of true the fitch char should be 
-			}*/
-
-			return Parse(toParse);
-		}
 	}
 
-	public struct JsonNumber : JsonValue, IParseable<JsonNumber>
+	public struct JsonNumber : JsonValue
 	{
 		public this(double value)
 		{
@@ -336,21 +347,9 @@ namespace BJSON.Models
 			type = .NUMBER_SIGNED;
 			data.signedNumber = value;
 		}
-
-		public override void ToString(String strBuffer)
-		{
-			strBuffer.Append(data.number);
-		}
-
-		public new static Result<JsonNumber> Parse(StringView val)
-		{
-			let result = Try!(double.Parse(val));
-
-			return JsonNumber(result);
-		}
 	}
 
-	public struct JsonString : JsonValue, IDisposable, IParseable<JsonString>
+	public struct JsonString : JsonValue, IDisposable
 	{
 		public this(String value)
 		{
@@ -371,20 +370,10 @@ namespace BJSON.Models
 				delete data.string;
 			}
 		}
-
-		public override void ToString(String strBuffer)
-		{
-			strBuffer.Append(data.string);
-		}
-
-		public new static Result<JsonString> Parse(StringView val)
-		{
-			return JsonString(val);
-		}
 	}
 
 	public struct JsonObject : JsonValue, IDisposable,
-		IEnumerable<(String key, JsonValue value)>, IParseable<JsonObject>
+		IEnumerable<(String key, JsonValue value)>
 	{
 		public this()
 		{
@@ -466,11 +455,6 @@ namespace BJSON.Models
 			}
 
 			return .Err;
-		}
-
-		public new static Result<JsonObject> Parse(StringView val)
-		{
-			return default;
 		}
 	}
 
