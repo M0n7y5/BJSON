@@ -7,7 +7,6 @@ TargetType = "BeefTest"
 StartupObject = "BJSON.Test.Program"
 
 [Configs.Test.Win64]
-BeefLibType = "DynamicDebug"
 PostBuildCmds = ["CopyFilesIfNewer(\"$(ProjectDir)/TestSuites\", \"$(BuildDir)/TestSuites\")"]
 
 [[Configs.Test.Win64.DistinctOptions]]

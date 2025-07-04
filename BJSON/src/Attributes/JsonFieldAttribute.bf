@@ -1,7 +1,6 @@
 using System;
 namespace BJSON.Attributes;
 
-public struct JsonFieldAttribute : Attribute
-{
-	public String Name;
-}
+[AttributeUsage(.Field)]
+public struct JsonPropertyNameAttribute :
+	Attribute , this(String name);

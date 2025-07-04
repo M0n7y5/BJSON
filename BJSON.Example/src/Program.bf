@@ -16,16 +16,24 @@ namespace BJSON.Example
 		[JsonObject("red")]
 		class Foo
 		{
-			public bool? IsSus = true;
+			//public bool? IsSus = true;
 
+			[JsonPropertyName("health")]
 			public float Health = (.)100;
+
+			//[AttributeUsage(.Field)]
+			//public BingBong SomeRandomName = new .() ~ delete _;
+
+			//public int[] numbers;
+
 		}
 
-		class BindBong { };
+		//[JsonObject]
+		class BingBong { };
 
 		class Test
 		{
-			Result<BindBong> bb = new BindBong() ~ delete _.Value;
+			Result<BingBong> bb = new BingBong() ~ delete _.Value;
 		}
 
 		public static int Main(String[] args)
@@ -54,7 +62,6 @@ namespace BJSON.Example
 			let outt = Json.Deserialize("[-0.0]");
 
 			return 0;*/
-
 			bool? lool = true;
 
 			let typ = lool.GetType();
@@ -91,6 +98,8 @@ namespace BJSON.Example
 				using (value)
 				{
 					int ageVal = value["age"];
+
+					
 
 					StringView name = value["lastName"];
 
