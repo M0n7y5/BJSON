@@ -18,6 +18,7 @@ namespace BJSON.Example
 		{
 			//public bool? IsSus = true;
 
+			[JsonIgnore(Condition = .Never)]
 			[JsonPropertyName("health")]
 			public float Health = (.)100;
 
