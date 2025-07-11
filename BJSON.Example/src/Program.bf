@@ -20,16 +20,16 @@ namespace BJSON.Example
 
 			[JsonIgnore(Condition = .Never)]
 			[JsonPropertyName("health")]
-			public float Health = (.)100;
+			//public float Health = (.)100;
 
 			//[AttributeUsage(.Field)]
-			//public BingBong SomeRandomName = new .() ~ delete _;
+			public BingBong SomeRandomName = new .() ~ delete _;
 
 			//public int[] numbers;
 
 		}
 
-		//[JsonObject]
+		[JsonObject]
 		class BingBong { };
 
 		class Test

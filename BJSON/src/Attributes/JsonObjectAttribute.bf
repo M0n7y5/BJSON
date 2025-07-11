@@ -69,7 +69,7 @@ public struct JsonObjectAttribute :
 
 		let thisObjectName = this.Name.Length == 0 ? type.GetName(.. scope .()) : this.Name;
 
-		Compiler.EmitTypeBody(type, scope $"\tlet thisClassObject = Try!(Try!(scopeObject.GetValue(\"{thisObjectName}\")).AsObject());\n\n");
+
 
 
 		for (let field in type.GetFields())
@@ -89,7 +89,7 @@ public struct JsonObjectAttribute :
 				let nullType = (SpecializedGenericType)fieldType.TypeDeclaration.ResolvedType;
 				let genType = nullType.GetGenericArg(0);
 				fieldType = genType;
-				Compiler.EmitTypeBody(type, scope $"\tif(let {field.Name}JsonField = thisClassObject.GetValue(\"");
+				Compiler.EmitTypeBody(type, scope $"\tif(let {field.Name}JsonField = scopeObject.GetValue(\"");
 
 				//shitcode before formatter is fixed
 				Compiler.EmitTypeBody(type, scope $"{field.Name}\"))\n");
@@ -98,7 +98,7 @@ public struct JsonObjectAttribute :
 			}
 			else
 			{
-				Compiler.EmitTypeBody(type, scope $"\tlet {field.Name}JsonField = Try!(thisClassObject.GetValue(\"");
+				Compiler.EmitTypeBody(type, scope $"\tlet {field.Name}JsonField = Try!(scopeObject.GetValue(\"");
 				//shitcode before formatter is fixed
 				Compiler.EmitTypeBody(type, scope $"{field.Name}\"));\n");
 			}
@@ -140,7 +140,9 @@ public struct JsonObjectAttribute :
 			{
 				if (isValidObject)
 				{
-					isCheck.Append(scope $"\t{field.Name}.JsonDeserialize(value); \n");
+					isCheck.Append(scope $"\tlet {field.Name}Object = ");
+					isCheck.Append(scope $"Try!(Try!(scopeObject.GetValue(\"{thisObjectName}\")).AsObject());\n\n");
+					isCheck.Append(scope $"\t{field.Name}.JsonDeserialize( {field.Name}Object); \n");
 				}
 				else
 				{
@@ -172,7 +174,7 @@ public struct JsonObjectAttribute :
 
 			var fieldType = field.FieldType;
 
-			if(fieldType.IsNullable)
+			if (fieldType.IsNullable)
 			{
 				let nullType = (SpecializedGenericType)fieldType.TypeDeclaration.ResolvedType;
 				let genType = nullType.GetGenericArg(0);
@@ -186,7 +188,7 @@ public struct JsonObjectAttribute :
 				continue;
 
 			let errMsg = scope String();
-			errMsg.Append(scope $"Serializable field '{field.Name}' is type of '{fieldType.GetFullName(.. scope .())}' that does not have JsonObject Attribute.\n");
+			errMsg.Append(scope $"Serializable field '{field.Name}' is type of ' {fieldType.GetFullName(.. scope .())}' that does not have JsonObject Attribute.\n");
 			errMsg.Append("See https://github.com/M0n7y5/BJSON/wiki\n\n");
 
 			Runtime.FatalError(errMsg);
