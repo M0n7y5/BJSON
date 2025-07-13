@@ -20,6 +20,73 @@ class Stringifier
 		outText.Clear();
 
 		char16 delimChar = '\t';
+		int tabCount = 0;
+		bool inString = false;
+
+		for (int i = 0; i < text.Length; i++)
+		{
+			char16 c = text[i];
+
+			// Handle string toggling (if not escaped)
+			if (c == '"')
+			{
+				bool escaped = false;
+				int j = i - 1;
+				while (j >= 0 && text[j] == '\\')
+				{
+					escaped = !escaped;
+					j--;
+				}
+
+				if (!escaped)
+					inString = !inString;
+			}
+
+			if (inString)
+				continue;
+
+			if (c == '{' || c == '[')
+			{
+				tabCount++;
+				text.Insert(i + 1, "\n");
+				for (int t = 0; t < tabCount; t++)
+				{
+					text.Insert(i + 2 + t, delimChar);
+				}
+				i += 1 + tabCount;
+			}
+			else if (c == ',')
+			{
+				text.Insert(i + 1, "\n");
+				for (int t = 0; t < tabCount; t++)
+				{
+					text.Insert(i + 2 + t, delimChar);
+				}
+				i += 1 + tabCount;
+			}
+			else if (c == '}' || c == ']')
+			{
+				tabCount--;
+				text.Insert(i, "\n");
+				i++;
+				for (int t = 0; t < tabCount; t++)
+				{
+					text.Insert(i, delimChar);
+					i++;
+				}
+			}
+		}
+
+		outText.Append(text);
+		return false;
+	}
+
+	public bool StringifyOld(String outText)
+	{
+		String text = scope .(outText);
+		outText.Clear();
+
+		char16 delimChar = '\t';
 
 		int tabCount = 0;
 		for(int i = 0; i < text.Length; i++)
@@ -51,13 +118,6 @@ class Stringifier
 				}
 			}
 		}
-
-		/*
-		for(int i = 0; i < text.Length; i++)
-		{
-			Console.Write(text[i]);
-		}
-		*/
 
 		outText.Append(text);
 		return false;

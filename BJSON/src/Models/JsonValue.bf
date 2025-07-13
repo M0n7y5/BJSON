@@ -154,7 +154,7 @@ namespace BJSON.Models
 			case .NUMBER_SIGNED:
 				return uint(self.data.signedNumber);
 			case .NUMBER_UNSIGNED:
-				return self.data.unsignedNumber;
+				return uint(self.data.unsignedNumber);
 			default:
 				return default;
 
@@ -169,7 +169,7 @@ namespace BJSON.Models
 			case .NUMBER:
 				return int(self.data.number);
 			case .NUMBER_SIGNED:
-				return self.data.signedNumber;
+				return int(self.data.signedNumber);
 			case .NUMBER_UNSIGNED:
 				return int(self.data.unsignedNumber);
 			default:
