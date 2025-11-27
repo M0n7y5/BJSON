@@ -40,7 +40,8 @@ public struct JsonDesImplGenAttribute : Attribute, IOnMethodInit
 
 
 [AttributeUsage(.Class | .Struct, false, false)]
-public struct JsonObjectAttribute : Attribute, IOnTypeInit, IOnTypeDone, IOnMethodInit
+public struct JsonObjectAttribute :
+	Attribute, IComptimeTypeApply
 {
 	String Name = "";
 
@@ -55,14 +56,10 @@ public struct JsonObjectAttribute : Attribute, IOnTypeInit, IOnTypeDone, IOnMeth
 	}
 
 	[Comptime]
-	public void OnTypeInit(Type type, Self* prev)
+	void EmmitBody(Type type, Self* _)
 	{
-		Compiler.EmitAddInterface(type, typeof(IJsonSerializable));
-
-		//Compiler.EmitTypeBody(type, scope $"[JsonDesImplGen({type.GetName(.. scope .())}, \"{Name}\")]\n");
-
 		Compiler.EmitTypeBody(type, """
-		    public System.Result<void> BJSON.IJsonSerializable.JsonDeserialize(JsonValue value)
+		    public System.Result<void> JsonDeserialize(JsonValue value)
 		    {
 		    	if (value.IsObject() == false)
 		    		return .Err;
@@ -72,7 +69,7 @@ public struct JsonObjectAttribute : Attribute, IOnTypeInit, IOnTypeDone, IOnMeth
 
 		let thisObjectName = this.Name.Length == 0 ? type.GetName(.. scope .()) : this.Name;
 
-		Compiler.EmitTypeBody(type, scope $"\tlet thisClassObject = Try!(Try!(scopeObject.GetValue(\"{thisObjectName}\")).AsObject());\n\n");
+
 
 
 		for (let field in type.GetFields())
@@ -80,22 +77,30 @@ public struct JsonObjectAttribute : Attribute, IOnTypeInit, IOnTypeDone, IOnMeth
 			if (!field.IsInstanceField || field.DeclaringType != type || field.IsPublic == false)
 				continue;
 
-			Compiler.EmitTypeBody(type, scope $"\tlet {field.Name}JsonObj = Try!(thisClassObject.GetValue(\"{field.Name}\"));\n");
-
-			let isCheck = scope $"\tif({field.Name}JsonObj";
+			let isCheck = scope $"\tif({field.Name}JsonField";
 			var isValidObject = false;
-			let fType = field.FieldType;
 
-			let IsOptional = fType.IsNullable;
-
-			Type fieldType = fType;
+			var fieldType = field.FieldType;
+			let IsOptional = fieldType.IsNullable;
 
 			if (IsOptional)
 			{
-				let nullType = (SpecializedGenericType)fType.TypeDeclaration.ResolvedType;
+				// we need to extract the actual field type
+				let nullType = (SpecializedGenericType)fieldType.TypeDeclaration.ResolvedType;
 				let genType = nullType.GetGenericArg(0);
 				fieldType = genType;
-				Compiler.EmitTypeBody(type, scope $"\t//{fieldType.GetName(.. scope .())}\n");
+				Compiler.EmitTypeBody(type, scope $"\tif(let {field.Name}JsonField = scopeObject.GetValue(\"");
+
+				//shitcode before formatter is fixed
+				Compiler.EmitTypeBody(type, scope $"{field.Name}\"))\n");
+
+				Compiler.EmitTypeBody(type, "\t{\n\t");
+			}
+			else
+			{
+				Compiler.EmitTypeBody(type, scope $"\tlet {field.Name}JsonField = Try!(scopeObject.GetValue(\"");
+				//shitcode before formatter is fixed
+				Compiler.EmitTypeBody(type, scope $"{field.Name}\"));\n");
 			}
 
 			if (fieldType.[Friend]mTypeCode == .Boolean)
@@ -110,19 +115,16 @@ public struct JsonObjectAttribute : Attribute, IOnTypeInit, IOnTypeDone, IOnMeth
 			{
 				isCheck.Append(".IsString()");
 			}
-			/*else if (fieldType is Object || fieldType.IsStruct)
+			else if (fieldType.IsObject  || fieldType.IsStruct)
 			{
-				if (fType.HasCustomAttribute<JsonObjectAttribute>())
-				{
-					isCheck.Append(".IsObject()");
-					isValidObject = true;
-				}
-			}*/
+				isCheck.Append(".IsObject()");
+				isValidObject = true;
+			}
 
 			if (IsOptional)
 			{
 				isCheck.Append(")\n");
-				isCheck.Append("\t{\n\t");
+				isCheck.Append("\t\t{\n\t\t");
 			}
 			else
 			{
@@ -130,58 +132,75 @@ public struct JsonObjectAttribute : Attribute, IOnTypeInit, IOnTypeDone, IOnMeth
 				isCheck.Append("\t\treturn .Err;\n\n");
 			}
 
-			if (fType.IsInteger || fType.IsFloatingPoint)
+			if (fieldType.IsInteger || fieldType.IsFloatingPoint)
 			{
-				isCheck.Append(scope $"\t{field.Name} = (.){field.Name}JsonObj; \n");
+				isCheck.Append(scope $"\t{field.Name} = (.) {field.Name}JsonField; \n");
 			}
 			else
 			{
 				if (isValidObject)
 				{
-					isCheck.Append(scope $"\t((IJsonSerializable){field.Name}).JsonDeserialize(value); \n");
+					isCheck.Append(scope $"\tlet {field.Name}Object = ");
+					isCheck.Append(scope $"Try!(Try!(scopeObject.GetValue(\"{thisObjectName}\")).AsObject());\n\n");
+					isCheck.Append(scope $"\t{field.Name}.JsonDeserialize( {field.Name}Object); \n");
 				}
 				else
 				{
-					isCheck.Append(scope $"\t{field.Name} = {field.Name}JsonObj; \n");
+					isCheck.Append(scope $"\t{field.Name} = {field.Name}JsonField; \n");
 				}
 			}
 
-			if (fType.IsNullable)
+			if (IsOptional)
 			{
-				isCheck.Append("\t}\n");
+				isCheck.Append("\t\t}\n\t}\n");
 			}
 
 			Compiler.EmitTypeBody(type, isCheck);
 
 			Compiler.EmitTypeBody(type, "\n");
-
-			//Compiler.EmitTypeBody(type, scope $"\tserializer.Store(\"{field.Name}\", {field.Name});\n");
 		}
 
-		//Compiler.EmitTypeBody(type, scope $"\tserializer.StartType(typeof({type.GetName(.. scope .())}));\n");
-		/*for (let field in type.GetFields())
-		{
-			if (!field.IsInstanceField || field.DeclaringType != type)
-				continue;
-
-			//Compiler.EmitTypeBody(type, scope $"\tserializer.Store(\"{field.Name}\", {field.Name});\n");
-		}*/
 		Compiler.EmitTypeBody(type, "	return .Ok;\n}");
 	}
 
 
-
 	[Comptime]
-	public void OnTypeDone(Type type, Self* prev)
+	void CheckSerializableFields(Type type)
 	{
+		for (let field in type.GetFields())
+		{
+			if (!field.IsPublic)
+				continue;
+
+			var fieldType = field.FieldType;
+
+			if (fieldType.IsNullable)
+			{
+				let nullType = (SpecializedGenericType)fieldType.TypeDeclaration.ResolvedType;
+				let genType = nullType.GetGenericArg(0);
+				fieldType = genType;
+			}
+
+			if (!fieldType.IsObject)
+				continue;
+
+			if (fieldType.HasCustomAttribute<JsonObjectAttribute>())
+				continue;
+
+			let errMsg = scope String();
+			errMsg.Append(scope $"Serializable field '{field.Name}' is type of ' {fieldType.GetFullName(.. scope .())}' that does not have JsonObject Attribute.\n");
+			errMsg.Append("See https://github.com/M0n7y5/BJSON/wiki\n\n");
+
+			Runtime.FatalError(errMsg);
+		}
 	}
 
 	[Comptime]
-	public void OnMethodInit(System.Reflection.MethodInfo methodInfo, Self* prev)
+	public void ApplyToType(Type type)
 	{
-		/*if(methodInfo.Name == "JsonDeserialize")
-		{
-			Compiler.EmitMethodEntry(methodInfo, "");
-		}*/
+		CheckSerializableFields(type);
+
+		Compiler.EmitAddInterface(type, typeof(IJsonSerializable));
+		EmmitBody(type, null);
 	}
 }

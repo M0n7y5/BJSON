@@ -90,13 +90,10 @@ namespace BJSON
 
 		Result<void, JsonParsingError> ParseNull(Stream stream)
 		{
-			Try!(Consume(stream, 'n'));
-			Try!(Consume(stream, 'u'));
-			Try!(Consume(stream, 'l'));
-			Try!(Consume(stream, 'l'));
+			Try!(Consume(stream, "null"));
 
 			if (!_handler.Null())
-				return .Err(.InvalidValue(line, column)); //invalid value
+				return .Err(.UnexpectedToken(line, column, "null"));
 
 			return .Ok;
 		}
@@ -108,21 +105,14 @@ namespace BJSON
 				switch (c)
 				{
 				case 't': // parse true
-					Try!(Consume(stream, 't'));
-					Try!(Consume(stream, 'r'));
-					Try!(Consume(stream, 'u'));
-					Try!(Consume(stream, 'e'));
+					Try!(Consume(stream, "true"));
 
 					if (!_handler.Bool(true))
 						return .Err(.InvalidValue(line, column)); //invalid value
 					return .Ok;
 
 				case 'f': // parse true
-					Try!(Consume(stream, 'f'));
-					Try!(Consume(stream, 'a'));
-					Try!(Consume(stream, 'l'));
-					Try!(Consume(stream, 's'));
-					Try!(Consume(stream, 'e'));
+					Try!(Consume(stream, "false"));
 
 					if (!_handler.Bool(false))
 						return .Err(.InvalidValue(line, column)); //invalid value
@@ -137,7 +127,7 @@ namespace BJSON
 		{
 			uint32 codepoint = 0;
 
-			for (let i in ...3)
+			for (let i in 0...3)
 			{
 				if (let c = stream.Peek<char8>())
 				{
@@ -287,7 +277,7 @@ namespace BJSON
 				return .Err(.MaximumDepthReached);
 			}
 
-			SkipWhitespace(stream);
+			//SkipWhitespace(stream);
 
 			if (Consume(stream, '}') case .Ok)
 			{
@@ -305,7 +295,7 @@ namespace BJSON
 						return .Err(.UnexpectedToken(line, column, "\"")); // MISSING OBJECT NAME
 
 					Try!(ParseString(stream, true));
-					SkipWhitespace(stream);
+					//SkipWhitespace(stream);
 
 					Try!(Consume(stream, ':'));
 
@@ -359,8 +349,6 @@ namespace BJSON
 				return .Err(.MaximumDepthReached);
 			}
 
-			SkipWhitespace(stream);
-
 			if (Consume(stream, ']') case .Ok)
 			{
 				if (!_handler.EndArray())
@@ -372,7 +360,6 @@ namespace BJSON
 			for (;;)
 			{
 				Try!(ParseValue(stream));
-				SkipWhitespace(stream);
 
 				if (Consume(stream, ',') case .Ok)
 				{
@@ -751,8 +738,30 @@ namespace BJSON
 			return .Ok;
 		}
 
-		Result<void, JsonParsingError> Consume(Stream stream, char32 expected)
+		Result<void, JsonParsingError> Consume(Stream stream, StringView expected)
 		{
+			let buffer = scope uint8[expected.Length];
+
+			SkipWhitespace(stream);
+
+			if (let readBytes = stream.TryRead(buffer))
+			{
+				if (readBytes == expected.Length && StringView(buffer) == expected)
+				{
+					column += (.)expected.Length;
+					return .Ok;
+				}
+				else
+					return .Err(.UnexpectedToken(line, column, scope $"{expected}"));
+			}
+
+			return .Err(.UnableToRead(line, column));
+		}
+
+		Result<void, JsonParsingError> Consume(Stream stream, char8 expected)
+		{
+			SkipWhitespace(stream);
+
 			if (let c = stream.Peek<char8>())
 			{
 				if (c == expected)
@@ -767,5 +776,6 @@ namespace BJSON
 
 			return .Err(.UnableToRead(line, column));
 		}
+
 	}
 }
