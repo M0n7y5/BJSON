@@ -1,0 +1,30 @@
+FileVersion = 1
+Projects = {BJSON = {Path = "BJSON"}, "BJSON.Test" = {Path = "BJSON.Test"}, "BJSON.Example" = {Path = "BJSON.Example"}}
+
+[Workspace]
+StartupProject = "BJSON.Example"
+
+[Configs.Debug.Win64]
+BfSIMDSetting = "SSE41"
+
+[Configs.Debug.Win32]
+BfSIMDSetting = "SSE41"
+
+[Configs.Release.Win32]
+BfSIMDSetting = "SSE41"
+
+[Configs.Release.Win64]
+BfSIMDSetting = "SSE41"
+
+[Configs.Paranoid.Win32]
+BfSIMDSetting = "SSE41"
+
+[Configs.Paranoid.Win64]
+BfSIMDSetting = "SSE41"
+
+[Configs.Test.Win32]
+BfSIMDSetting = "SSE41"
+
+[Configs.Test.Win64]
+BfSIMDSetting = "SSE41"
+ArithmeticCheck = true
