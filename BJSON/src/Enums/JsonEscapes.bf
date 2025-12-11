@@ -47,5 +47,24 @@ namespace BJSON.Enums
 				default: return false;
 			}
 		}
+
+		[Inline]
+		public static Result<char8> Escape(char8 c)
+		{
+			switch ((Self)c)
+			{
+				case QUOTATION_MARK: return '\"';
+				case SOLIDUS: return '/';
+				case REVERSE_SOLIDUS: return '\\';
+				case 'b': return BACKSPACE.Underlying;
+				case 'f': return FORM_FEED.Underlying;
+				case 'n': return LINE_FEED.Underlying;
+				case 'r': return CARRIAGE_RETURN.Underlying;
+				case 't':
+					return TABULATOR.Underlying;
+
+				default: return .Err;
+			}
+		}
 	}
 }

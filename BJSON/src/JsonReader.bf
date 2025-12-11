@@ -215,11 +215,11 @@ namespace BJSON
 
 								str.Append((char32)codepoint);
 							}
-							else if (JsonEscapes.AllowedToEscape(e))
+							else if (let e2 = JsonEscapes.Escape(e))
 							{
-								str.Append(e);
+								str.Append(e2);
 								stream.Skip(1);
-								column++;
+								column += 2;
 							}
 							else
 								return .Err(.InvalidEscapeToken(line, column)); // Error String Escape Invalid
@@ -557,7 +557,7 @@ namespace BJSON
 		    return hasExpDigit;
 		}
 
-		// Helper method to parse the exponent part of a number
+		/*// Helper method to parse the exponent part of a number
 		bool ParseExponent(Stream stream, ref int16 exp, ref bool expNegative)
 		{
 			// Check for +/- sign
@@ -618,9 +618,9 @@ namespace BJSON
 			}
 
 			return hasExpDigit;
-		}
+		}*/
 
-		// Helper method to continue parsing a number as double after integer overflow
+		/*// Helper method to continue parsing a number as double after integer overflow
 		Result<void, JsonParsingError> ParseNumberAsDouble(Stream stream, double currentValue, bool isNegative)
 		{
 			var currentValue;
@@ -736,7 +736,7 @@ namespace BJSON
 			}
 
 			return .Ok;
-		}
+		}*/
 
 		Result<void, JsonParsingError> Consume(Stream stream, StringView expected)
 		{

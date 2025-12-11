@@ -63,7 +63,7 @@ namespace BJSON.Example
 			let outt = Json.Deserialize("[-0.0]");
 
 			return 0;*/
-			bool? lool = true;
+			/*bool? lool = true;
 
 			let typ = lool.GetType();
 
@@ -73,10 +73,17 @@ namespace BJSON.Example
 
 			
 
-			let tt = scope Foo();
+			let tt = scope Foo();*/
 
 			let jsonString =
+
 				@"""
+				{
+				  "test":"hello \n world"
+				}
+				""";
+
+				/*@"""
 				{
 				"nullTest": null,
 				"firstName": "John",
@@ -88,7 +95,7 @@ namespace BJSON.Example
 				"someArray": ["please", "work", "ok?", 98, 42, false]
 				}
 				}
-				""";
+				""";*/
 
 			//var result = Json.Deserialize<Foo>("[2e+00]");
 			var result = Json.Deserialize(jsonString);
@@ -98,7 +105,9 @@ namespace BJSON.Example
 			case .Ok(var value):
 				using (value)
 				{
-					int ageVal = value["age"];
+					StringView tt = value["test"];
+					Console.WriteLine(tt);
+					/*int ageVal = value["age"];
 
 					
 
@@ -109,12 +118,12 @@ namespace BJSON.Example
 					var another = (value["another"]);
 					var someArray = (another["someArray"]);
 
-					int arrayVal = (someArray[3]);
+					int arrayVal = (someArray[3]);*/
 					//int arrayVal2 = (someArray[9]);
 
 					//let aa = arrayVal + arrayVal2;
 
-					Console.WriteLine(scope $"{ageVal}, {name}, {isWorking}, {arrayVal}");
+					//Console.WriteLine(scope $"{ageVal}, {name}, {isWorking}, {arrayVal}");
 				}
 			case .Err(let err):
 				Console.WriteLine(err.ToString(.. scope String()));
