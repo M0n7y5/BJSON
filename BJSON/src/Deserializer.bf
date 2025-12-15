@@ -6,28 +6,32 @@ using System.Diagnostics;
 using System.Collections;
 namespace BJSON
 {
+	/// Specifies how duplicate keys in JSON objects should be handled during parsing.
 	public enum DuplicateKeyBehavior
 	{
-		/// Return error if duplicate key is found
-		/// NOTE: This option is not RFC 8259 compliant
+		/// Return error if duplicate key is found.
+		/// NOTE: This option is not RFC 8259 compliant.
 		ThrowError,
-		/// Skip the duplicate
+		/// Skip the duplicate and keep the first occurrence.
 		Ignore,
-		/// Rewrite previous value with the duplicate
+		/// Overwrite the previous value with the duplicate key's value.
 		AlwaysRewrite
 	}
 
+	/// Configuration options for JSON deserialization.
 	public struct DeserializerConfig
 	{
-		/// Enable support for comments in json string.
-		/// This enables support for trailing and inline comments
+		/// Enable support for comments in JSON string.
+		/// This enables support for trailing and inline comments.
 		public bool EnableComments = false;
 
 		/// Choose behavior if multiple objects with the same key
-		/// are found during parsing
+		/// are found during parsing.
 		public DuplicateKeyBehavior DuplicateBehavior = .AlwaysRewrite;
 	}
 
+	/// Parses JSON text into a JsonValue tree structure.
+	/// Handles objects, arrays, strings, numbers, booleans, and null values.
 	public class Deserializer : IHandler
 	{
 		// this will gonna contain only container types
@@ -41,13 +45,19 @@ namespace BJSON
 
 		public DeserializerConfig Config = .();
 
+		/// Creates a new Deserializer with default configuration.
 		public this() { }
 
+		/// Creates a new Deserializer with the specified configuration.
+		/// @param config The deserialization configuration options.
 		public this(DeserializerConfig config)
 		{
 			this.Config = config;
 		}
 
+		/// Deserializes a JSON string into a JsonValue tree.
+		/// @param jsonText The JSON string to parse.
+		/// @returns The parsed JsonValue or a JsonParsingError on failure.
 		public Result<JsonValue, JsonParsingError> Deserialize(StringView jsonText)
 		{
 			let reader = scope JsonReader(this);
@@ -73,6 +83,9 @@ namespace BJSON
 			}
 		}
 
+		/// Deserializes JSON from a stream into a JsonValue tree.
+		/// @param stream The stream containing JSON data.
+		/// @returns The parsed JsonValue or a JsonParsingError on failure.
 		public Result<JsonValue, JsonParsingError> Deserialize(Stream stream)
 		{
 			let reader = scope JsonReader(this);

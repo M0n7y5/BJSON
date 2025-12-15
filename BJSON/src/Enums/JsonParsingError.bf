@@ -7,7 +7,7 @@ namespace BJSON.Enums
 		case DocumentIsEmpty;
 		case InvalidDocument;
 		case MaximumDepthReached;
-		case TooBigPrecisionNumber;
+		case NumberTooLong(uint line, uint column);
 		case UnableToRead(uint line, uint column);
 		case InvalidValue(uint line, uint column);
 		case UnexpectedToken(uint line, uint column, StringView expected);
@@ -27,8 +27,8 @@ namespace BJSON.Enums
 				string.Append("Parsed document is not valid!");
 			case MaximumDepthReached:
 				string.Append("Reached maximum supported depth for nested structures! More than 900.");
-			case .TooBigPrecisionNumber:
-				string.Append("The number is too precise for float or double.");
+			case NumberTooLong(let line, let column):
+				string.AppendF("Number exceeds maximum length of 4096 characters! Line {}, Column {}.", line, column);
 			case DocumentIsEmpty:
 				string.Append("Attempt to parse empty string!");
 			case UnableToRead(let line, let column):

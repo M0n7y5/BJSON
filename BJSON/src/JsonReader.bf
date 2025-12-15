@@ -15,6 +15,7 @@ namespace BJSON
 		uint currentDepth = 0;
 
 		public const uint MaximumDepth = 900;
+		private const int MaxNumberBufferSize = 4096;
 
 		public this(IHandler handler)
 		{
@@ -83,7 +84,7 @@ namespace BJSON
 				case '"': return ParseString(stream);
 				case '{': return ParseObject(stream);
 				case '[': return ParseArray(stream);
-				default: return ParseNumberEx(stream);
+				default: return ParseNumber(stream);
 				}
 			}
 		}
@@ -101,21 +102,21 @@ namespace BJSON
 
 		Result<void, JsonParsingError> ParseBool(Stream stream)
 		{
-			if (let c = stream.Peek<char8>()) // TODO: use read
+			if (let c = stream.Peek<char8>())
 				switch (c)
 				{
-				case 't': // parse true
+				case 't':
 					Try!(Consume(stream, "true"));
 
 					if (!_handler.Bool(true))
-						return .Err(.InvalidValue(line, column)); //invalid value
+						return .Err(.InvalidValue(line, column));
 					return .Ok;
 
-				case 'f': // parse true
+				case 'f':
 					Try!(Consume(stream, "false"));
 
 					if (!_handler.Bool(false))
-						return .Err(.InvalidValue(line, column)); //invalid value
+						return .Err(.InvalidValue(line, column));
 
 					return .Ok;
 				}
@@ -154,7 +155,7 @@ namespace BJSON
 
 		Result<void, JsonParsingError> ParseString(Stream stream, bool isKey = false)
 		{
-			String str = scope .(); // TODO: make it StringView instead
+			String str = scope .();
 
 			if (let c = stream.Peek<char8>())
 			{
@@ -194,11 +195,6 @@ namespace BJSON
 
 										if (Consume(stream, 'u') case .Err)
 											return .Err(.InvalidStringSurrogate(line, column));
-
-										/*if (!Consume(stream, '\\') || !Consume(stream, 'u'))
-										{
-											return .Err(.InvalidStringSurrogate(line, column)); // Parse Error String Unicode Surrogate Invalid
-										}*/
 
 										let codepoint2 =  Try!(ParseHex4(stream));
 										if (codepoint2 < 0xDC00 || codepoint2 > 0xDFFF)
@@ -277,8 +273,6 @@ namespace BJSON
 				return .Err(.MaximumDepthReached);
 			}
 
-			//SkipWhitespace(stream);
-
 			if (Consume(stream, '}') case .Ok)
 			{
 				if (!_handler.EndObject())
@@ -295,7 +289,6 @@ namespace BJSON
 						return .Err(.UnexpectedToken(line, column, "\"")); // MISSING OBJECT NAME
 
 					Try!(ParseString(stream, true));
-					//SkipWhitespace(stream);
 
 					Try!(Consume(stream, ':'));
 
@@ -378,198 +371,182 @@ namespace BJSON
 			}
 		}
 
-		Result<void, JsonParsingError> ParseNumberEx(Stream stream)
+		/// Parsed number state containing the components of a JSON number.
+		struct ParsedNumber
 		{
-			String strNumber = scope .(8);
-			bool isNegative = false;
-			bool hasFracPart = false;
-			bool hasExpPart = false;
-			uint startColumn = column;
+			public char8[MaxNumberBufferSize] buffer;
+			public int bufIdx;
+			public bool isNegative;
+			public bool hasFracPart;
+			public bool hasExpPart;
+			public bool intOverflow;
+			public uint64 intVal;
+			public uint startColumn;
+		}
 
+		/// Main entry point for number parsing - refactored from ParseNumberEx.
+		Result<void, JsonParsingError> ParseNumber(Stream stream)
+		{
+			ParsedNumber num = .();
+			num.bufIdx = 0;
+			num.isNegative = false;
+			num.hasFracPart = false;
+			num.hasExpPart = false;
+			num.intOverflow = false;
+			num.intVal = 0;
+			num.startColumn = column;
+
+			// Parse the minus sign if present
+			Try!(ParseNumberSign(stream, ref num));
+
+			// Parse the integer part (required)
+			Try!(ParseIntegerPart(stream, ref num));
+
+			// Convert and report the number
+			return ReportNumber(ref num);
+		}
+
+		/// Parses an optional leading minus sign.
+		Result<void, JsonParsingError> ParseNumberSign(Stream stream, ref ParsedNumber num)
+		{
+			if (stream.Peek<char8>() case .Ok(let c))
 			{
-				// Check for minus sign
-				if (stream.Peek<char8>() case .Ok(let c)) {
-				    if (c == '-') {
-				        isNegative = true;
-				        strNumber.Append('-');
-				        stream.Skip(1);
-				        column++;
-				    }
-				} else {
-				    return .Err(.UnableToRead(line, column));
+				if (c == '-')
+				{
+					num.isNegative = true;
+					if (!TryAppendToBuffer(ref num, '-'))
+						return .Err(.NumberTooLong(line, column));
+					stream.Skip(1);
+					column++;
+				}
+			}
+			else
+			{
+				return .Err(.UnableToRead(line, column));
+			}
+			return .Ok;
+		}
+
+		/// Parses the integer part of a number, including optional fraction and exponent.
+		Result<void, JsonParsingError> ParseIntegerPart(Stream stream, ref ParsedNumber num)
+		{
+			bool hasDigit = false;
+			bool leadingZero = false;
+			int digitCount = 0;
+
+			while (stream.Peek<char8>() case .Ok(let digitC))
+			{
+				if (digitC >= '0' && digitC <= '9')
+				{
+					hasDigit = true;
+
+					// Check for leading zero followed by digit
+					if (digitCount == 0 && digitC == '0')
+					{
+						leadingZero = true;
+					}
+					else if (leadingZero)
+					{
+						return .Err(.UnexpectedToken(line, column, "fraction or exponent"));
+					}
+
+					if (!TryAppendToBuffer(ref num, digitC))
+						return .Err(.NumberTooLong(line, column));
+
+					// Calculate integer value for fast path
+					if (!num.intOverflow && !num.hasFracPart && !num.hasExpPart)
+					{
+						AccumulateIntValue(ref num, digitC, digitCount);
+					}
+					digitCount++;
+
+					stream.Skip(1);
+					column++;
+				}
+				else if (digitC == '.')
+				{
+					Try!(ParseFractionalPart(stream, ref num));
+					break;
+				}
+				else if (digitC == 'e' || digitC == 'E')
+				{
+					Try!(ParseExponentPart(stream, ref num));
+					break;
+				}
+				else
+				{
+					break; // End of number
 				}
 			}
 
-
-			// Parse integer part
-			bool hasDigit = false;
-			bool leadingZero = false;
-
-			while (stream.Peek<char8>() case .Ok(let c)) {
-			    if (c >= '0' && c <= '9') {
-			        hasDigit = true;
-			        
-			        // Check for leading zero followed by digit
-			        if (strNumber.Length == (isNegative ? 1 : 0) && c == '0') {
-			            leadingZero = true;
-			        } else if (leadingZero && c >= '0' && c <= '9') {
-			            return .Err(.UnexpectedToken(line, column, "fraction or exponent"));
-			        }
-			        
-			        strNumber.Append(c);
-			        stream.Skip(1);
-			        column++;
-			    } else if (c == '.') {
-			        hasFracPart = true;
-			        strNumber.Append('.');
-			        stream.Skip(1);
-			        column++;
-			        
-			        // Parse fractional part
-			        bool hasFracDigit = false;
-			        
-			        while (stream.Peek<char8>() case .Ok(let fracC)) {
-			            if (fracC >= '0' && fracC <= '9') {
-			                hasFracDigit = true;
-			                strNumber.Append(fracC);
-			                stream.Skip(1);
-			                column++;
-			            } else if (fracC == 'e' || fracC == 'E') {
-			                hasExpPart = true;
-			                strNumber.Append(fracC);
-			                stream.Skip(1);
-			                column++;
-			                break;
-			            } else {
-			                break;
-			            }
-			        }
-			        
-			        if (!hasFracDigit) {
-			            return .Err(.UnexpectedToken(line, column, "digit after decimal point"));
-			        }
-			        
-			        if (hasExpPart) {
-			            // Handle exponent part
-			            if (!ParseExponentToString(stream, strNumber)) {
-			                return .Err(.UnexpectedToken(line, column, "exponent value"));
-			            }
-			        }
-			        
-			        break;
-			    } else if (c == 'e' || c == 'E') {
-			        hasExpPart = true;
-			        strNumber.Append(c);
-			        stream.Skip(1);
-			        column++;
-			        
-			        // Handle exponent part
-			        if (!ParseExponentToString(stream, strNumber)) {
-			            return .Err(.UnexpectedToken(line, column, "exponent value"));
-			        }
-			        
-			        break;
-			    } else {
-			        break; // End of number
-			    }
-			}
-
-			if (!hasDigit) {
-			    return .Err(.UnexpectedToken(line, column, "digit"));
-			}
-
-			// Determine if we're dealing with an extreme case that needs precise handling
-			bool isExtreme = hasExpPart && strNumber.Contains('e');
-
-			// For extreme cases or floating point numbers, use the built-in parser
-			if (isExtreme || hasFracPart || hasExpPart) {
-			    if (let value = double.Parse(strNumber)) {
-			        if (!_handler.Number(value)) {
-			            return .Err(.InvalidValue(line, startColumn));
-			        }
-			    } else {
-			        return .Err(.InvalidValue(line, startColumn));
-			    }
-			} else {
-			    // For integers, parse directly
-			    if (isNegative) {
-			        if (let value = int64.Parse(strNumber)) {
-			            if (!_handler.Number(value)) {
-			                return .Err(.InvalidValue(line, startColumn));
-			            }
-			        } else {
-			            // Try as double if int64 parsing fails (overflow)
-			            if (let value = double.Parse(strNumber)) {
-			                if (!_handler.Number(value)) {
-			                    return .Err(.InvalidValue(line, startColumn));
-			                }
-			            } else {
-			                return .Err(.InvalidValue(line, startColumn));
-			            }
-			        }
-			    } else {
-			        if (let value = uint64.Parse(strNumber)) {
-			            if (!_handler.Number(value)) {
-			                return .Err(.InvalidValue(line, startColumn));
-			            }
-			        } else {
-			            // Try as double if uint64 parsing fails (overflow)
-			            if (let value = double.Parse(strNumber)) {
-			                if (!_handler.Number(value)) {
-			                    return .Err(.InvalidValue(line, startColumn));
-			                }
-			            } else {
-			                return .Err(.InvalidValue(line, startColumn));
-			            }
-			        }
-			    }
+			if (!hasDigit)
+			{
+				return .Err(.UnexpectedToken(line, column, "digit"));
 			}
 
 			return .Ok;
 		}
 
-		// Helper method to parse exponent into the string representation
-		bool ParseExponentToString(Stream stream, String strNumber)
+		/// Parses the fractional part of a number (after the decimal point).
+		Result<void, JsonParsingError> ParseFractionalPart(Stream stream, ref ParsedNumber num)
 		{
-		    // Check for +/- sign
-		    if (stream.Peek<char8>() case .Ok(let sign)) {
-		        if (sign == '-' || sign == '+') {
-		            strNumber.Append(sign);
-		            stream.Skip(1);
-		            column++;
-		        }
-		    }
-		    
-		    // Parse exponent digits
-		    bool hasExpDigit = false;
-		    
-		    while (stream.Peek<char8>() case .Ok(let expC)) {
-		        if (expC >= '0' && expC <= '9') {
-		            hasExpDigit = true;
-		            strNumber.Append(expC);
-		            stream.Skip(1);
-		            column++;
-		        } else {
-		            break;
-		        }
-		    }
-		    
-		    return hasExpDigit;
+			num.hasFracPart = true;
+			if (!TryAppendToBuffer(ref num, '.'))
+				return .Err(.NumberTooLong(line, column));
+			stream.Skip(1);
+			column++;
+
+			bool hasFracDigit = false;
+
+			while (stream.Peek<char8>() case .Ok(let fracC))
+			{
+				if (fracC >= '0' && fracC <= '9')
+				{
+					hasFracDigit = true;
+					if (!TryAppendToBuffer(ref num, fracC))
+						return .Err(.NumberTooLong(line, column));
+					stream.Skip(1);
+					column++;
+				}
+				else if (fracC == 'e' || fracC == 'E')
+				{
+					Try!(ParseExponentPart(stream, ref num));
+					break;
+				}
+				else
+				{
+					break;
+				}
+			}
+
+			if (!hasFracDigit)
+			{
+				return .Err(.UnexpectedToken(line, column, "digit after decimal point"));
+			}
+
+			return .Ok;
 		}
 
-		/*// Helper method to parse the exponent part of a number
-		bool ParseExponent(Stream stream, ref int16 exp, ref bool expNegative)
+		/// Parses the exponent part of a number (after 'e' or 'E').
+		Result<void, JsonParsingError> ParseExponentPart(Stream stream, ref ParsedNumber num)
 		{
+			// Append the 'e' or 'E' that was already peeked
+			if (stream.Peek<char8>() case .Ok(let expChar))
+			{
+				num.hasExpPart = true;
+				if (!TryAppendToBuffer(ref num, expChar))
+					return .Err(.NumberTooLong(line, column));
+				stream.Skip(1);
+				column++;
+			}
+
 			// Check for +/- sign
 			if (stream.Peek<char8>() case .Ok(let sign))
 			{
-				if (sign == '-')
+				if (sign == '-' || sign == '+')
 				{
-					expNegative = true;
-					stream.Skip(1);
-					column++;
-				} else if (sign == '+')
-				{
+					if (!TryAppendToBuffer(ref num, sign))
+						return .Err(.NumberTooLong(line, column));
 					stream.Skip(1);
 					column++;
 				}
@@ -583,160 +560,121 @@ namespace BJSON
 				if (expC >= '0' && expC <= '9')
 				{
 					hasExpDigit = true;
-
-					// Check for exponent overflow
-					if (exp > int16.MaxValue / 10)
-					{
-						// Exponent too large, clamp to maximum
-						exp = expNegative ? int16.MinValue : int16.MaxValue;
-						stream.Skip(1);
-						column++;
-
-						// Skip remaining digits
-						while (stream.Peek<char8>() case .Ok(let skipC))
-						{
-							if (skipC >= '0' && skipC <= '9')
-							{
-								stream.Skip(1);
-								column++;
-							} else
-							{
-								break;
-							}
-						}
-
-						return true;
-					}
-
-					exp = (int16)(exp * 10 + (expC - '0'));
+					if (!TryAppendToBuffer(ref num, expC))
+						return .Err(.NumberTooLong(line, column));
 					stream.Skip(1);
 					column++;
-				} else
+				}
+				else
 				{
 					break;
 				}
 			}
 
-			return hasExpDigit;
-		}*/
-
-		/*// Helper method to continue parsing a number as double after integer overflow
-		Result<void, JsonParsingError> ParseNumberAsDouble(Stream stream, double currentValue, bool isNegative)
-		{
-			var currentValue;
-			bool hasFracPart = false;
-			bool hasExpPart = false;
-			int16 exp = 0;
-			bool expNegative = false;
-
-			// Continue parsing digits for the integer part
-			while (stream.Peek<char8>() case .Ok(let c))
+			if (!hasExpDigit)
 			{
-				if (c >= '0' && c <= '9')
-				{
-					currentValue = currentValue * 10 + (c - '0');
-					stream.Skip(1);
-					column++;
-				} else if (c == '.')
-				{
-					hasFracPart = true;
-					stream.Skip(1);
-					column++;
-					break;
-				} else if (c == 'e' || c == 'E')
-				{
-					hasExpPart = true;
-					stream.Skip(1);
-					column++;
-					if (!ParseExponent(stream, ref exp, ref expNegative))
-					{
-						return .Err(.UnexpectedToken(line, column, "exponent value"));
-					}
-					break;
-				} else
-				{
-					break; // End of number
-				}
-			}
-
-			// Parse fractional part if present
-			if (hasFracPart)
-			{
-				double div = 0.1;
-				bool hasFracDigit = false;
-
-				while (stream.Peek<char8>() case .Ok(let fracC))
-				{
-					if (fracC >= '0' && fracC <= '9')
-					{
-						hasFracDigit = true;
-						currentValue += (fracC - '0') * div;
-						div *= 0.1;
-						stream.Skip(1);
-						column++;
-					} else if (fracC == 'e' || fracC == 'E')
-					{
-						hasExpPart = true;
-						stream.Skip(1);
-						column++;
-						if (!ParseExponent(stream, ref exp, ref expNegative))
-						{
-							return .Err(.UnexpectedToken(line, column, "exponent value"));
-						}
-						break;
-					} else
-					{
-						break;
-					}
-				}
-
-				if (!hasFracDigit)
-				{
-					return .Err(.UnexpectedToken(line, column, "digit after decimal point"));
-				}
-			}
-
-			// Parse exponent if not already parsed
-			if (hasExpPart && exp == 0 && !expNegative)
-			{
-				if (!ParseExponent(stream, ref exp, ref expNegative))
-				{
-					return .Err(.UnexpectedToken(line, column, "exponent value"));
-				}
-			}
-
-			// Apply exponent
-			if (hasExpPart)
-			{
-				if (expNegative)
-				{
-					for (int16 i = 0; i < exp; i++)
-					{
-						currentValue *= 0.1;
-					}
-				} else
-				{
-					for (int16 i = 0; i < exp; i++)
-					{
-						currentValue *= 10;
-					}
-				}
-			}
-
-			// Apply sign
-			if (isNegative)
-			{
-				currentValue = -currentValue;
-			}
-
-			// Hand off to handler
-			if (!_handler.Number(currentValue))
-			{
-				return .Err(.InvalidValue(line, column));
+				return .Err(.UnexpectedToken(line, column, "exponent value"));
 			}
 
 			return .Ok;
-		}*/
+		}
+
+		/// Attempts to append a character to the buffer, returning false if buffer is full.
+		[Inline]
+		bool TryAppendToBuffer(ref ParsedNumber num, char8 c)
+		{
+			if (num.bufIdx >= MaxNumberBufferSize)
+				return false;
+			num.buffer[num.bufIdx++] = c;
+			return true;
+		}
+
+		/// Accumulates the integer value for the fast path (avoiding string parsing).
+		[Inline]
+		void AccumulateIntValue(ref ParsedNumber num, char8 digitC, int digitCount)
+		{
+			if (digitCount < 18)
+			{
+				num.intVal = num.intVal * 10 + (uint64)(digitC - '0');
+			}
+			else if (digitCount == 18)
+			{
+				uint64 limit = uint64.MaxValue / 10;
+				if (num.intVal > limit || (num.intVal == limit && (digitC - '0') > 5))
+				{
+					num.intOverflow = true;
+				}
+				else
+				{
+					num.intVal = num.intVal * 10 + (uint64)(digitC - '0');
+				}
+			}
+			else
+			{
+				num.intOverflow = true;
+			}
+		}
+
+		/// Reports the parsed number to the handler.
+		Result<void, JsonParsingError> ReportNumber(ref ParsedNumber num)
+		{
+			// For floating-point or overflow cases, use the built-in parser
+			if (num.hasFracPart || num.hasExpPart || num.intOverflow)
+			{
+				StringView strNum = StringView(&num.buffer, num.bufIdx);
+				if (let value = double.Parse(strNum))
+				{
+					if (!_handler.Number(value))
+					{
+						return .Err(.InvalidValue(line, num.startColumn));
+					}
+				}
+				else
+				{
+					return .Err(.InvalidValue(line, num.startColumn));
+				}
+			}
+			else
+			{
+				// For integers, use the fast path
+				if (num.isNegative)
+				{
+					if (num.intVal > (uint64)int64.MaxValue + 1)
+					{
+						// Overflowed int64 range (negative), fall back to double
+						StringView strNum = StringView(&num.buffer, num.bufIdx);
+						if (let value = double.Parse(strNum))
+						{
+							if (!_handler.Number(value))
+								return .Err(.InvalidValue(line, num.startColumn));
+						}
+						else
+							return .Err(.InvalidValue(line, num.startColumn));
+					}
+					else
+					{
+						int64 val = -(int64)num.intVal;
+						if (!_handler.Number(val))
+							return .Err(.InvalidValue(line, num.startColumn));
+					}
+				}
+				else
+				{
+					if (num.intVal > (uint64)int64.MaxValue)
+					{
+						if (!_handler.Number(num.intVal))
+							return .Err(.InvalidValue(line, num.startColumn));
+					}
+					else
+					{
+						if (!_handler.Number((int64)num.intVal))
+							return .Err(.InvalidValue(line, num.startColumn));
+					}
+				}
+			}
+
+			return .Ok;
+		}
 
 		Result<void, JsonParsingError> Consume(Stream stream, StringView expected)
 		{
@@ -746,6 +684,7 @@ namespace BJSON
 
 			if (let readBytes = stream.TryRead(buffer))
 			{
+
 				if (readBytes == expected.Length && StringView(buffer) == expected)
 				{
 					column += (.)expected.Length;

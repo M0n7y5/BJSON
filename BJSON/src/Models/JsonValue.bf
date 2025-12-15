@@ -1,20 +1,21 @@
 using System;
 using System.Collections;
+using BJSON;
 using BJSON.Enums;
 using System.Diagnostics;
 using System.IO;
 
 namespace BJSON.Models
 {
+	/// Union type that holds the actual data for a JSON value.
 	[Union]
 	public struct JsonData
-	{
+{
 		// values
 		public bool boolean;
 
 		public uint64 unsignedNumber;
 		public int64 signedNumber;
-		//public double numberFloat;
 		public double number;
 
 		public String string;
@@ -26,16 +27,21 @@ namespace BJSON.Models
 		public char8[15] reserved;
 	}
 
+	/// Represents any JSON value (null, boolean, number, string, object, or array).
+	/// This is the primary type returned by JSON parsing operations.
 	public struct JsonValue : IDisposable
-	{
+{
 		const int sizeCheck = sizeof(JsonValue);
 		const int sizeCheckData = sizeof(JsonData);
 
 		/*
 		Since we are 
+		
+		
 		*/
 
 
+		/// An empty/default JSON value.
 		public const JsonValue Empty = .();
 
 		[Bitfield<JsonType>(.Public, .Bits(4), "type")]
@@ -64,13 +70,20 @@ namespace BJSON.Models
 			return val;
 		}
 
+		/// Checks if this value is a JSON null.
 		public bool IsNull() => type == .NULL;
+		/// Checks if this value is a JSON boolean.
 		public bool IsBool() => type == .BOOL;
+		/// Checks if this value is a JSON number (integer or floating-point).
 		public bool IsNumber() => type == .NUMBER || type == .NUMBER_SIGNED || type == .NUMBER_UNSIGNED;
+		/// Checks if this value is a JSON string.
 		public bool IsString() => type == .STRING;
+		/// Checks if this value is a JSON object.
 		public bool IsObject() => type == .OBJECT;
+		/// Checks if this value is a JSON array.
 		public bool IsArray() => type == .ARRAY;
 
+		/// Disposes of any heap-allocated resources held by this JSON value.
 		public void Dispose()
 		{
 			switch (type)
@@ -85,6 +98,26 @@ namespace BJSON.Models
 			}
 		}
 
+		/// Helper method to dispose a child JSON value's resources.
+		/// Used to avoid code duplication in container disposal.
+		[Inline]
+		public static void DisposeChild(JsonValue item)
+		{
+			switch (item.type)
+			{
+			case .OBJECT:
+				item.As<JsonObject>().Dispose();
+			case .ARRAY:
+				item.As<JsonArray>().Dispose();
+			case .STRING:
+				item.As<JsonString>().Dispose();
+			default:
+				return;
+			}
+		}
+
+		/// Attempts to convert this value to a JsonObject.
+		/// @returns The value as JsonObject, or an error if not an object type.
 		public Result<JsonObject> AsObject()
 		{
 			if (type != .OBJECT)
@@ -93,6 +126,8 @@ namespace BJSON.Models
 			return this.As<JsonObject>();
 		}
 
+		/// Attempts to convert this value to a JsonArray.
+		/// @returns The value as JsonArray, or an error if not an array type.
 		public Result<JsonArray> AsArray()
 		{
 			if (type != .ARRAY)
@@ -101,14 +136,30 @@ namespace BJSON.Models
 			return this.As<JsonArray>();
 		}
 
+		/// Parses a JSON string into a JsonValue.
+		/// @param val The JSON string to parse.
+		/// @returns The parsed JsonValue or an error.
 		public static Result<JsonValue> Parse(StringView val)
 		{
-			return .Err;
+			let deserializer = scope Deserializer();
+			let result = deserializer.Deserialize(val);
+			
+			switch (result)
+			{
+			case .Ok(let jsonValue):
+				return .Ok(jsonValue);
+			case .Err:
+				return .Err;
+			}
 		}
 
+		/// Parses JSON from a stream into a JsonValue.
+		/// @param stream The stream containing JSON data.
+		/// @returns The parsed JsonValue or a JsonParsingError.
 		public static Result<JsonValue, JsonParsingError> Parse(Stream stream)
 		{
-			return .Err(.DocumentIsEmpty);
+			let deserializer = scope Deserializer();
+			return deserializer.Deserialize(stream);
 		}
 
 		public JsonValue this[String key]
@@ -289,6 +340,7 @@ namespace BJSON.Models
 		}
 	}
 
+	/// Represents a JSON null value.
 	public struct JsonNull : JsonValue, IParseable<JsonNull>
 	{
 		public this()
@@ -314,6 +366,7 @@ namespace BJSON.Models
 		}
 	}
 
+	/// Represents a JSON boolean value (true or false).
 	public struct JsonBool : JsonValue
 	{
 		public this(bool value)
@@ -328,6 +381,7 @@ namespace BJSON.Models
 		}
 	}
 
+	/// Represents a JSON number value (supports signed, unsigned, and floating-point).
 	public struct JsonNumber : JsonValue
 	{
 		public this(double value)
@@ -349,6 +403,7 @@ namespace BJSON.Models
 		}
 	}
 
+	/// Represents a JSON string value. Owns its string memory.
 	public struct JsonString : JsonValue, IDisposable
 	{
 		public this(String value)
@@ -372,6 +427,7 @@ namespace BJSON.Models
 		}
 	}
 
+	/// Represents a JSON object (key-value pairs). Owns its dictionary and keys.
 	public struct JsonObject : JsonValue, IDisposable,
 		IEnumerable<(String key, JsonValue value)>
 	{
@@ -387,16 +443,7 @@ namespace BJSON.Models
 			{
 				for (var item in data.object.Values)
 				{
-					switch (item.type)
-					{
-					case .OBJECT:
-						item.As<JsonObject>().Dispose();
-					case .ARRAY:
-						item.As<JsonArray>().Dispose();
-					case .STRING:
-						item.As<JsonString>().Dispose();
-					default: continue;
-					}
+					JsonValue.DisposeChild(item);
 				}
 
 				DeleteDictionaryAndKeys!(data.object);
@@ -447,6 +494,9 @@ namespace BJSON.Models
 			data.object.Remove(key);
 		}
 
+		/// Gets a value by key from the object.
+		/// @param key The key to look up.
+		/// @returns The JsonValue if found, or an error if the key doesn't exist.
 		public Result<JsonValue> GetValue(StringView key)
 		{
 			if (data.object.TryGetValueAlt(key, let val))
@@ -458,6 +508,7 @@ namespace BJSON.Models
 		}
 	}
 
+	/// Represents a JSON array (ordered list of values). Owns its list.
 	public struct JsonArray : JsonValue, IDisposable, IEnumerable<JsonValue>
 	{
 		public this()
@@ -472,16 +523,7 @@ namespace BJSON.Models
 			{
 				for (var item in data.array)
 				{
-					switch (item.type)
-					{
-					case .OBJECT:
-						item.As<JsonObject>().Dispose();
-					case .ARRAY:
-						item.As<JsonArray>().Dispose();
-					case .STRING:
-						item.As<JsonString>().Dispose();
-					default: continue;
-					}
+					JsonValue.DisposeChild(item);
 				}
 
 				delete data.array;
