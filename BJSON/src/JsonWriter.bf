@@ -100,10 +100,19 @@ namespace BJSON
 				return false;
 
 			StringView string = value;
-			let quoted = string.QuoteString(.. scope String());
+			str.Append(JsonEscapes.QUOTATION_MARK.Underlying);
+			for(let c in string)
+			{
+				if(JsonEscapes.IsEscape(c))
+				{
+					str.Append(JsonEscapes.REVERSE_SOLIDUS.Underlying);
+					str.Append(c);
+					continue;
+				}
 
-			str.Append(quoted);
-
+				str.Append(c);
+			}
+			str.Append(JsonEscapes.QUOTATION_MARK.Underlying);
 			return true;
 		}
 

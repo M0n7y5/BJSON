@@ -1,6 +1,6 @@
 namespace BJSON.Enums
 {
-	enum JsonToken : char32
+	enum JsonToken : char8
 	{
 		LEFT_SQUARE_BRACKET = '[',
 		LEFT_CURLY_BRACKET = '{',

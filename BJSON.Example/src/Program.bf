@@ -76,12 +76,16 @@ namespace BJSON.Example
 			let tt = scope Foo();*/
 
 			let jsonString =
-
 				@"""
+				{
+				    "test": "don't"
+				}
+				""";
+				/*@"""
 				{
 				  "test":"hello \n world"
 				}
-				""";
+				""";*/
 
 				/*@"""
 				{
@@ -99,6 +103,9 @@ namespace BJSON.Example
 
 			//var result = Json.Deserialize<Foo>("[2e+00]");
 			var result = Json.Deserialize(jsonString);
+
+			let str = scope String();
+			let serRes = Json.Serialize(result, str);
 
 			switch (result)
 			{

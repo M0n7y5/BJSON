@@ -30,25 +30,6 @@ namespace BJSON.Enums
 		}
 
 		[Inline]
-		public static bool AllowedToEscape(char8 c)
-		{
-			switch ((Self)c)
-			{
-				case QUOTATION_MARK: fallthrough;
-				case SOLIDUS: fallthrough;
-				case REVERSE_SOLIDUS: fallthrough;
-				case 'b': fallthrough;
-				case 'f': fallthrough;
-				case 'n': fallthrough;
-				case 'r': fallthrough;
-				case 't':
-					return true;
-
-				default: return false;
-			}
-		}
-
-		[Inline]
 		public static Result<char8> Escape(char8 c)
 		{
 			switch ((Self)c)
