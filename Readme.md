@@ -12,29 +12,14 @@ A high-performance JSON parser and serializer for the Beef programming language.
 - Optimized performance
 
 ## Installation
-
-Add BJSON to your workspace in `BeefSpace.toml`:
-
-```toml
-[Workspace]
-Projects = ["BJSON", "YourProject"]
-```
-
-Or add as a dependency in `BeefProj.toml`:
-
-```toml
-[Dependencies]
-BJSON = "*"
-```
+- Clone the repository or download the latest release from the [Releases](https://github.com/M0n7y5/BJSON/releases) page
+- Add BJSON to your workspace via IDE
 
 ## Usage
 
 ### Basic Deserialization
 
 ```cs
-using BJSON;
-using System;
-
 let jsonString = "{\"name\":\"BJSON\",\"version\":1.0}";
 var result = Json.Deserialize(jsonString);
 defer result.Dispose();
@@ -70,7 +55,6 @@ Console.WriteLine(output);
 ```
 
 ### Pretty-Print
-
 ```cs
 let json = JsonObject()
     {
