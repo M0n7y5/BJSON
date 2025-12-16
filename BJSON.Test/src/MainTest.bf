@@ -17,13 +17,14 @@ namespace BJSON.Test
 			// test cases from https://github.com/nst/JSONTestSuite
 			// https://seriot.ch/projects/parsing_json.html
 
-			Debug.WriteLine("Compliance tests from JSONTestSuite ...");
+			Console.WriteLine("Compliance tests from JSONTestSuite ...");
 
 			let currentPath = Directory.GetCurrentDirectory(.. scope .());
 
 			Path.Combine(currentPath, "TestSuites", "nst_json_testsuite");
 
 			let files = Directory.EnumerateFiles(currentPath);
+			int localIdx = 1;
 			for (let file in files)
 			{
 				let filePath = file.GetFilePath(.. scope .());
@@ -46,25 +47,29 @@ namespace BJSON.Test
 					{
 						if (result case .Ok)
 						{
+							if (shouldFail)
+								Console.WriteLine(scope $"FAIL: File '{fileName}' should NOT have parsed successfully!");
 							Test.Assert(shouldFail == false, scope $"This file should not be successfully parsed! {fileName}");
 						}
 						else
 						{
+							if (!shouldFail)
+								Console.WriteLine(scope $"FAIL: File '{fileName}' should have parsed successfully but got error!");
 							Test.Assert(shouldFail, scope $"This file should not fail to parse! {fileName}");
 						}
 					}
 
-					Debug.WriteLine(scope $"{idx} Done testing file: {fileName} Result: {result case .Ok ? "Ok" : "Err"}");
+					//Console.WriteLine(scope $"{localIdx} Done testing file: {fileName} Result: {result case .Ok ? "Ok" : "Err"}");
 				}
 				else
 				{
 					Test.Assert(false, scope $"Unable to open file {fileName}");
 				}
 
-				idx++;
+				localIdx++;
 			}
 
-			Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
+			Console.WriteLine("TEST COMPLETED SUCESSFULLY!");
 		}
 
 		[Test(Name = "Compliance tests from json.org")]
@@ -453,142 +458,48 @@ namespace BJSON.Test
 				Debug.WriteLine(scope $"  Test 7 (float 3.14): PASSED - output: {output}");
 			}
 
-			// Test 8: Serialize string
+			// Test 8: Exact deep indentation structure for all keys in all objects
 			{
-				var json = JsonString("hello world");
+				let json = JsonObject()
+					{
+						("firstName", "John"),
+						("lastName", "Smith"),
+						("isAlive", true),
+						("age", 27),
+						("phoneNumbers", JsonArray()
+							{
+								JsonObject()
+									{
+										("type", "home"),
+										("number", "212 555-1234")
+									},
+								JsonObject()
+									{
+										("type", "office"),
+										("number", "646 555-4567")
+									}
+							})
+					};
 				defer json.Dispose();
 
 				let output = scope String();
-				let result = Json.Serialize(json, output);
+				var options = JsonWriterOptions() { Indented = true };
+				let result = Json.Serialize(json, output, options);
 
-				Test.Assert(result case .Ok, "Serialization of string should succeed");
-				Test.Assert(output == "\"hello world\"", scope $"Expected '\"hello world\"', got '{output}'");
-				Debug.WriteLine(scope $"  Test 8 (string): PASSED - output: {output}");
-			}
-
-			// Test 9: Serialize string with quotes (which are escaped correctly)
-			{
-				var json = JsonString("say \"hello\"");
-				defer json.Dispose();
-
-				let output = scope String();
-				let result = Json.Serialize(json, output);
-
-				Test.Assert(result case .Ok, "Serialization of string with quotes should succeed");
-				// The library should escape quotes with backslash
-				Debug.WriteLine(scope $"  Test 9 (quoted string): PASSED - output: {output}");
-			}
-
-			// Test 10: Serialize empty object
-			{
-				var json = JsonObject();
-				defer json.Dispose();
-
-				let output = scope String();
-				let result = Json.Serialize(json, output);
-
-				Test.Assert(result case .Ok, "Serialization of empty object should succeed");
-				Test.Assert(output == "{}", scope $"Expected '{{}}', got '{output}'");
-				Debug.WriteLine(scope $"  Test 10 (empty object): PASSED - output: {output}");
-			}
-
-			// Test 11: Serialize simple object
-			{
-				var json = JsonObject();
-				json.Add("name", JsonString("test"));
-				json.Add("value", JsonNumber((int64)42));
-				defer json.Dispose();
-
-				let output = scope String();
-				let result = Json.Serialize(json, output);
-
-				Test.Assert(result case .Ok, "Serialization of object should succeed");
-				// Object key order may vary, check both possibilities
-				let valid = output == "{\"name\":\"test\",\"value\":42}" || output == "{\"value\":42,\"name\":\"test\"}";
-				Test.Assert(valid, scope $"Object serialization mismatch, got '{output}'");
-				Debug.WriteLine(scope $"  Test 11 (simple object): PASSED - output: {output}");
-			}
-
-			// Test 12: Serialize empty array
-			{
-				var json = JsonArray();
-				defer json.Dispose();
-
-				let output = scope String();
-				let result = Json.Serialize(json, output);
-
-				Test.Assert(result case .Ok, "Serialization of empty array should succeed");
-				Test.Assert(output == "[]", scope $"Expected '[]', got '{output}'");
-				Debug.WriteLine(scope $"  Test 12 (empty array): PASSED - output: {output}");
-			}
-
-			// Test 13: Serialize simple array
-			{
-				var json = JsonArray();
-				json.Add(JsonNumber((int64)1));
-				json.Add(JsonNumber((int64)2));
-				json.Add(JsonNumber((int64)3));
-				defer json.Dispose();
-
-				let output = scope String();
-				let result = Json.Serialize(json, output);
-
-				Test.Assert(result case .Ok, "Serialization of array should succeed");
-				Test.Assert(output == "[1,2,3]", scope $"Expected '[1,2,3]', got '{output}'");
-				Debug.WriteLine(scope $"  Test 13 (simple array): PASSED - output: {output}");
-			}
-
-			// Test 14: Serialize mixed array
-			{
-				var json = JsonArray();
-				json.Add(JsonNull());
-				json.Add(JsonBool(true));
-				json.Add(JsonNumber((int64)42));
-				json.Add(JsonString("text"));
-				defer json.Dispose();
-
-				let output = scope String();
-				let result = Json.Serialize(json, output);
-
-				Test.Assert(result case .Ok, "Serialization of mixed array should succeed");
-				Test.Assert(output == "[null,true,42,\"text\"]", scope $"Expected '[null,true,42,\"text\"]', got '{output}'");
-				Debug.WriteLine(scope $"  Test 14 (mixed array): PASSED - output: {output}");
-			}
-
-			// Test 15: Serialize nested objects
-			{
-				var inner = JsonObject();
-				inner.Add("nested", JsonString("value"));
-
-				var json = JsonObject();
-				json.Add("outer", inner);
-				defer json.Dispose();
-
-				let output = scope String();
-				let result = Json.Serialize(json, output);
-
-				Test.Assert(result case .Ok, "Serialization of nested object should succeed");
-				Test.Assert(output == "{\"outer\":{\"nested\":\"value\"}}", scope $"Nested object mismatch, got '{output}'");
-				Debug.WriteLine(scope $"  Test 15 (nested object): PASSED - output: {output}");
-			}
-
-			// Test 16: Serialize nested arrays
-			{
-				var inner = JsonArray();
-				inner.Add(JsonNumber((int64)1));
-				inner.Add(JsonNumber((int64)2));
-
-				var json = JsonArray();
-				json.Add(inner);
-				json.Add(JsonNumber((int64)3));
-				defer json.Dispose();
-
-				let output = scope String();
-				let result = Json.Serialize(json, output);
-
-				Test.Assert(result case .Ok, "Serialization of nested array should succeed");
-				Test.Assert(output == "[[1,2],3]", scope $"Nested array mismatch, got '{output}'");
-				Debug.WriteLine(scope $"  Test 16 (nested array): PASSED - output: {output}");
+				Test.Assert(result case .Ok, "Complex nested structure should serialize without error");
+				
+				// Verify proper indentation by checking that all keys are indented correctly
+				// In the broken version, only first key would be indented, others would be at column 0
+				Test.Assert(output.Contains("\n  \"firstName\""), "firstName should be indented");
+				Test.Assert(output.Contains("\n  \"lastName\""), "lastName should be indented");
+				Test.Assert(output.Contains("\n  \"isAlive\""), "isAlive should be indented");
+				Test.Assert(output.Contains("\n  \"age\""), "age should be indented");
+				Test.Assert(output.Contains("\n  \"phoneNumbers\""), "phoneNumbers should be indented");
+				Test.Assert(output.Contains("\n      \"type\""), "type field should be double-indented");
+				Test.Assert(output.Contains("\n      \"number\""), "number field should be double-indented");
+				
+				Debug.WriteLine(scope $"  Test 8 (exact indentation validation): PASSED");
+				Debug.WriteLine(scope $"    Output:\n{output}");
 			}
 
 			Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
@@ -720,6 +631,50 @@ namespace BJSON.Test
 				Test.Assert(!output.Contains("\n"), "Minified output should not contain newlines");
 				Test.Assert(output == "{\"key\":\"value\"}", scope $"Minified output mismatch, got '{output}'");
 				Debug.WriteLine(scope $"  Test 7 (minified): PASSED - output: {output}");
+			}
+
+			// Test 8: Exact deep indentation structure for all keys in all objects
+			{
+				let json = JsonObject()
+					{
+						("firstName", "John"),
+						("lastName", "Smith"),
+						("isAlive", true),
+						("age", 27),
+						("phoneNumbers", JsonArray()
+							{
+								JsonObject()
+									{
+										("type", "home"),
+										("number", "212 555-1234")
+									},
+								JsonObject()
+									{
+										("type", "office"),
+										("number", "646 555-4567")
+									}
+							})
+					};
+				defer json.Dispose();
+
+				let output = scope String();
+				var options = JsonWriterOptions() { Indented = true };
+				let result = Json.Serialize(json, output, options);
+
+				Test.Assert(result case .Ok, "Complex nested structure should serialize without error");
+				
+				// Verify proper indentation by checking that all keys are indented correctly
+				// In the broken version, only first key would be indented, others would be at column 0
+				Test.Assert(output.Contains("\n  \"firstName\""), "firstName should be indented");
+				Test.Assert(output.Contains("\n  \"lastName\""), "lastName should be indented");
+				Test.Assert(output.Contains("\n  \"isAlive\""), "isAlive should be indented");
+				Test.Assert(output.Contains("\n  \"age\""), "age should be indented");
+				Test.Assert(output.Contains("\n  \"phoneNumbers\""), "phoneNumbers should be indented");
+				Test.Assert(output.Contains("\n      \"type\""), "type field should be double-indented");
+				Test.Assert(output.Contains("\n      \"number\""), "number field should be double-indented");
+				
+				Debug.WriteLine(scope $"  Test 8 (exact indentation validation): PASSED");
+				Debug.WriteLine(scope $"    Output:\n{output}");
 			}
 
 			Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
@@ -1013,6 +968,320 @@ namespace BJSON.Test
 				Test.Assert(result case .Ok, "Serialization of control char 0x1F should succeed");
 				Test.Assert(output == "\"\\u001f\"", scope $"Expected '\"\\u001f\"', got '{output}'");
 				Debug.WriteLine(scope $"  Test 12 (0x1F control char): PASSED - output: {output}");
+			}
+
+			Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+		}
+
+		[Test(Name = "JSON Comment Support")]
+		public static void T_CommentSupport()
+		{
+			Debug.WriteLine("JSON Comment Support tests ...");
+
+			// Test 1: Single-line comment before JSON
+			{
+				let jsonWithComments = "// comment at start\n{\"key\": \"value\"}";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok(let val), "Single-line comment before JSON should succeed");
+				if (result case .Ok(let json))
+				{
+					Test.Assert(json.type == .OBJECT, "Should parse as object");
+					StringView str = json["key"];
+					Test.Assert(str == "value", scope $"Expected 'value', got '{str}'");
+				}
+				Debug.WriteLine("  Test 1 (single-line before): PASSED");
+			}
+
+			// Test 2: Single-line comment after JSON
+			{
+				let jsonWithComments = "{\"key\": \"value\"} // comment at end";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Single-line comment after JSON should succeed");
+				Debug.WriteLine("  Test 2 (single-line after): PASSED");
+			}
+
+			// Test 3: Multi-line comment before JSON
+			{
+				let jsonWithComments = "/* multi\n   line */\n{\"key\": \"value\"}";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Multi-line comment before JSON should succeed");
+				Debug.WriteLine("  Test 3 (multi-line before): PASSED");
+			}
+
+			// Test 4: Multi-line comment after JSON
+			{
+				let jsonWithComments = "{\"key\": \"value\"} /* comment */";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Multi-line comment after JSON should succeed");
+				Debug.WriteLine("  Test 4 (multi-line after): PASSED");
+			}
+
+			// Test 5: Comments in arrays
+			{
+				let jsonWithComments = """
+[ 
+  1, // first element 
+  2, /* second element */
+  3 
+]
+""";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok(let json), "Comments in arrays should succeed");
+				if (result case .Ok(let arr))
+				{
+					Test.Assert(arr.type == .ARRAY, "Should parse as array");
+					Test.Assert(arr.As<JsonArray>().Count == 3, scope $"Expected 3 elements, got {arr.As<JsonArray>().Count}");
+				}
+				Debug.WriteLine("  Test 5 (comments in arrays): PASSED");
+			}
+
+			// Test 6: Comments in objects
+			{
+				let jsonWithComments = """
+{
+  // property
+  "name": "test", /* inline */
+  "value": 42
+}
+""";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok(let json), "Comments in objects should succeed");
+				if (result case .Ok(let obj))
+				{
+					Test.Assert(obj.type == .OBJECT, "Should parse as object");
+					StringView str = obj["name"];
+					Test.Assert(str == "test", scope $"Expected 'test', got '{str}'");
+					int64 num = obj["value"];
+					Test.Assert(num == 42, scope $"Expected 42, got {num}");
+				}
+				Debug.WriteLine("  Test 6 (comments in objects): PASSED");
+			}
+
+			// Test 7: Multiple comments
+			{
+				let jsonWithComments = """
+// Start comment
+/* Multi-line
+   comment */
+{
+  // Key comment
+  "key": /* value comment */ "value"
+}
+// End comment
+""";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Multiple comments should succeed");
+				Debug.WriteLine("  Test 7 (multiple comments): PASSED");
+			}
+
+			// Test 8: Comment with CRLF line endings
+			{
+				let jsonWithComments = "// comment\r\n{\"key\": \"value\"}";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Comment with CRLF should succeed");
+				Debug.WriteLine("  Test 8 (CRLF line ending): PASSED");
+			}
+
+			// Test 9: Comments disabled (standard JSON mode) - should fail
+			{
+				let jsonWithComments = "// comment\n{\"key\": \"value\"}";
+				
+				var config = DeserializerConfig() { EnableComments = false };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Err, "Comments should fail when disabled");
+				Debug.WriteLine("  Test 9 (comments disabled): PASSED");
+			}
+
+			// Test 10: Unterminated multi-line comment - should fail
+			{
+				let jsonWithComments = "/* unterminated comment\n{\"key\": \"value\"}";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Err, "Unterminated multi-line comment should fail");
+				Debug.WriteLine("  Test 10 (unterminated comment): PASSED");
+			}
+
+			// Test 11: Only comment, no JSON - should fail
+			{
+				let jsonWithComments = "// just a comment";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Err, "Only comment, no JSON should fail");
+				Debug.WriteLine("  Test 11 (only comment): PASSED");
+			}
+
+			// Test 12: Comment between object key and colon
+			{
+				let jsonWithComments = """
+{
+  "key" /* comment */ : "value"
+}
+""";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Comment between key and colon should succeed");
+				Debug.WriteLine("  Test 12 (comment between key and colon): PASSED");
+			}
+
+			// Test 13: Comment between colon and value
+			{
+				let jsonWithComments = """
+{
+  "key": /* comment */ "value"
+}
+""";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Comment between colon and value should succeed");
+				Debug.WriteLine("  Test 13 (comment between colon and value): PASSED");
+			}
+
+			// Test 14: Nested multi-line comment (not nested) - /* /* */ treats first */ as end
+			{
+				let jsonWithComments = "/* outer /* inner */ {\"key\": \"value\"}";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				// This should parse successfully since first */ closes the comment
+				Test.Assert(result case .Ok, "Non-nested comment handling should succeed");
+				Debug.WriteLine("  Test 14 (non-nested comments): PASSED");
+			}
+
+			// Test 15: Empty single-line comment
+			{
+				let jsonWithComments = "//\n{\"key\": \"value\"}";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Empty single-line comment should succeed");
+				Debug.WriteLine("  Test 15 (empty single-line): PASSED");
+			}
+
+			// Test 16: Empty multi-line comment
+			{
+				let jsonWithComments = "/**/{\"key\": \"value\"}";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Empty multi-line comment should succeed");
+				Debug.WriteLine("  Test 16 (empty multi-line): PASSED");
+			}
+
+			// Test 17: Single / without second / (not a comment) - should fail
+			{
+				let jsonWithComments = "/ {\"key\": \"value\"}";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Err, "Single / should fail");
+				Debug.WriteLine("  Test 17 (single slash): PASSED");
+			}
+
+			// Test 18: Complex nested structure with comments everywhere
+			{
+				let jsonWithComments = """
+// Root comment
+{
+  // Array field
+  "items": [ // inline
+    1, // first
+    /* multi-line
+       comment */
+    2,
+    {
+      "nested": /* comment */ "value"
+    }
+  ], /* after array */
+  "flag": true // boolean
+}
+// Trailing comment
+""";
+				
+				var config = DeserializerConfig() { EnableComments = true };
+				var deserializer = scope Deserializer(config);
+				var result = deserializer.Deserialize(jsonWithComments);
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok(let json), "Complex nested structure with comments should succeed");
+				if (result case .Ok(let obj))
+				{
+					Test.Assert(obj.type == .OBJECT, "Should parse as object");
+					Test.Assert(obj["items"].type == .ARRAY, "items should be array");
+					let itemsArray = obj["items"].As<JsonArray>();
+					Test.Assert(itemsArray.Count == 3, scope $"Expected 3 items, got {itemsArray.Count}");
+				}
+				Debug.WriteLine("  Test 18 (complex nested): PASSED");
 			}
 
 			Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");

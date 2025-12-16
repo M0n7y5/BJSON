@@ -29,6 +29,11 @@ namespace BJSON
 			this.options = options;
 			this.depth = 0;
 
+			return WriteInternal(json, outText);
+		}
+
+		private Result<void, JsonSerializationError> WriteInternal(JsonValue json, String outText)
+		{
 			switch (json.type)
 			{
 			case .NULL:
@@ -54,6 +59,7 @@ namespace BJSON
 			}
 		}
 
+		[Inline]
 		private void WriteIndent(String str)
 		{
 			if (!options.Indented)
@@ -65,6 +71,7 @@ namespace BJSON
 			}
 		}
 
+		[Inline]
 		private void WriteNewLine(String str)
 		{
 			if (!options.Indented)
@@ -123,54 +130,64 @@ namespace BJSON
 		Result<void, JsonSerializationError> WriteString(JsonValue value, String str)
 		{
 			StringView string = value;
-			str.Append(JsonEscapes.QUOTATION_MARK.Underlying);
-			for(let c in string)
+			
+			// Cache string length at start
+			let strLen = string.Length;
+			
+			// Pre-allocate capacity: original length + 2 quotes + ~12.5% for escapes (using bit shift)
+			str.Reserve(str.Length + strLen + 2 + (strLen >> 3));
+			
+			str.Append('"');
+			
+			int spanStart = 0;
+			int i = 0;
+			
+			for (let c in string)
 			{
-				// Handle special escape sequences per RFC 8259
-				switch (c)
+				let escapeChar = JsonEscapes.GetEscapeChar(c);
+				
+				if (escapeChar != 0)
 				{
-				case '"':
-					str.Append('\\');
-					str.Append('"');
-				case '\\':
-					str.Append('\\');
-					str.Append('\\');
-				case '\b':
-					str.Append('\\');
-					str.Append('b');
-				case '\f':
-					str.Append('\\');
-					str.Append('f');
-				case '\n':
-					str.Append('\\');
-					str.Append('n');
-				case '\r':
-					str.Append('\\');
-					str.Append('r');
-				case '\t':
-					str.Append('\\');
-					str.Append('t');
-				default:
-					// Handle other control characters (0x00-0x1F) with \uXXXX
-					if ((uint8)c < 0x20)
+					// Append any non-escaped characters before this one
+					if (i > spanStart)
 					{
-						str.Append('\\');
-						str.Append('u');
-						str.Append('0');
-						str.Append('0');
-						// Convert to hex (high nibble and low nibble)
-						let highNibble = ((uint8)c >> 4) & 0x0F;
-						let lowNibble = (uint8)c & 0x0F;
-						str.Append(highNibble < 10 ? (char8)('0' + highNibble) : (char8)('a' + highNibble - 10));
-						str.Append(lowNibble < 10 ? (char8)('0' + lowNibble) : (char8)('a' + lowNibble - 10));
+						str.Append(string.Substring(spanStart, i - spanStart));
 					}
-					else
-					{
-						str.Append(c);
-					}
+					
+					// Write the escape sequence
+					str.Append('\\');
+					str.Append(escapeChar);
+					spanStart = i + 1;
 				}
+				else if ((uint8)c < 0x20)
+				{
+					// Handle other control characters with \uXXXX
+					if (i > spanStart)
+					{
+						str.Append(string.Substring(spanStart, i - spanStart));
+					}
+					
+					str.Append('\\');
+					str.Append('u');
+					str.Append('0');
+					str.Append('0');
+					let highNibble = ((uint8)c >> 4) & 0x0F;
+					let lowNibble = (uint8)c & 0x0F;
+					str.Append(highNibble < 10 ? (char8)('0' + highNibble) : (char8)('a' + highNibble - 10));
+					str.Append(lowNibble < 10 ? (char8)('0' + lowNibble) : (char8)('a' + lowNibble - 10));
+					spanStart = i + 1;
+				}
+				
+				i++;
 			}
-			str.Append(JsonEscapes.QUOTATION_MARK.Underlying);
+			
+			// Append any remaining non-escaped characters
+			if (i > spanStart)
+			{
+				str.Append(string.Substring(spanStart, i - spanStart));
+			}
+			
+			str.Append('"');
 			return .Ok;
 		}
 
@@ -200,7 +217,7 @@ namespace BJSON
 				if (options.Indented)
 					WriteIndent(str);
 
-				if (Write(item, str) case .Err(let err))
+				if (WriteInternal(item, str) case .Err(let err))
 					return .Err(err);
 			}
 
@@ -242,15 +259,11 @@ namespace BJSON
 				if (options.Indented)
 					WriteIndent(str);
 
-				let key = item.key.Quote(.. scope .());
-				if (options.Indented)
-					key.Append(": ");
-				else
-					key.Append(":");
+				str.Append('"');
+				str.Append(item.key);
+				str.Append(options.Indented ? "\": " : "\":");
 
-				str.Append(key);
-
-				if (Write(item.value, str) case .Err(let err))
+				if (WriteInternal(item.value, str) case .Err(let err))
 					return .Err(err);
 			}
 

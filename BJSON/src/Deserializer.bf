@@ -111,6 +111,9 @@ namespace BJSON
 			}
 		}
 
+		/// Adds a value to the current container (object or array).
+		/// Optimized to minimize hash lookups for duplicate key handling.
+		[Inline]
 		private bool AddValue(JsonValue value)
 		{
 			// root value
@@ -137,39 +140,8 @@ namespace BJSON
 						return true;
 					}
 
+					return AddToObject(document.As<JsonObject>(), value);
 
-					let jObj = document.As<JsonObject>();
-
-					if (jObj.ContainsKey(currentKey) == false)
-					{
-						jObj.Add(currentKey, value);
-					}
-					else
-					{
-						switch (Config.DuplicateBehavior)
-						{
-							case .ThrowError:
-								{
-									value.Dispose();
-									return false;
-								}
-							case .Ignore:
-								{
-									value.Dispose();
-									return true;
-								}
-							case .AlwaysRewrite:
-								{
-									// dispose the old content
-									jObj[currentKey].Dispose();
-
-									jObj[currentKey] = value;
-								}
-						}
-					}
-
-					currentKey = null;
-					break;
 				case .ARRAY:
 					if (IsIgnoringDuplicate)
 					{
@@ -178,41 +150,83 @@ namespace BJSON
 					}
 
 					document.As<JsonArray>().Add(value);
-					break;
+					return true;
+
 				default:
 					value.Dispose();
 					return false;
 			}
-
-			return true;
 		}
 
+		/// Adds a value to a JSON object with optimized duplicate key handling.
+		/// Uses single hash lookup via TryGetValue instead of ContainsKey + Get/Add.
+		[Inline]
+		private bool AddToObject(JsonObject jObj, JsonValue value)
+		{
+			// Use TryGetValue for single hash lookup
+			if (jObj.data.object.TryGetValueAlt(currentKey, var existingValue))
+			{
+				// Key exists - handle based on duplicate behavior
+				switch (Config.DuplicateBehavior)
+				{
+					case .ThrowError:
+						value.Dispose();
+						currentKey = null;
+						return false;
+
+					case .Ignore:
+						value.Dispose();
+						currentKey = null;
+						return true;
+
+					case .AlwaysRewrite:
+						// Dispose the old content and overwrite
+						existingValue.Dispose();
+						jObj[currentKey] = value;
+						currentKey = null;
+						return true;
+				}
+			}
+			else
+			{
+				// Key doesn't exist - add it
+				jObj.Add(currentKey, value);
+				currentKey = null;
+				return true;
+			}
+		}
+
+		[Inline]
 		public bool Null()
 		{
 			return AddValue(JsonNull());
 		}
 
+		[Inline]
 		public bool Bool(bool value)
 		{
 			return AddValue(JsonBool(value));
 		}
 
+		[Inline]
 		public bool Number(double value)
 		{
 			return AddValue(JsonNumber(value));
 		}
 
+		[Inline]
 		public bool Number(uint64 value)
 		{
 			return AddValue(JsonNumber(value));
 		}
 		
-
+		[Inline]
 		public bool Number(int64 value)
 		{
 			return AddValue(JsonNumber(value));
 		}
 
+		[Inline]
 		public bool String(StringView value, bool copy)
 		{
 			return AddValue(JsonString(value));
@@ -249,40 +263,41 @@ namespace BJSON
 
 						let jObj = document.As<JsonObject>();
 
-						if (jObj.ContainsKey(currentKey) == false)
+						// Use TryGetValue for single hash lookup
+						if (jObj.data.object.TryGetValueAlt(currentKey, var existingValue))
+						{
+							// Key exists
+							switch (Config.DuplicateBehavior)
+							{
+								case .ThrowError:
+									return false;
+
+								case .Ignore:
+									IsIgnoringDuplicate = true;
+									currentKey = null;
+									return true;
+
+								case .AlwaysRewrite:
+									// dispose the old content
+									existingValue.Dispose();
+									let jVal = JsonObject();
+									jObj[currentKey] = jVal;
+									// add it to stack as current container
+									treeStack.Add(jVal);
+									currentKey = null;
+									return true;
+							}
+						}
+						else
 						{
 							let jVal = JsonObject();
 							jObj.Add(currentKey, jVal);
 							// add it to stack as current container
 							treeStack.Add(jVal);
-						}
-						else
-						{
-							switch (Config.DuplicateBehavior)
-							{
-								case .ThrowError:
-									{
-										return false;
-									}
-								case .Ignore:
-									{
-										IsIgnoringDuplicate = true;
-									}
-								case .AlwaysRewrite:
-									{
-										// dispose the old content
-										jObj[currentKey].Dispose();
-
-										let jVal = JsonObject();
-										jObj.Add(currentKey, jVal);
-										// add it to stack as current container
-										treeStack.Add(jVal);
-									}
-							}
+							currentKey = null;
+							return true;
 						}
 
-						currentKey = null;
-						return true;
 					case .ARRAY:
 						if (IsIgnoringDuplicate)
 						{
@@ -302,6 +317,7 @@ namespace BJSON
 			}
 		}
 
+		[Inline]
 		public bool Key(StringView str, bool copy)
 		{
 			currentKey = new:keyAlloc String(str);
@@ -372,41 +388,40 @@ namespace BJSON
 
 						let jObj = document.As<JsonObject>();
 
-						if (jObj.ContainsKey(currentKey) == false)
+						// Use TryGetValue for single hash lookup
+						if (jObj.data.object.TryGetValueAlt(currentKey, var existingValue))
 						{
-							let jVal = JsonArray();
-							document.As<JsonObject>().Add(currentKey, jVal);
-
-							// add it to stack as current container
-							treeStack.Add(jVal);
-						}
-						else
-						{
+							// Key exists
 							switch (Config.DuplicateBehavior)
 							{
 								case .ThrowError:
-									{
-										return false;
-									}
+									return false;
+
 								case .Ignore:
-									{
-										return true;
-										//IsIgnoringDuplicate = true;
-									}
+									currentKey = null;
+									return true;
+
 								case .AlwaysRewrite:
-									{
-										// dispose the old content
-										jObj[currentKey].Dispose();
-										let jVal = JsonArray();
-										document.As<JsonObject>()[currentKey] = jVal;
-										// add it to stack as current container
-										treeStack.Add(jVal);
-									}
+									// dispose the old content
+									existingValue.Dispose();
+									let jVal = JsonArray();
+									jObj[currentKey] = jVal;
+									// add it to stack as current container
+									treeStack.Add(jVal);
+									currentKey = null;
+									return true;
 							}
 						}
+						else
+						{
+							let jVal = JsonArray();
+							jObj.Add(currentKey, jVal);
+							// add it to stack as current container
+							treeStack.Add(jVal);
+							currentKey = null;
+							return true;
+						}
 
-						currentKey = null;
-						return true;
 					case .ARRAY:
 						if (IsIgnoringDuplicate)
 						{

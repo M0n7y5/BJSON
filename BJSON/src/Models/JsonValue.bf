@@ -10,7 +10,7 @@ namespace BJSON.Models
 	/// Union type that holds the actual data for a JSON value.
 	[Union]
 	public struct JsonData
-{
+	{
 		// values
 		public bool boolean;
 
@@ -30,16 +30,9 @@ namespace BJSON.Models
 	/// Represents any JSON value (null, boolean, number, string, object, or array).
 	/// This is the primary type returned by JSON parsing operations.
 	public struct JsonValue : IDisposable
-{
+	{
 		const int sizeCheck = sizeof(JsonValue);
 		const int sizeCheckData = sizeof(JsonData);
-
-		/*
-		Since we are 
-		
-		
-		*/
-
 
 		/// An empty/default JSON value.
 		public const JsonValue Empty = .();
@@ -71,16 +64,22 @@ namespace BJSON.Models
 		}
 
 		/// Checks if this value is a JSON null.
+		[Inline]
 		public bool IsNull() => type == .NULL;
 		/// Checks if this value is a JSON boolean.
+		[Inline]
 		public bool IsBool() => type == .BOOL;
 		/// Checks if this value is a JSON number (integer or floating-point).
+		[Inline]
 		public bool IsNumber() => type == .NUMBER || type == .NUMBER_SIGNED || type == .NUMBER_UNSIGNED;
 		/// Checks if this value is a JSON string.
+		[Inline]
 		public bool IsString() => type == .STRING;
 		/// Checks if this value is a JSON object.
+		[Inline]
 		public bool IsObject() => type == .OBJECT;
 		/// Checks if this value is a JSON array.
+		[Inline]
 		public bool IsArray() => type == .ARRAY;
 
 		/// Disposes of any heap-allocated resources held by this JSON value.
@@ -434,7 +433,7 @@ namespace BJSON.Models
 		public this()
 		{
 			type = .OBJECT;
-			data.object = new Dictionary<String, JsonValue>();
+			data.object = new Dictionary<String, JsonValue>(32);
 		}
 
 		public new void Dispose()
@@ -514,7 +513,7 @@ namespace BJSON.Models
 		public this()
 		{
 			type = .ARRAY;
-			data.array = new List<JsonValue>();
+			data.array = new List<JsonValue>(16);
 		}
 
 		public new void Dispose()
