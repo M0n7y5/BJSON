@@ -16,7 +16,7 @@ A high-performance JSON parser and serializer for the Beef programming language.
 - Add BJSON to your workspace via IDE
 
 ## Known Issues
-> ### ⚠️ Be sure you have latest nightly of Beef IDE installed due to [some syntax not working](https://github.com/beefytech/Beef/issues/2366) properly in older versions. [This is now fixed in the compiler.](https://github.com/beefytech/Beef/issues/2366#event-21594961854)
+> ### ⚠️ Be sure you have latest nightly of Beef IDE installed due to [some syntax not working](https://github.com/beefytech/Beef/issues/2366) properly in older versions. [This is now fixed in the compiler.](https://github.com/beefytech/Beef/commit/c592f205203d761ad6eb1861f7af5dd6f2d7cfe7)
 
 ## Usage
 
