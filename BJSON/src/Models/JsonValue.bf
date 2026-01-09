@@ -24,6 +24,10 @@ namespace BJSON.Models
 		public Dictionary<String, JsonValue> object;
 		public List<JsonValue> array;
 
+		// Since JsonValue will always have 8 bytes and no less
+		// it will make sense to make it 15 bytes big in order to
+		// make JsonValue aligned to 16 bytes and use this space for
+		// for small strings like keys or numbers
 		public char8[15] reserved;
 	}
 
@@ -60,6 +64,7 @@ namespace BJSON.Models
 			T val = default;
 			val.data = this.data;
 			val.mBitfield = this.mBitfield;
+
 			return val;
 		}
 

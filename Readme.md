@@ -15,6 +15,9 @@ A high-performance JSON parser and serializer for the Beef programming language.
 - Clone the repository or download the latest release from the [Releases](https://github.com/M0n7y5/BJSON/releases) page
 - Add BJSON to your workspace via IDE
 
+## Known Issues
+> ### ⚠️ Be sure you have latest nightly of Beef IDE installed due to [some syntax not working](https://github.com/beefytech/Beef/issues/2366) properly in older versions. [This is now fixed in the compiler.](https://github.com/beefytech/Beef/issues/2366#event-21594961854)
+
 ## Usage
 
 ### Basic Deserialization
@@ -26,27 +29,29 @@ defer result.Dispose();
 
 if (result case .Ok(let jsonValue))
 {
-    if (let obj = jsonValue as JsonObject)
+    // we expect object
+    if (let root = jsonValue.AsObject())
     {
-        if (let name = obj.Get("name") as JsonString)
-            Console.WriteLine(name.Value);
+        if (StringView name = root.GetValue("name"))
+            Console.WriteLine(name);
     }
 }
 else if (result case .Err(let error))
 {
     Console.WriteLine("Error: {}", error);
 }
+//Note: You can also use switch case statement as well
 ```
 
 ### Basic Serialization
 ```cs
 let json = JsonObject()
-{
-    ("firstName", "John"),
-    ("lastName", "Smith"),
-    ("isAlive", true),
-    ("age", 27)
-};
+    {
+        ("firstName", "John"),
+        ("lastName", "Smith"),
+        ("isAlive", true),
+        ("age", 27)
+    };
 defer json.Dispose();
 
 let output = scope String();
@@ -89,20 +94,42 @@ Console.WriteLine(output);
 Enable JSONC (JSON with Comments) parsing:
 
 ```cs
+// JSONC (JSON with Comments)
 var config = DeserializerConfig() { EnableComments = true };
 var deserializer = scope Deserializer(config);
 
 let jsonWithComments = """
 {
-  // Single-line comment
-  "setting": "value",
-  /* Multi-line comment */
-  "enabled": true
+    // Single-line comment
+    "setting": "bing bong",
+    /* Multi-line comment */
+    "enabled": true
 }
 """;
 
 var result = deserializer.Deserialize(jsonWithComments);
 defer result.Dispose();
+
+if (result case .Ok(let val))
+{
+    /* YOLO Errors
+    StringView settings = val["setting"];
+    Console.WriteLine(scope $"Settings value: {settings}");
+    */
+
+    // or safer way
+    if (let root = val.AsObject())
+    {
+        if (StringView test = root.GetValue("setting"))
+        {
+            Console.WriteLine(test);
+        }
+    }
+}
+else if (result case .Err(let err))
+{
+    Console.WriteLine(err);
+}
 ```
 
 ## API Reference
@@ -152,4 +179,4 @@ Test suites include:
 
 ## License
 
-Open source. See repository for details.
+MIT License

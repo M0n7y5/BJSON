@@ -75,7 +75,6 @@ namespace BJSON.Enums
 		[Inline]
 		public static bool NeedsEscape(char8 c)
 		{
-			// Control characters < 0x20 or characters in the lookup table
 			return (uint8)c < 0x20 || sSerializeLookup[(uint8)c] != 0;
 		}
 	}

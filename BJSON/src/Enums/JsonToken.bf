@@ -8,6 +8,5 @@ namespace BJSON.Enums
 		RIGHT_CURLY_BRACKET = '}',
 		COLON = ':',
 		COMMA = ',',
-		
 	}
 }
