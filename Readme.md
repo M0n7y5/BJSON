@@ -1,3 +1,5 @@
+![](bjson_logo_128.png)
+
 # BJSON
 
 A high-performance JSON parser and serializer for the Beef programming language.
