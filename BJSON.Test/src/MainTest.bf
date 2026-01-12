@@ -2179,5 +2179,246 @@ namespace BJSON.Test
 
 			Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
 		}
+
+		[Test(Name = "Safe Access Methods")]
+		public static void T_SafeAccessMethods()
+		{
+			Debug.WriteLine("Safe Access Methods tests ...");
+
+			// Test 1: JsonObject.TryGet - existing key
+			{
+				let json = JsonObject() { ("name", "test"), ("value", 42) };
+				defer json.Dispose();
+
+				let result = json.TryGet("name");
+				Test.Assert(result case .Ok, "TryGet should succeed for existing key");
+				if (result case .Ok(let val))
+				{
+					StringView str = val;
+					Test.Assert(str == "test", scope $"Value mismatch. Got: {str}");
+				}
+
+				Debug.WriteLine("  Test 1 (JsonObject.TryGet existing): PASSED");
+			}
+
+			// Test 2: JsonObject.TryGet - missing key
+			{
+				let json = JsonObject() { ("name", "test") };
+				defer json.Dispose();
+
+				let result = json.TryGet("missing");
+				Test.Assert(result case .Err, "TryGet should fail for missing key");
+
+				Debug.WriteLine("  Test 2 (JsonObject.TryGet missing): PASSED");
+			}
+
+			// Test 3: JsonObject.GetOrDefault - existing key
+			{
+				let json = JsonObject() { ("value", 42) };
+				defer json.Dispose();
+
+				let val = json.GetOrDefault("value");
+				int num = val;
+				Test.Assert(num == 42, scope $"Value mismatch. Got: {num}");
+
+				Debug.WriteLine("  Test 3 (JsonObject.GetOrDefault existing): PASSED");
+			}
+
+			// Test 4: JsonObject.GetOrDefault - missing key returns default
+			{
+				let json = JsonObject() { ("name", "test") };
+				defer json.Dispose();
+
+				let val = json.GetOrDefault("missing");
+				Test.Assert(val.IsNull() || val.type == .NULL, "Missing key should return null default");
+
+				// Test with custom default
+				let defaultVal = JsonNumber((int64)99);
+				let val2 = json.GetOrDefault("missing", defaultVal);
+				int num = val2;
+				Test.Assert(num == 99, scope $"Should return custom default. Got: {num}");
+
+				Debug.WriteLine("  Test 4 (JsonObject.GetOrDefault missing): PASSED");
+			}
+
+			// Test 5: JsonArray.TryGet - valid index
+			{
+				var json = JsonArray();
+				json.Add(JsonString("first"));
+				json.Add(JsonString("second"));
+				json.Add(JsonString("third"));
+				defer json.Dispose();
+
+				let result = json.TryGet(1);
+				Test.Assert(result case .Ok, "TryGet should succeed for valid index");
+				if (result case .Ok(let val))
+				{
+					StringView str = val;
+					Test.Assert(str == "second", scope $"Value mismatch. Got: {str}");
+				}
+
+				Debug.WriteLine("  Test 5 (JsonArray.TryGet valid): PASSED");
+			}
+
+			// Test 6: JsonArray.TryGet - out of bounds
+			{
+				var json = JsonArray();
+				json.Add(JsonNumber((int64)1));
+				defer json.Dispose();
+
+				Test.Assert(json.TryGet(-1) case .Err, "TryGet should fail for negative index");
+				Test.Assert(json.TryGet(1) case .Err, "TryGet should fail for index >= Count");
+				Test.Assert(json.TryGet(100) case .Err, "TryGet should fail for large index");
+
+				Debug.WriteLine("  Test 6 (JsonArray.TryGet out of bounds): PASSED");
+			}
+
+			// Test 7: JsonArray.GetOrDefault - valid index
+			{
+				var json = JsonArray();
+				json.Add(JsonNumber((int64)10));
+				json.Add(JsonNumber((int64)20));
+				defer json.Dispose();
+
+				let val = json.GetOrDefault(1);
+				int num = val;
+				Test.Assert(num == 20, scope $"Value mismatch. Got: {num}");
+
+				Debug.WriteLine("  Test 7 (JsonArray.GetOrDefault valid): PASSED");
+			}
+
+			// Test 8: JsonArray.GetOrDefault - out of bounds returns default
+			{
+				var json = JsonArray();
+				json.Add(JsonNumber((int64)1));
+				defer json.Dispose();
+
+				let val = json.GetOrDefault(5);
+				Test.Assert(val.IsNull() || val.type == .NULL, "Out of bounds should return null default");
+
+				// Test with custom default
+				let defaultVal = JsonNumber((int64)999);
+				let val2 = json.GetOrDefault(-1, defaultVal);
+				int num = val2;
+				Test.Assert(num == 999, scope $"Should return custom default. Got: {num}");
+
+				Debug.WriteLine("  Test 8 (JsonArray.GetOrDefault out of bounds): PASSED");
+			}
+
+			// Test 9: Base JsonValue.TryGet for objects
+			{
+				var result = Json.Deserialize("{\"key\":\"value\"}");
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Parse should succeed");
+				if (result case .Ok(let json))
+				{
+					let tryResult = json.TryGet("key");
+					Test.Assert(tryResult case .Ok, "TryGet on parsed object should succeed");
+
+					let missingResult = json.TryGet("missing");
+					Test.Assert(missingResult case .Err, "TryGet for missing key should fail");
+				}
+
+				Debug.WriteLine("  Test 9 (JsonValue.TryGet for objects): PASSED");
+			}
+
+			// Test 10: Base JsonValue.TryGet for arrays
+			{
+				var result = Json.Deserialize("[1, 2, 3]");
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Parse should succeed");
+				if (result case .Ok(let json))
+				{
+					let tryResult = json.TryGet(0);
+					Test.Assert(tryResult case .Ok, "TryGet on parsed array should succeed");
+
+					let outOfBounds = json.TryGet(10);
+					Test.Assert(outOfBounds case .Err, "TryGet for out of bounds should fail");
+				}
+
+				Debug.WriteLine("  Test 10 (JsonValue.TryGet for arrays): PASSED");
+			}
+
+			// Test 11: Type mismatch - TryGet string key on array
+			{
+				var json = JsonArray();
+				json.Add(JsonNumber((int64)1));
+				defer json.Dispose();
+
+				// Cast to JsonValue to use base class TryGet
+				JsonValue val = json;
+				let tryResult = val.TryGet("key");
+				Test.Assert(tryResult case .Err, "TryGet string on array should fail");
+
+				Debug.WriteLine("  Test 11 (type mismatch array): PASSED");
+			}
+
+			// Test 12: Type mismatch - TryGet int index on object
+			{
+				let json = JsonObject() { ("name", "test") };
+				defer json.Dispose();
+
+				// Cast to JsonValue to use base class TryGet
+				JsonValue val = json;
+				let tryResult = val.TryGet(0);
+				Test.Assert(tryResult case .Err, "TryGet int on object should fail");
+
+				Debug.WriteLine("  Test 12 (type mismatch object): PASSED");
+			}
+
+			// Test 13: GetOrDefault with type mismatch returns default
+			{
+				var arr = JsonArray();
+				arr.Add(JsonNumber((int64)1));
+				defer arr.Dispose();
+
+				JsonValue val = arr;
+				var defaultObj = JsonObject() { ("default", true) };
+				defer defaultObj.Dispose();
+				let result = val.GetOrDefault("key", defaultObj);
+				
+				// Should return the default because arr is not an object
+				Test.Assert(result.IsObject(), "Should return default object on type mismatch");
+
+				Debug.WriteLine("  Test 13 (GetOrDefault type mismatch): PASSED");
+			}
+
+			// Test 14: Nested safe access
+			{
+				var result = Json.Deserialize("{\"outer\":{\"inner\":{\"value\":42}}}");
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Parse should succeed");
+				if (result case .Ok(let json))
+				{
+					// Chain TryGet calls safely
+					if (json.TryGet("outer") case .Ok(let outer))
+					{
+						if (outer.TryGet("inner") case .Ok(let inner))
+						{
+							if (inner.TryGet("value") case .Ok(let val))
+							{
+								int num = val;
+								Test.Assert(num == 42, scope $"Nested value mismatch. Got: {num}");
+							}
+						}
+					}
+
+					// Missing nested path should fail gracefully
+					let outerResult = json.TryGet("outer");
+					if (outerResult case .Ok(let outerVal))
+					{
+						let innerMissing = outerVal.TryGet("nonexistent");
+						Test.Assert(innerMissing case .Err, "Missing nested key should fail");
+					}
+				}
+
+				Debug.WriteLine("  Test 14 (nested safe access): PASSED");
+			}
+
+			Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+		}
 	}
 }

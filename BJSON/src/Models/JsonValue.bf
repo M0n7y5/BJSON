@@ -157,7 +157,7 @@ namespace BJSON.Models
 		}
 
 		// Access array
-		public  JsonValue this[int index]
+		public JsonValue this[int index]
 		{
 			get
 			{
@@ -171,6 +171,52 @@ namespace BJSON.Models
 
 				this.As<JsonArray>()[index] = value;
 			}
+		}
+
+		/// Tries to get a value by key (for objects).
+		/// @param key The key to look up.
+		/// @returns The JsonValue if this is an object and key exists, or an error otherwise.
+		public Result<JsonValue> TryGet(StringView key)
+		{
+			if (type != .OBJECT)
+				return .Err;
+
+			return this.As<JsonObject>().TryGet(key);
+		}
+
+		/// Tries to get a value by index (for arrays).
+		/// @param index The index to look up.
+		/// @returns The JsonValue if this is an array and index is valid, or an error otherwise.
+		public Result<JsonValue> TryGet(int index)
+		{
+			if (type != .ARRAY)
+				return .Err;
+
+			return this.As<JsonArray>().TryGet(index);
+		}
+
+		/// Gets a value by key, or returns a default value if not found or not an object.
+		/// @param key The key to look up.
+		/// @param defaultValue The value to return if key doesn't exist or this is not an object.
+		/// @returns The JsonValue if found, or defaultValue otherwise.
+		public JsonValue GetOrDefault(StringView key, JsonValue defaultValue = default)
+		{
+			if (type != .OBJECT)
+				return defaultValue;
+
+			return this.As<JsonObject>().GetOrDefault(key, defaultValue);
+		}
+
+		/// Gets a value by index, or returns a default value if out of bounds or not an array.
+		/// @param index The index to look up.
+		/// @param defaultValue The value to return if index is invalid or this is not an array.
+		/// @returns The JsonValue if found, or defaultValue otherwise.
+		public JsonValue GetOrDefault(int index, JsonValue defaultValue = default)
+		{
+			if (type != .ARRAY)
+				return defaultValue;
+
+			return this.As<JsonArray>().GetOrDefault(index, defaultValue);
 		}
 
 		[Inline]
@@ -481,6 +527,30 @@ namespace BJSON.Models
 
 			return .Err;
 		}
+
+		/// Tries to get a value by key from the object.
+		/// Alias for GetValue for API consistency.
+		/// @param key The key to look up.
+		/// @returns The JsonValue if found, or an error if the key doesn't exist.
+		[Inline]
+		public new Result<JsonValue> TryGet(StringView key)
+		{
+			return GetValue(key);
+		}
+
+		/// Gets a value by key, or returns a default value if not found.
+		/// @param key The key to look up.
+		/// @param defaultValue The value to return if key doesn't exist.
+		/// @returns The JsonValue if found, or defaultValue otherwise.
+		public new JsonValue GetOrDefault(StringView key, JsonValue defaultValue = default)
+		{
+			if (data.object.TryGetValueAlt(key, let val))
+			{
+				return val;
+			}
+
+			return defaultValue;
+		}
 	}
 
 	/// Represents a JSON array (ordered list of values). Owns its list.
@@ -553,6 +623,33 @@ namespace BJSON.Models
 			let value = data.array[index];
 			data.array.RemoveAt(index);
 			JsonValue.DisposeChild(value);
+		}
+
+		/// Tries to get a value at the specified index.
+		/// @param index The index to look up.
+		/// @returns The JsonValue if index is valid, or an error if out of bounds.
+		public new Result<JsonValue> TryGet(int index)
+		{
+			if (index >= 0 && index < data.array.Count)
+			{
+				return data.array[index];
+			}
+
+			return .Err;
+		}
+
+		/// Gets a value at the specified index, or returns a default value if out of bounds.
+		/// @param index The index to look up.
+		/// @param defaultValue The value to return if index is invalid.
+		/// @returns The JsonValue if index is valid, or defaultValue otherwise.
+		public new JsonValue GetOrDefault(int index, JsonValue defaultValue = default)
+		{
+			if (index >= 0 && index < data.array.Count)
+			{
+				return data.array[index];
+			}
+
+			return defaultValue;
 		}
 	}
 }
