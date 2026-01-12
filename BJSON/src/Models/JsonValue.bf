@@ -140,32 +140,6 @@ namespace BJSON.Models
 			return this.As<JsonArray>();
 		}
 
-		/// Parses a JSON string into a JsonValue.
-		/// @param val The JSON string to parse.
-		/// @returns The parsed JsonValue or an error.
-		public static Result<JsonValue> Parse(StringView val)
-		{
-			let deserializer = scope Deserializer();
-			let result = deserializer.Deserialize(val);
-			
-			switch (result)
-			{
-			case .Ok(let jsonValue):
-				return .Ok(jsonValue);
-			case .Err:
-				return .Err;
-			}
-		}
-
-		/// Parses JSON from a stream into a JsonValue.
-		/// @param stream The stream containing JSON data.
-		/// @returns The parsed JsonValue or a JsonParsingError.
-		public static Result<JsonValue, JsonParsingError> Parse(Stream stream)
-		{
-			let deserializer = scope Deserializer();
-			return deserializer.Deserialize(stream);
-		}
-
 		public JsonValue this[String key]
 		{
 			get
@@ -345,7 +319,7 @@ namespace BJSON.Models
 	}
 
 	/// Represents a JSON null value.
-	public struct JsonNull : JsonValue, IParseable<JsonNull>
+	public struct JsonNull : JsonValue
 	{
 		public this()
 		{
@@ -355,18 +329,6 @@ namespace BJSON.Models
 		public override void ToString(String strBuffer)
 		{
 			strBuffer.Append("null");
-		}
-
-		public new static Result<JsonNull> Parse(StringView val)
-		{
-			return val == "null" ? JsonNull() : .Err;
-		}
-
-		public new static Result<JsonNull> Parse(Stream stream)
-		{
-			let toParse = stream.ReadStrSized32(4, .. scope .());
-
-			return Parse(toParse);
 		}
 	}
 
@@ -493,9 +455,18 @@ namespace BJSON.Models
 			return data.object.ContainsKeyAlt(key);
 		}
 
-		public void Remove(String key)
+		/// Removes a key-value pair from the object and disposes the value.
+		/// @param key The key to remove.
+		/// @returns True if the key was found and removed, false otherwise.
+		public bool Remove(StringView key)
 		{
-			data.object.Remove(key);
+			if (data.object.GetAndRemoveAlt(key) case .Ok(let pair))
+			{
+				delete pair.key;
+				JsonValue.DisposeChild(pair.value);
+				return true;
+			}
+			return false;
 		}
 
 		/// Gets a value by key from the object.
@@ -561,14 +532,27 @@ namespace BJSON.Models
 			data.array.Add(value);
 		}
 
-		public void Remove(JsonValue value)
+		/// Removes a value from the array and disposes it.
+		/// @param value The value to remove.
+		/// @returns True if the value was found and removed, false otherwise.
+		public bool Remove(JsonValue value)
 		{
-			data.array.Remove(value);
+			let index = data.array.IndexOf(value);
+			if (index >= 0)
+			{
+				RemoveAt(index);
+				return true;
+			}
+			return false;
 		}
 
+		/// Removes a value at the specified index and disposes it.
+		/// @param index The index of the value to remove.
 		public void RemoveAt(int index)
 		{
+			let value = data.array[index];
 			data.array.RemoveAt(index);
+			JsonValue.DisposeChild(value);
 		}
 	}
 }

@@ -1882,5 +1882,302 @@ namespace BJSON.Test
 
 			Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
 		}
+
+		[Test(Name = "Remove Methods")]
+		public static void T_RemoveMethods()
+		{
+			Debug.WriteLine("Remove Methods tests ...");
+
+			// Test 1: JsonObject.Remove - existing key
+			{
+				var json = JsonObject();
+				json.Add("key1", JsonString("value1"));
+				json.Add("key2", JsonString("value2"));
+				json.Add("key3", JsonString("value3"));
+				defer json.Dispose();
+
+				Test.Assert(json.Count == 3, "Should have 3 keys initially");
+				
+				let removed = json.Remove("key2");
+				Test.Assert(removed, "Remove should return true for existing key");
+				Test.Assert(json.Count == 2, scope $"Should have 2 keys after removal. Got: {json.Count}");
+				Test.Assert(!json.ContainsKey("key2"), "key2 should no longer exist");
+				Test.Assert(json.ContainsKey("key1"), "key1 should still exist");
+				Test.Assert(json.ContainsKey("key3"), "key3 should still exist");
+				
+				Debug.WriteLine("  Test 1 (JsonObject.Remove existing): PASSED");
+			}
+
+			// Test 2: JsonObject.Remove - non-existing key
+			{
+				var json = JsonObject();
+				json.Add("key1", JsonString("value1"));
+				defer json.Dispose();
+
+				let removed = json.Remove("nonexistent");
+				Test.Assert(!removed, "Remove should return false for non-existing key");
+				Test.Assert(json.Count == 1, "Count should remain unchanged");
+				
+				Debug.WriteLine("  Test 2 (JsonObject.Remove non-existing): PASSED");
+			}
+
+			// Test 3: JsonObject.Remove - nested object (ensure proper disposal)
+			{
+				var json = JsonObject();
+				json.Add("nested", JsonObject() { ("inner", "data") });
+				json.Add("other", JsonString("value"));
+				defer json.Dispose();
+
+				Test.Assert(json.Count == 2, "Should have 2 keys initially");
+				
+				let removed = json.Remove("nested");
+				Test.Assert(removed, "Remove should return true");
+				Test.Assert(json.Count == 1, "Should have 1 key after removal");
+				Test.Assert(!json.ContainsKey("nested"), "nested should be removed");
+				
+				Debug.WriteLine("  Test 3 (JsonObject.Remove nested): PASSED");
+			}
+
+			// Test 4: JsonArray.RemoveAt - valid index
+			{
+				var json = JsonArray();
+				json.Add(JsonString("first"));
+				json.Add(JsonString("second"));
+				json.Add(JsonString("third"));
+				defer json.Dispose();
+
+				Test.Assert(json.Count == 3, "Should have 3 items initially");
+				
+				json.RemoveAt(1); // Remove "second"
+				Test.Assert(json.Count == 2, scope $"Should have 2 items after removal. Got: {json.Count}");
+				
+				StringView first = json[0];
+				StringView second = json[1];
+				Test.Assert(first == "first", scope $"First item should be 'first'. Got: {first}");
+				Test.Assert(second == "third", scope $"Second item should be 'third'. Got: {second}");
+				
+				Debug.WriteLine("  Test 4 (JsonArray.RemoveAt valid): PASSED");
+			}
+
+			// Test 5: JsonArray.RemoveAt - first and last elements
+			{
+				var json = JsonArray();
+				json.Add(JsonNumber((int64)1));
+				json.Add(JsonNumber((int64)2));
+				json.Add(JsonNumber((int64)3));
+				defer json.Dispose();
+
+				// Remove first
+				json.RemoveAt(0);
+				Test.Assert(json.Count == 2, "Should have 2 items");
+				int64 val = json[0];
+				Test.Assert(val == 2, scope $"First item should be 2. Got: {val}");
+
+				// Remove last
+				json.RemoveAt(1);
+				Test.Assert(json.Count == 1, "Should have 1 item");
+				val = json[0];
+				Test.Assert(val == 2, scope $"Remaining item should be 2. Got: {val}");
+				
+				Debug.WriteLine("  Test 5 (JsonArray.RemoveAt first/last): PASSED");
+			}
+
+			// Test 6: JsonArray.Remove - by value
+			{
+				var json = JsonArray();
+				let target = JsonString("target");
+				json.Add(JsonString("other1"));
+				json.Add(target);
+				json.Add(JsonString("other2"));
+				defer json.Dispose();
+
+				Test.Assert(json.Count == 3, "Should have 3 items initially");
+				
+				let removed = json.Remove(target);
+				Test.Assert(removed, "Remove should return true for existing value");
+				Test.Assert(json.Count == 2, scope $"Should have 2 items after removal. Got: {json.Count}");
+				
+				Debug.WriteLine("  Test 6 (JsonArray.Remove by value): PASSED");
+			}
+
+			// Test 7: JsonArray.Remove - non-existing value
+			{
+				var json = JsonArray();
+				json.Add(JsonString("item1"));
+				json.Add(JsonString("item2"));
+				let notInArray = JsonString("not in array");
+				defer json.Dispose();
+				defer notInArray.Dispose();
+
+				let removed = json.Remove(notInArray);
+				Test.Assert(!removed, "Remove should return false for non-existing value");
+				Test.Assert(json.Count == 2, "Count should remain unchanged");
+				
+				Debug.WriteLine("  Test 7 (JsonArray.Remove non-existing): PASSED");
+			}
+
+			// Test 8: JsonArray.RemoveAt - nested array (ensure proper disposal)
+			{
+				var json = JsonArray();
+				json.Add(JsonArray() { JsonNumber((int64)1), JsonNumber((int64)2) });
+				json.Add(JsonString("keep"));
+				defer json.Dispose();
+
+				Test.Assert(json.Count == 2, "Should have 2 items initially");
+				
+				json.RemoveAt(0); // Remove nested array
+				Test.Assert(json.Count == 1, "Should have 1 item after removal");
+				
+				StringView remaining = json[0];
+				Test.Assert(remaining == "keep", scope $"Remaining item should be 'keep'. Got: {remaining}");
+				
+				Debug.WriteLine("  Test 8 (JsonArray.RemoveAt nested): PASSED");
+			}
+
+			// Test 9: Multiple removes on same object
+			{
+				var json = JsonObject();
+				json.Add("a", JsonNumber((int64)1));
+				json.Add("b", JsonNumber((int64)2));
+				json.Add("c", JsonNumber((int64)3));
+				json.Add("d", JsonNumber((int64)4));
+				defer json.Dispose();
+
+				json.Remove("b");
+				json.Remove("d");
+				Test.Assert(json.Count == 2, scope $"Should have 2 keys. Got: {json.Count}");
+				Test.Assert(json.ContainsKey("a"), "Should have 'a'");
+				Test.Assert(json.ContainsKey("c"), "Should have 'c'");
+				
+				Debug.WriteLine("  Test 9 (multiple removes): PASSED");
+			}
+
+			// Test 10: Remove all items from array
+			{
+				var json = JsonArray();
+				json.Add(JsonNumber((int64)1));
+				json.Add(JsonNumber((int64)2));
+				json.Add(JsonNumber((int64)3));
+				defer json.Dispose();
+
+				while (json.Count > 0)
+				{
+					json.RemoveAt(0);
+				}
+				Test.Assert(json.Count == 0, "Array should be empty");
+				
+				Debug.WriteLine("  Test 10 (remove all from array): PASSED");
+			}
+
+			Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+		}
+
+		[Test(Name = "Stream Serialization")]
+		public static void T_StreamSerialization()
+		{
+			Debug.WriteLine("Stream Serialization tests ...");
+
+			// Test 1: Basic stream serialization
+			{
+				let json = JsonObject() { ("name", "test"), ("value", 42) };
+				defer json.Dispose();
+
+				let stream = scope MemoryStream();
+				let result = Json.Serialize(json, stream);
+				
+				Test.Assert(result case .Ok, "Stream serialization should succeed");
+				
+				// Read back and verify
+				stream.Position = 0;
+				let reader = scope StreamReader(stream);
+				let output = reader.ReadToEnd(.. scope .());
+				
+				Test.Assert(output == "{\"name\":\"test\",\"value\":42}", 
+					scope $"Output mismatch. Got: {output}");
+				
+				Debug.WriteLine("  Test 1 (basic stream): PASSED");
+			}
+
+			// Test 2: Stream serialization with options (pretty print)
+			{
+				let json = JsonObject() { ("key", "value") };
+				defer json.Dispose();
+
+				let stream = scope MemoryStream();
+				var options = JsonWriterOptions() { Indented = true };
+				let result = Json.Serialize(json, stream, options);
+				
+				Test.Assert(result case .Ok, "Pretty-print stream serialization should succeed");
+				
+				stream.Position = 0;
+				let reader = scope StreamReader(stream);
+				let output = reader.ReadToEnd(.. scope .());
+				
+				Test.Assert(output.Contains("\n"), "Pretty output should contain newlines");
+				Test.Assert(output.Contains("  "), "Pretty output should contain indentation");
+				
+				Debug.WriteLine("  Test 2 (stream with options): PASSED");
+			}
+
+			// Test 3: Round-trip stream serialization/deserialization
+			{
+				let original = JsonObject() 
+				{ 
+					("string", "hello"),
+					("number", 3.14),
+					("bool", true),
+					("null", JsonNull()),
+					("array", JsonArray() { JsonNumber((int64)1), JsonNumber((int64)2) })
+				};
+				defer original.Dispose();
+
+				// Serialize to stream
+				let stream = scope MemoryStream();
+				let serResult = Json.Serialize(original, stream);
+				Test.Assert(serResult case .Ok, "Serialization should succeed");
+
+				// Deserialize from stream
+				stream.Position = 0;
+				var deserResult = Json.Deserialize(stream);
+				defer deserResult.Dispose();
+				
+				Test.Assert(deserResult case .Ok, "Deserialization should succeed");
+				if (deserResult case .Ok(let parsed))
+				{
+					StringView str = parsed["string"];
+					Test.Assert(str == "hello", scope $"string mismatch. Got: {str}");
+					
+					bool boolVal = parsed["bool"];
+					Test.Assert(boolVal == true, "bool mismatch");
+					
+					Test.Assert(parsed["null"].IsNull(), "null mismatch");
+					
+					let arr = parsed["array"].AsArray().Value;
+					Test.Assert(arr.Count == 2, scope $"array count mismatch. Got: {arr.Count}");
+				}
+				
+				Debug.WriteLine("  Test 3 (round-trip): PASSED");
+			}
+
+			// Test 4: Large JSON to stream
+			{
+				var json = JsonArray();
+				for (int i = 0; i < 100; i++)
+				{
+					json.Add(JsonObject() { ("index", i), ("data", "item") });
+				}
+				defer json.Dispose();
+
+				let stream = scope MemoryStream();
+				let result = Json.Serialize(json, stream);
+				
+				Test.Assert(result case .Ok, "Large JSON stream serialization should succeed");
+				Test.Assert(stream.Length > 0, "Stream should have content");
+				
+				Debug.WriteLine(scope $"  Test 4 (large JSON): PASSED - wrote {stream.Length} bytes");
+			}
+
+			Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+		}
 	}
 }

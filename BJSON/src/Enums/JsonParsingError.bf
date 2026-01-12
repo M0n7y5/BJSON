@@ -25,10 +25,10 @@ namespace BJSON.Enums
 				string.Append("Provided Stream is null!");
 			case InvalidDocument:
 				string.Append("Parsed document is not valid!");
-			case MaximumDepthReached:
-				string.Append("Reached maximum supported depth for nested structures! More than 900.");
-			case NumberTooLong(let line, let column):
-				string.AppendF("Number exceeds maximum length of 4096 characters! Line {}, Column {}.", line, column);
+		case MaximumDepthReached:
+			string.Append("Reached maximum supported depth for nested structures! More than 200 levels.");
+		case NumberTooLong(let line, let column):
+			string.AppendF("Number exceeds maximum length of 1024 characters! Line {}, Column {}.", line, column);
 			case DocumentIsEmpty:
 				string.Append("Attempt to parse empty string!");
 			case UnableToRead(let line, let column):

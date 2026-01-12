@@ -62,6 +62,39 @@ namespace BJSON
 			return serializer.Write(json, outText);
 		}
 
+		/// Writes a JsonValue as minified JSON to a stream.
+		/// @param json The JsonValue to serialize.
+		/// @param stream The stream to write the JSON to.
+		/// @returns A Result indicating success or a JsonSerializationError on failure.
+		public static Result<void, JsonSerializationError> Serialize(JsonValue json, Stream stream)
+		{
+			var serializer = scope JsonWriter();
+			var buffer = scope String(256);
 
+			let result = serializer.Write(json, buffer);
+			if (result case .Err(let err))
+				return .Err(err);
+
+			stream.Write(Span<uint8>((.)buffer.Ptr, buffer.Length));
+			return .Ok;
+		}
+
+		/// Writes a JsonValue as JSON to a stream with formatting options.
+		/// @param json The JsonValue to serialize.
+		/// @param stream The stream to write the JSON to.
+		/// @param options Formatting options controlling indentation and newlines.
+		/// @returns A Result indicating success or a JsonSerializationError on failure.
+		public static Result<void, JsonSerializationError> Serialize(JsonValue json, Stream stream, JsonWriterOptions options)
+		{
+			var serializer = scope JsonWriter(options);
+			var buffer = scope String(256);
+
+			let result = serializer.Write(json, buffer, options);
+			if (result case .Err(let err))
+				return .Err(err);
+
+			stream.Write(Span<uint8>((.)buffer.Ptr, buffer.Length));
+			return .Ok;
+		}
 	}
 }
