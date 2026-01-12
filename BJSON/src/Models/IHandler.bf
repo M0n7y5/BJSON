@@ -3,7 +3,7 @@ namespace BJSON.Models
 {
 	/// Interface for handling JSON parsing events in a SAX-style manner.
 	/// Implement this interface to receive callbacks during JSON parsing.
-	interface IHandler
+	public interface IHandler
 	{
 		/// Called when a null value is encountered.
 		bool Null();

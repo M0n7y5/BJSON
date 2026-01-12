@@ -21,6 +21,40 @@ namespace BJSON
 			this.options = options;
 		}
 
+		/// Appends a string to the buffer with proper JSON escaping.
+		/// Used by comptime-generated serialization code.
+		/// @param buffer The string buffer to append to.
+		/// @param str The string to escape and append.
+		public static void AppendEscaped(String buffer, StringView str)
+		{
+			for (let c in str)
+			{
+				let escapeChar = JsonEscapes.GetEscapeChar(c);
+
+				if (escapeChar != 0)
+				{
+					buffer.Append('\\');
+					buffer.Append(escapeChar);
+				}
+				else if ((uint8)c < 0x20)
+				{
+					// Handle other control characters with \uXXXX
+					buffer.Append('\\');
+					buffer.Append('u');
+					buffer.Append('0');
+					buffer.Append('0');
+					let highNibble = ((uint8)c >> 4) & 0x0F;
+					let lowNibble = (uint8)c & 0x0F;
+					buffer.Append(highNibble < 10 ? (char8)('0' + highNibble) : (char8)('a' + highNibble - 10));
+					buffer.Append(lowNibble < 10 ? (char8)('0' + lowNibble) : (char8)('a' + lowNibble - 10));
+				}
+				else
+				{
+					buffer.Append(c);
+				}
+			}
+		}
+
 		public Result<void, JsonSerializationError> Write(JsonValue json, Stream stream)
 		{
 			return Write(json, stream, this.options);
