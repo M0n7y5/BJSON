@@ -7,10 +7,12 @@ A high-performance JSON serializer and deserializer for the Beef programming lan
 ## Features
 
 - RFC 8259 compliant
+- RFC 6901 JSON Pointer support
 - Result-based error handling
 - Pretty-print support
-- Stream-based parsing
-- Comment support (optional)
+- Stream-based parsing and serialization
+- Comment support (optional JSONC)
+- Safe access methods (TryGet, GetOrDefault)
 - Optimized performance
 
 ## Installation
@@ -134,6 +136,60 @@ else if (result case .Err(let err))
 }
 ```
 
+### Safe Access Methods
+
+Use `TryGet` and `GetOrDefault` to safely access values without crashes:
+
+```cs
+let json = JsonObject() { ("name", "test"), ("value", 42) };
+defer json.Dispose();
+
+// TryGet - returns Result, use pattern matching
+if (let val = json.TryGet("name"))
+    Console.WriteLine(scope $"Name: {(StringView)val}");
+
+// GetOrDefault - returns fallback value on failure
+let missing = json.GetOrDefault("nonexistent", "default");
+Console.WriteLine(scope $"Value: {(StringView)missing}");
+
+// Works with arrays too
+let arr = JsonArray() { 1, 2, 3 };
+defer arr.Dispose();
+
+if (let first = arr.TryGet(0))
+    Console.WriteLine(scope $"First: {(int)first}");
+
+let outOfBounds = arr.GetOrDefault(99, JsonNumber(0));  // Returns 0
+```
+
+### JSON Pointer (RFC 6901)
+
+Navigate nested JSON structures using path expressions:
+
+```cs
+let jsonString = "{\"store\":{\"name\":\"My Shop\",\"products\":[{\"name\":\"Apple\"},{\"name\":\"Banana\"}]}}";
+var result = Json.Deserialize(jsonString);
+defer result.Dispose();
+
+if (result case .Ok(let json))
+{
+    // Direct path access
+    if (let storeName = json.GetByPointer("/store/name"))
+        Console.WriteLine(scope $"Store: {(StringView)storeName}");
+
+    // Access array elements
+    if (let product = json.GetByPointer("/store/products/0/name"))
+        Console.WriteLine(scope $"First product: {(StringView)product}");
+
+    // GetByPointerOrDefault - returns fallback on failure
+    let missing = json.GetByPointerOrDefault("/store/address", "N/A");
+}
+```
+
+JSON Pointer escape sequences:
+- `~0` represents `~`
+- `~1` represents `/`
+
 ## API Reference
 
 ### Main Classes
@@ -142,6 +198,7 @@ else if (result case .Err(let err))
 - `Deserializer` - Configurable JSON parser
 - `JsonWriter` - Output serialization
 - `JsonReader` - Stream-based input parsing
+- `JsonPointer` - RFC 6901 path-based navigation
 
 ### JsonValue Types
 
