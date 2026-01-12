@@ -127,17 +127,16 @@ namespace BJSON
 			return .Ok;
 		}
 
-		Result<void, JsonSerializationError> WriteString(JsonValue value, String str)
+		/// Writes a JSON string with proper escaping (without surrounding quotes).
+		/// Used for both string values and object keys.
+		[Inline]
+		private void WriteEscapedString(StringView string, String str)
 		{
-			StringView string = value;
-			
 			// Cache string length at start
 			let strLen = string.Length;
 			
-			// Pre-allocate capacity: original length + 2 quotes + ~12.5% for escapes (using bit shift)
-			str.Reserve(str.Length + strLen + 2 + (strLen >> 3));
-			
-			str.Append('"');
+			// Pre-allocate capacity: original length + ~12.5% for escapes (using bit shift)
+			str.Reserve(str.Length + strLen + (strLen >> 3));
 			
 			int spanStart = 0;
 			int i = 0;
@@ -186,7 +185,14 @@ namespace BJSON
 			{
 				str.Append(string.Substring(spanStart, i - spanStart));
 			}
+		}
+
+		Result<void, JsonSerializationError> WriteString(JsonValue value, String str)
+		{
+			StringView string = value;
 			
+			str.Append('"');
+			WriteEscapedString(string, str);
 			str.Append('"');
 			return .Ok;
 		}
@@ -259,9 +265,9 @@ namespace BJSON
 				if (options.Indented)
 					WriteIndent(str);
 
-				str.Append('"');
-				str.Append(item.key);
-				str.Append(options.Indented ? "\": " : "\":");
+			str.Append('"');
+			WriteEscapedString(item.key, str);
+			str.Append(options.Indented ? "\": " : "\":");
 
 				if (WriteInternal(item.value, str) case .Err(let err))
 					return .Err(err);

@@ -125,6 +125,13 @@ namespace BJSON
 
 			var document = ref treeStack.Back;
 
+			// Check if we're ignoring a duplicate structure first
+			if (IsIgnoringDuplicate)
+			{
+				value.Dispose();
+				return true;
+			}
+
 			switch (document.type)
 			{
 				case .OBJECT:
@@ -134,21 +141,9 @@ namespace BJSON
 						return false; //TODO: notify invalid key error
 					}
 
-					if (IsIgnoringDuplicate)
-					{
-						value.Dispose();
-						return true;
-					}
-
 					return AddToObject(document.As<JsonObject>(), value);
 
 				case .ARRAY:
-					if (IsIgnoringDuplicate)
-					{
-						value.Dispose();
-						return true;
-					}
-
 					document.As<JsonArray>().Add(value);
 					return true;
 
@@ -234,6 +229,13 @@ namespace BJSON
 
 		public bool StartObject()
 		{
+			// Check if we're ignoring a duplicate structure first
+			if (IsIgnoringDuplicate)
+			{
+				IgnoredDepthCounter++;
+				return true;
+			}
+
 			if (treeStack.Count == 0)
 			{
 				// we are root here
@@ -253,13 +255,6 @@ namespace BJSON
 					case .OBJECT:
 						if (currentKey == null)
 							return false; //TODO: notify invalid key error
-
-						if (IsIgnoringDuplicate)
-						{
-							currentKey = null;
-							IgnoredDepthCounter++;
-							return true;
-						}
 
 						let jObj = document.As<JsonObject>();
 
@@ -299,11 +294,6 @@ namespace BJSON
 						}
 
 					case .ARRAY:
-						if (IsIgnoringDuplicate)
-						{
-							IgnoredDepthCounter++;
-							return true;
-						}
 						let jVal = JsonObject();
 						document.As<JsonArray>().Add(jVal);
 
@@ -360,6 +350,13 @@ namespace BJSON
 
 		public bool StartArray()
 		{
+			// Check if we're ignoring a duplicate structure first
+			if (IsIgnoringDuplicate)
+			{
+				IgnoredDepthCounter++;
+				return true;
+			}
+
 			if (treeStack.Count == 0)
 			{
 				// we are root here
@@ -380,12 +377,6 @@ namespace BJSON
 						if (currentKey == null)
 							return false; //TODO: notify invalid key error
 
-						if (IsIgnoringDuplicate)
-						{
-							IgnoredDepthCounter++;
-							return true;
-						}
-
 						let jObj = document.As<JsonObject>();
 
 						// Use TryGetValue for single hash lookup
@@ -398,6 +389,7 @@ namespace BJSON
 									return false;
 
 								case .Ignore:
+									IsIgnoringDuplicate = true;
 									currentKey = null;
 									return true;
 
@@ -423,12 +415,6 @@ namespace BJSON
 						}
 
 					case .ARRAY:
-						if (IsIgnoringDuplicate)
-						{
-							IgnoredDepthCounter++;
-							return true;
-						}
-
 						let jVal = JsonArray();
 						document.As<JsonArray>().Add(jVal);
 
@@ -446,6 +432,13 @@ namespace BJSON
 		{
 			if (IsIgnoringDuplicate)
 			{
+				if (IgnoredDepthCounter == 0)
+				{
+					// we are ending the ignored array with duplicated key
+					IsIgnoringDuplicate = false;
+					return true;
+				}
+
 				IgnoredDepthCounter--;
 				return true;
 			}
