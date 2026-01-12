@@ -45,9 +45,10 @@ namespace BJSON
 		/// @returns A Result indicating success or a JsonSerializationError on failure.
 		public static Result<void, JsonSerializationError> Serialize(JsonValue json, String outText)
 		{
+			var stream = scope StringStream(outText, .Reference);
 			var serializer = scope JsonWriter();
 
-			return serializer.Write(json, outText);
+			return serializer.Write(json, stream);
 		}
 
 		/// Converts a JsonValue to a JSON string with formatting options.
@@ -57,9 +58,10 @@ namespace BJSON
 		/// @returns A Result indicating success or a JsonSerializationError on failure.
 		public static Result<void, JsonSerializationError> Serialize(JsonValue json, String outText, JsonWriterOptions options)
 		{
+			var stream = scope StringStream(outText, .Reference);
 			var serializer = scope JsonWriter(options);
 
-			return serializer.Write(json, outText);
+			return serializer.Write(json, stream, options);
 		}
 
 		/// Writes a JsonValue as minified JSON to a stream.
@@ -69,14 +71,8 @@ namespace BJSON
 		public static Result<void, JsonSerializationError> Serialize(JsonValue json, Stream stream)
 		{
 			var serializer = scope JsonWriter();
-			var buffer = scope String(256);
 
-			let result = serializer.Write(json, buffer);
-			if (result case .Err(let err))
-				return .Err(err);
-
-			stream.Write(Span<uint8>((.)buffer.Ptr, buffer.Length));
-			return .Ok;
+			return serializer.Write(json, stream);
 		}
 
 		/// Writes a JsonValue as JSON to a stream with formatting options.
@@ -87,14 +83,8 @@ namespace BJSON
 		public static Result<void, JsonSerializationError> Serialize(JsonValue json, Stream stream, JsonWriterOptions options)
 		{
 			var serializer = scope JsonWriter(options);
-			var buffer = scope String(256);
 
-			let result = serializer.Write(json, buffer, options);
-			if (result case .Err(let err))
-				return .Err(err);
-
-			stream.Write(Span<uint8>((.)buffer.Ptr, buffer.Length));
-			return .Ok;
+			return serializer.Write(json, stream, options);
 		}
 	}
 }

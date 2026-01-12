@@ -1,5 +1,6 @@
 using BJSON.Models;
 using System;
+using System.IO;
 using BJSON.Constants;
 using BJSON.Enums;
 namespace BJSON
@@ -8,6 +9,7 @@ namespace BJSON
 	{
 		private JsonWriterOptions options;
 		private int depth = 0;
+		private Stream stream;
 
 		public this()
 		{
@@ -19,39 +21,40 @@ namespace BJSON
 			this.options = options;
 		}
 
-		public Result<void, JsonSerializationError> Write(JsonValue json, String outText)
+		public Result<void, JsonSerializationError> Write(JsonValue json, Stream stream)
 		{
-			return Write(json, outText, this.options);
+			return Write(json, stream, this.options);
 		}
 
-		public Result<void, JsonSerializationError> Write(JsonValue json, String outText, JsonWriterOptions options)
+		public Result<void, JsonSerializationError> Write(JsonValue json, Stream stream, JsonWriterOptions options)
 		{
 			this.options = options;
 			this.depth = 0;
+			this.stream = stream;
 
-			return WriteInternal(json, outText);
+			return WriteInternal(json);
 		}
 
-		private Result<void, JsonSerializationError> WriteInternal(JsonValue json, String outText)
+		private Result<void, JsonSerializationError> WriteInternal(JsonValue json)
 		{
 			switch (json.type)
 			{
 			case .NULL:
-				return WriteNull(json, outText);
+				return WriteNull(json);
 			case .BOOL:
-				return WriteBoolean(json, outText);
+				return WriteBoolean(json);
 			case .NUMBER:
-				return WriteNumber(json, outText);
+				return WriteNumber(json);
 			case .NUMBER_SIGNED:
-				return WriteNumber(json, outText);
+				return WriteNumber(json);
 			case .NUMBER_UNSIGNED:
-				return WriteNumber(json, outText);
+				return WriteNumber(json);
 			case .STRING:
-				return WriteString(json, outText);
+				return WriteString(json);
 			case .ARRAY:
-				return WriteArray(json, outText);
+				return WriteArray(json);
 			case .OBJECT:
-				return WriteObject(json, outText);
+				return WriteObject(json);
 
 			default:
 				return .Err(.UnknownType);
@@ -60,50 +63,50 @@ namespace BJSON
 		}
 
 		[Inline]
-		private void WriteIndent(String str)
+		private void WriteIndent()
 		{
 			if (!options.Indented)
 				return;
 
 			for (int i = 0; i < depth; i++)
 			{
-				str.Append(options.IndentString);
+				stream.WriteStrUnsized(options.IndentString);
 			}
 		}
 
 		[Inline]
-		private void WriteNewLine(String str)
+		private void WriteNewLine()
 		{
 			if (!options.Indented)
 				return;
 
-			str.Append(options.NewLine);
+			stream.WriteStrUnsized(options.NewLine);
 		}
 
-		Result<void, JsonSerializationError> WriteNull(JsonValue value, String str)
+		Result<void, JsonSerializationError> WriteNull(JsonValue value)
 		{
-			str.Append(NullLiteral);
+			stream.WriteStrUnsized(NullLiteral);
 
 			return .Ok;
 		}
 
-		Result<void, JsonSerializationError> WriteBoolean(JsonValue value, String str)
+		Result<void, JsonSerializationError> WriteBoolean(JsonValue value)
 		{
 			bool boolean = value;
 
-			str.Append(boolean ? TrueLiteral : FalseLiteral);
+			stream.WriteStrUnsized(boolean ? TrueLiteral : FalseLiteral);
 
 			return .Ok;
 		}
 
-		Result<void, JsonSerializationError> WriteNumber(JsonValue value, String str)
+		Result<void, JsonSerializationError> WriteNumber(JsonValue value)
 		{
 			switch (value.type)
 			{
 			case .NUMBER_UNSIGNED:
-				str.Append(value.data.unsignedNumber.ToString(.. scope .()));
+				stream.WriteStrUnsized(value.data.unsignedNumber.ToString(.. scope .()));
 			case .NUMBER_SIGNED:
-				str.Append(value.data.signedNumber.ToString(.. scope .()));
+				stream.WriteStrUnsized(value.data.signedNumber.ToString(.. scope .()));
 			case .NUMBER:
 				let number = value.data.number;
 
@@ -119,7 +122,8 @@ namespace BJSON
 
 				char8[25] buff;
 				BJSON.Internal.dtoa(value.data.number, &buff);
-				str.Append(&buff);
+				// Write null-terminated char8 array as string
+				stream.WriteStrUnsized(StringView(&buff));
 			default:
 				return .Err(.InvalidNumber);
 			}
@@ -130,14 +134,8 @@ namespace BJSON
 		/// Writes a JSON string with proper escaping (without surrounding quotes).
 		/// Used for both string values and object keys.
 		[Inline]
-		private void WriteEscapedString(StringView string, String str)
+		private void WriteEscapedString(StringView string)
 		{
-			// Cache string length at start
-			let strLen = string.Length;
-			
-			// Pre-allocate capacity: original length + ~12.5% for escapes (using bit shift)
-			str.Reserve(str.Length + strLen + (strLen >> 3));
-			
 			int spanStart = 0;
 			int i = 0;
 			
@@ -147,15 +145,15 @@ namespace BJSON
 				
 				if (escapeChar != 0)
 				{
-					// Append any non-escaped characters before this one
+					// Write any non-escaped characters before this one
 					if (i > spanStart)
 					{
-						str.Append(string.Substring(spanStart, i - spanStart));
+						stream.WriteStrUnsized(string.Substring(spanStart, i - spanStart));
 					}
 					
 					// Write the escape sequence
-					str.Append('\\');
-					str.Append(escapeChar);
+					stream.Write<char8>('\\');
+					stream.Write<char8>(escapeChar);
 					spanStart = i + 1;
 				}
 				else if ((uint8)c < 0x20)
@@ -163,49 +161,49 @@ namespace BJSON
 					// Handle other control characters with \uXXXX
 					if (i > spanStart)
 					{
-						str.Append(string.Substring(spanStart, i - spanStart));
+						stream.WriteStrUnsized(string.Substring(spanStart, i - spanStart));
 					}
 					
-					str.Append('\\');
-					str.Append('u');
-					str.Append('0');
-					str.Append('0');
+					stream.Write<char8>('\\');
+					stream.Write<char8>('u');
+					stream.Write<char8>('0');
+					stream.Write<char8>('0');
 					let highNibble = ((uint8)c >> 4) & 0x0F;
 					let lowNibble = (uint8)c & 0x0F;
-					str.Append(highNibble < 10 ? (char8)('0' + highNibble) : (char8)('a' + highNibble - 10));
-					str.Append(lowNibble < 10 ? (char8)('0' + lowNibble) : (char8)('a' + lowNibble - 10));
+					stream.Write<char8>(highNibble < 10 ? (char8)('0' + highNibble) : (char8)('a' + highNibble - 10));
+					stream.Write<char8>(lowNibble < 10 ? (char8)('0' + lowNibble) : (char8)('a' + lowNibble - 10));
 					spanStart = i + 1;
 				}
 				
 				i++;
 			}
 			
-			// Append any remaining non-escaped characters
+			// Write any remaining non-escaped characters
 			if (i > spanStart)
 			{
-				str.Append(string.Substring(spanStart, i - spanStart));
+				stream.WriteStrUnsized(string.Substring(spanStart, i - spanStart));
 			}
 		}
 
-		Result<void, JsonSerializationError> WriteString(JsonValue value, String str)
+		Result<void, JsonSerializationError> WriteString(JsonValue value)
 		{
 			StringView string = value;
 			
-			str.Append('"');
-			WriteEscapedString(string, str);
-			str.Append('"');
+			stream.Write<char8>('"');
+			WriteEscapedString(string);
+			stream.Write<char8>('"');
 			return .Ok;
 		}
 
-		Result<void, JsonSerializationError> WriteArray(JsonValue value, String str)
+		Result<void, JsonSerializationError> WriteArray(JsonValue value)
 		{
 			let array = value.AsArray().Value;
 
-			str.Append((char8)JsonToken.LEFT_SQUARE_BRACKET);
+			stream.Write<char8>((char8)JsonToken.LEFT_SQUARE_BRACKET);
 
 			if (array.Count > 0 && options.Indented)
 			{
-				WriteNewLine(str);
+				WriteNewLine();
 				depth++;
 			}
 
@@ -214,40 +212,40 @@ namespace BJSON
 			{
 				if (!first)
 				{
-					str.Append((char8)JsonToken.COMMA);
+					stream.Write<char8>((char8)JsonToken.COMMA);
 					if (options.Indented)
-						WriteNewLine(str);
+						WriteNewLine();
 				}
 				first = false;
 
 				if (options.Indented)
-					WriteIndent(str);
+					WriteIndent();
 
-				if (WriteInternal(item, str) case .Err(let err))
+				if (WriteInternal(item) case .Err(let err))
 					return .Err(err);
 			}
 
 			if (array.Count > 0 && options.Indented)
 			{
-				WriteNewLine(str);
+				WriteNewLine();
 				depth--;
-				WriteIndent(str);
+				WriteIndent();
 			}
 
-			str.Append((char8)JsonToken.RIGHT_SQUARE_BRACKET);
+			stream.Write<char8>((char8)JsonToken.RIGHT_SQUARE_BRACKET);
 
 			return .Ok;
 		}
 
-		Result<void, JsonSerializationError> WriteObject(JsonValue value, String str)
+		Result<void, JsonSerializationError> WriteObject(JsonValue value)
 		{
 			let obj = value.AsObject().Value;
 
-			str.Append((char8)JsonToken.LEFT_CURLY_BRACKET);
+			stream.Write<char8>((char8)JsonToken.LEFT_CURLY_BRACKET);
 
 			if (obj.Count > 0 && options.Indented)
 			{
-				WriteNewLine(str);
+				WriteNewLine();
 				depth++;
 			}
 
@@ -256,31 +254,31 @@ namespace BJSON
 			{
 				if (!first)
 				{
-					str.Append((char8)JsonToken.COMMA);
+					stream.Write<char8>((char8)JsonToken.COMMA);
 					if (options.Indented)
-						WriteNewLine(str);
+						WriteNewLine();
 				}
 				first = false;
 
 				if (options.Indented)
-					WriteIndent(str);
+					WriteIndent();
 
-			str.Append('"');
-			WriteEscapedString(item.key, str);
-			str.Append(options.Indented ? "\": " : "\":");
+				stream.Write<char8>('"');
+				WriteEscapedString(item.key);
+				stream.WriteStrUnsized(options.Indented ? "\": " : "\":");
 
-				if (WriteInternal(item.value, str) case .Err(let err))
+				if (WriteInternal(item.value) case .Err(let err))
 					return .Err(err);
 			}
 
 			if (obj.Count > 0 && options.Indented)
 			{
-				WriteNewLine(str);
+				WriteNewLine();
 				depth--;
-				WriteIndent(str);
+				WriteIndent();
 			}
 
-			str.Append((char8)JsonToken.RIGHT_CURLY_BRACKET);
+			stream.Write<char8>((char8)JsonToken.RIGHT_CURLY_BRACKET);
 
 			return .Ok;
 		}
