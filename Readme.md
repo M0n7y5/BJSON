@@ -2,7 +2,7 @@
 
 # BJSON
 
-A high-performance JSON parser and serializer for the Beef programming language.
+A high-performance JSON serializer and deserializer for the Beef programming language.
 
 ## Features
 
