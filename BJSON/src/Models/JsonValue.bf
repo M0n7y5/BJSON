@@ -219,6 +219,23 @@ namespace BJSON.Models
 			return this.As<JsonArray>().GetOrDefault(index, defaultValue);
 		}
 
+		/// Resolves a JSON Pointer (RFC 6901) against this value.
+		/// @param pointer The JSON Pointer string (e.g., "/users/0/name").
+		/// @returns The resolved JsonValue or an error if the pointer is invalid or path doesn't exist.
+		public Result<JsonValue, JsonPointerError> GetByPointer(StringView pointer)
+		{
+			return JsonPointer.Resolve(this, pointer);
+		}
+
+		/// Resolves a JSON Pointer (RFC 6901), returning a default value on failure.
+		/// @param pointer The JSON Pointer string (e.g., "/users/0/name").
+		/// @param defaultValue The value to return if resolution fails.
+		/// @returns The resolved JsonValue or defaultValue if the pointer is invalid or path doesn't exist.
+		public JsonValue GetByPointerOrDefault(StringView pointer, JsonValue defaultValue = default)
+		{
+			return JsonPointer.ResolveOrDefault(this, pointer, defaultValue);
+		}
+
 		[Inline]
 		public static implicit operator uint(Self self)
 		{

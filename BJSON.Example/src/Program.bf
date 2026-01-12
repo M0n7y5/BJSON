@@ -79,6 +79,51 @@ namespace BJSON.Example
 
 			Console.WriteLine();
 			{
+				// JSON Pointer (RFC 6901) - Navigate nested structures by path
+				let jsonString = """
+				{
+				  "store": {
+				    "name": "My Shop",
+				    "products": [
+				      {"id": 1, "name": "Apple", "price": 1.50},
+				      {"id": 2, "name": "Banana", "price": 0.75}
+				    ]
+				  }
+				}
+				""";
+
+				var result = Json.Deserialize(jsonString);
+				defer result.Dispose();
+
+				if (result case .Ok(let json))
+				{
+					// Direct path access with GetByPointer
+					if (let storeName = json.GetByPointer("/store/name"))
+						Console.WriteLine(scope $"Store name: {(StringView)storeName}");
+
+					// Access array elements
+					if (let productName = json.GetByPointer("/store/products/0/name"))
+						Console.WriteLine(scope $"First product: {(StringView)productName}");
+
+					if (let price = json.GetByPointer("/store/products/1/price"))
+						Console.WriteLine(scope $"Second product price: {(double)price}");
+
+					// GetByPointerOrDefault - returns default on failure
+					let missing = json.GetByPointerOrDefault("/store/address", "N/A");
+					Console.WriteLine(scope $"Address: {(StringView)missing}");
+
+					// Error handling
+					if (json.GetByPointer("/invalid/path") case .Err(let err))
+					{
+						let errStr = scope String();
+						err.ToString(errStr);
+						Console.WriteLine(scope $"Expected error: {errStr}");
+					}
+				}
+			}
+
+			Console.WriteLine();
+			{
 				// JSONC (JSON with Comments)
 				var config = DeserializerConfig() { EnableComments = true };
 				var deserializer = scope Deserializer(config);
