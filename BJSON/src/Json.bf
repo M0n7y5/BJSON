@@ -45,11 +45,10 @@ namespace BJSON
 		{
 			var deserializer = scope Deserializer();
 			var result = deserializer.Deserialize(stream);
+			defer result.Dispose();
 
 			if (result case .Err(let err))
 				return .Err(err);
-
-			defer result.Dispose();
 
 			if (obj.JsonDeserialize(result.Value) case .Err)
 				return .Err(.InvalidDocument);
@@ -66,11 +65,10 @@ namespace BJSON
 		{
 			var deserializer = scope Deserializer();
 			var result = deserializer.Deserialize(stream);
+			defer result.Dispose();
 
 			if (result case .Err(let err))
 				return .Err(err);
-
-			defer result.Dispose();
 
 			let obj = new T();
 			if (obj.JsonDeserialize(result.Value) case .Err)

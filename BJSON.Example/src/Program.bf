@@ -28,7 +28,7 @@ namespace BJSON.Example
 	{
 		public static int Main(String[] args)
 		{
-			// ============================================
+		// ============================================
 			// Attribute-based Serialization/Deserialization
 			// ============================================
 			Console.WriteLine("=== Attribute-based JSON ===\n");
@@ -186,9 +186,12 @@ namespace BJSON.Example
 					if (let price = json.GetByPointer("/store/products/1/price"))
 						Console.WriteLine(scope $"Second product price: {(double)price}");
 
-					// GetByPointerOrDefault - returns default on failure
-					let missing = json.GetByPointerOrDefault("/store/address", "N/A");
+				// GetByPointerOrDefault - returns default on failure  
+					// Note: When using a string default, dispose if not found
+					var missing = json.GetByPointerOrDefault("/store/address", "N/A");
 					Console.WriteLine(scope $"Address: {(StringView)missing}");
+					if (json.GetByPointer("/store/address") case .Err)
+						missing.Dispose();  // Dispose the default string we created
 
 					// Error handling
 					if (json.GetByPointer("/invalid/path") case .Err(let err))
