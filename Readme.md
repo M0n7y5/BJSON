@@ -8,6 +8,7 @@ A high-performance JSON serializer and deserializer for the Beef programming lan
 
 - RFC 8259 compliant
 - RFC 6901 JSON Pointer support
+- **Attribute-based serialization** with `[JsonObject]`
 - Result-based error handling
 - Pretty-print support
 - Stream-based parsing and serialization
@@ -23,6 +24,75 @@ A high-performance JSON serializer and deserializer for the Beef programming lan
 > ### ⚠️ Be sure you have latest nightly of Beef IDE installed due to [some syntax not working](https://github.com/beefytech/Beef/issues/2366) properly in older versions. [This is now fixed in the compiler.](https://github.com/beefytech/Beef/commit/c592f205203d761ad6eb1861f7af5dd6f2d7cfe7)
 
 ## Usage
+
+### Attribute-based Serialization (Recommended)
+
+The easiest way to work with JSON is using the `[JsonObject]` attribute for automatic serialization:
+
+```cs
+using BJSON;
+using BJSON.Attributes;
+using System.Collections;
+
+[JsonObject]
+class Person
+{
+    public String Name = new .() ~ delete _;
+    public int Age;
+    public bool IsActive;
+    
+    [JsonPropertyName("email_address")]  // Custom JSON property name
+    public String Email = new .() ~ delete _;
+    
+    public List<String> Tags = new .() ~ DeleteContainerAndItems!(_);
+    
+    [JsonIgnore(Condition = .Always)]  // Exclude from serialization
+    public int InternalId;
+}
+
+// Serialize to JSON
+let person = scope Person();
+person.Name.Set("John Doe");
+person.Age = 30;
+
+let output = scope String();
+Json.Serialize(person, output);
+// Output: {"Name":"John Doe","Age":30,"IsActive":false,"email_address":"","Tags":[]}
+
+// Deserialize from JSON (pre-allocated object)
+let json = """{"Name":"Jane","Age":25}""";
+let stream = scope StringStream(json, .Reference);
+let restored = scope Person();
+Json.Deserialize<Person>(stream, restored);
+
+// Or use allocating API (caller must delete)
+let stream2 = scope StringStream(json, .Reference);
+if (Json.Deserialize<Person>(stream2) case .Ok(let newPerson))
+{
+    defer delete newPerson;
+    // use newPerson...
+}
+```
+
+#### Supported Field Types
+- Primitives: `bool`, `int`, `float`, `double`, etc.
+- `String` (must be pre-allocated with `new .() ~ delete _`)
+- Enums (serialized as strings)
+- Nullable types (`int?`, `float?`) - treated as optional
+- `List<T>` for any supported type
+- `Dictionary<String, T>` (string keys only)
+- Sized arrays (`int[3]`, `float[N]`)
+- Nested objects with `[JsonObject]`
+
+#### Attributes
+- `[JsonObject]` - Mark class/struct for serialization
+- `[JsonPropertyName("name")]` - Custom JSON property name
+- `[JsonIgnore]` - Exclude field from serialization
+- `[JsonInclude]` - Include private fields
+
+### JsonValue API
+
+For dynamic JSON handling without predefined types:
 
 ### Basic Deserialization
 

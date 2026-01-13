@@ -1,14 +1,92 @@
 using System;
-using BJSON.Models;
 using System.IO;
+using System.Collections;
+using BJSON;
+using BJSON.Models;
 using BJSON.Attributes;
 
 namespace BJSON.Example
 {
+	// Define a class with [JsonObject] for automatic serialization/deserialization
+	[JsonObject]
+	class Person
+	{
+		public String Name = new .() ~ delete _;
+		public int Age;
+		public bool IsActive;
+
+		[JsonPropertyName("email_address")]  // Custom JSON property name
+		public String Email = new .() ~ delete _;
+
+		public List<String> Tags = new .() ~ DeleteContainerAndItems!(_);
+
+	[JsonIgnore(Condition = .Always)]  // This field won't be serialized
+	public int InternalId;
+	}
+
 	class Program
 	{
 		public static int Main(String[] args)
 		{
+			// ============================================
+			// Attribute-based Serialization/Deserialization
+			// ============================================
+			Console.WriteLine("=== Attribute-based JSON ===\n");
+			{
+				// Create and populate a Person object
+				let person = scope Person();
+				person.Name.Set("John Doe");
+				person.Age = 30;
+				person.IsActive = true;
+				person.Email.Set("john@example.com");
+				person.Tags.Add(new String("developer"));
+				person.Tags.Add(new String("beef"));
+				person.InternalId = 12345;  // This won't be serialized
+
+				// Serialize to string using Json.Serialize<T>
+				let output = scope String();
+				Json.Serialize(person, output);
+				Console.WriteLine("Serialized:");
+				Console.WriteLine(output);
+				Console.WriteLine();
+
+				// Deserialize back using Json.Deserialize<T> with pre-allocated object
+				let jsonInput = """
+					{
+						"Name": "Jane Smith",
+						"Age": 25,
+						"IsActive": false,
+						"email_address": "jane@example.com",
+						"Tags": ["designer", "artist"]
+					}
+					""";
+
+				let stream = scope StringStream(jsonInput, .Reference);
+				let restored = scope Person();
+
+				if (Json.Deserialize<Person>(stream, restored) case .Ok)
+				{
+					Console.WriteLine("Deserialized:");
+					Console.WriteLine(scope $"  Name: {restored.Name}");
+					Console.WriteLine(scope $"  Age: {restored.Age}");
+					Console.WriteLine(scope $"  IsActive: {restored.IsActive}");
+					Console.WriteLine(scope $"  Email: {restored.Email}");
+					Console.Write("  Tags: ");
+					for (let tag in restored.Tags)
+						Console.Write(scope $"{tag} ");
+					Console.WriteLine("\n");
+				}
+
+				// Or use the allocating API (returns new object, caller must delete)
+				let stream2 = scope StringStream(jsonInput, .Reference);
+				if (Json.Deserialize<Person>(stream2) case .Ok(let newPerson))
+				{
+					defer delete newPerson;
+					Console.WriteLine(scope $"Allocated Person: {newPerson.Name}, {newPerson.Age}");
+				}
+			}
+
+			Console.WriteLine("\n=== JsonValue API ===\n");
 			{
 				let jsonString = "{\"name\":\"BJSON\",\"version\":1.0}";
 				var result = Json.Deserialize(jsonString);
