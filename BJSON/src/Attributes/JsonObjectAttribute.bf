@@ -112,9 +112,9 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 	{
 		let code = scope String();
 		code.Append("""
-			public Result<void> JsonSerialize(String buffer)
+			public Result<void> JsonSerialize(System.IO.Stream stream)
 			{
-				buffer.Append('{');
+				stream.Write<char8>('{');
 				bool _firstField = true;
 
 			""");
@@ -128,7 +128,7 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 		}
 
 		code.Append("""
-				buffer.Append('}');
+				stream.Write<char8>('}');
 				return .Ok;
 			}\n
 			""");
@@ -581,7 +581,7 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 			{
 				code.AppendF($"\tif ({field.Name}.HasValue)\n");
 				code.Append("\t{\n");
-				EmitFieldValueSerialization(code, field, fieldType, jsonName, "\t\t", true);
+				EmitFieldValueSerialization(code, field, fieldType, jsonName, "\t\t", true, isNullable);
 				code.Append("\t}\n");
 				return;
 			}
@@ -589,7 +589,7 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 			{
 				code.AppendF($"\tif ({field.Name} != default)\n");
 				code.Append("\t{\n");
-				EmitFieldValueSerialization(code, field, fieldType, jsonName, "\t\t", true);
+				EmitFieldValueSerialization(code, field, fieldType, jsonName, "\t\t", true, false);
 				code.Append("\t}\n");
 				return;
 			}
@@ -600,56 +600,56 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 		{
 			code.AppendF($"\tif ({field.Name}.HasValue)\n");
 			code.Append("\t{\n");
-			EmitFieldValueSerialization(code, field, fieldType, jsonName, "\t\t", true);
+			EmitFieldValueSerialization(code, field, fieldType, jsonName, "\t\t", true, isNullable);
 			code.Append("\t}\n");
 		}
 		else
 		{
-			EmitFieldValueSerialization(code, field, fieldType, jsonName, "\t", true);
+			EmitFieldValueSerialization(code, field, fieldType, jsonName, "\t", true, false);
 		}
 	}
 
 	/// Emits the actual value serialization for a field.
 	[Comptime]
-	private void EmitFieldValueSerialization(String code, FieldInfo field, Type fieldType, StringView jsonName, StringView indent, bool handleComma)
+	private void EmitFieldValueSerialization(String code, FieldInfo field, Type fieldType, StringView jsonName, StringView indent, bool handleComma, bool isNullable)
 	{
 		if (handleComma)
 		{
-			code.AppendF($"{indent}if (!_firstField) buffer.Append(',');\n");
+			code.AppendF($"{indent}if (!_firstField) stream.Write<char8>(',');\n");
 			code.AppendF($"{indent}_firstField = false;\n");
 		}
 
 		// Write the key
-		code.AppendF($"{indent}buffer.Append('\"');\n");
-		code.AppendF($"{indent}buffer.Append(\"{jsonName}\");\n");
-		code.AppendF($"{indent}buffer.Append(\"\\\":\");\n");
+		code.AppendF($"{indent}stream.Write<char8>('\"');\n");
+		code.AppendF($"{indent}stream.WriteStrUnsized(\"{jsonName}\");\n");
+		code.AppendF($"{indent}stream.WriteStrUnsized(\"\\\":\");\n");
+
+		// For nullable types, we need to access .Value
+		let fieldExpr = isNullable ? scope $"{field.Name}.Value" : scope $"{field.Name}";
 
 		// Write the value
 		if (fieldType == typeof(bool))
 		{
-			code.AppendF($"{indent}buffer.Append({field.Name} ? \"true\" : \"false\");\n");
+			code.AppendF($"{indent}BJSON.JsonWriter.WriteBool(stream, {fieldExpr});\n");
 		}
 		else if (fieldType.IsInteger)
 		{
-			code.AppendF($"{indent}{field.Name}.ToString(buffer);\n");
+			code.AppendF($"{indent}BJSON.JsonWriter.WriteInt(stream, {fieldExpr});\n");
 		}
 		else if (fieldType.IsFloatingPoint)
 		{
-			code.AppendF($"{indent}if ({field.Name}.IsNaN || {field.Name}.IsInfinity) return .Err;\n");
-			code.AppendF($"{indent}{field.Name}.ToString(buffer);\n");
+			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteFloat(stream, {fieldExpr}));\n");
 		}
 		else if (fieldType == typeof(String))
 		{
-			code.AppendF($"{indent}buffer.Append('\"');\n");
-			code.AppendF($"{indent}BJSON.JsonWriter.AppendEscaped(buffer, {field.Name});\n");
-			code.AppendF($"{indent}buffer.Append('\"');\n");
+			code.AppendF($"{indent}BJSON.JsonWriter.WriteString(stream, {fieldExpr});\n");
 		}
 		else if (fieldType.IsEnum)
 		{
 			// Serialize enums as strings
-			code.AppendF($"{indent}buffer.Append('\"');\n");
-			code.AppendF($"{indent}{field.Name}.ToString(buffer);\n");
-			code.AppendF($"{indent}buffer.Append('\"');\n");
+			code.AppendF($"{indent}stream.Write<char8>('\"');\n");
+			code.AppendF($"{indent}stream.WriteStrUnsized({fieldExpr}.ToString(.. scope .()));\n");
+			code.AppendF($"{indent}stream.Write<char8>('\"');\n");
 		}
 		else if (IsList(fieldType))
 		{
@@ -666,7 +666,7 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 		else if (fieldType.IsObject || fieldType.IsStruct)
 		{
 			// Nested object with [JsonObject]
-			code.AppendF($"{indent}Try!({field.Name}.JsonSerialize(buffer));\n");
+			code.AppendF($"{indent}Try!({fieldExpr}.JsonSerialize(stream));\n");
 		}
 	}
 
@@ -678,17 +678,17 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 		if (elementType == null)
 			return;
 
-		code.AppendF($"{indent}buffer.Append('[');\n");
+		code.AppendF($"{indent}stream.Write<char8>('[');\n");
 		code.AppendF($"{indent}bool _first{field.Name} = true;\n");
 		code.AppendF($"{indent}for (let _item in {field.Name})\n");
 		code.AppendF($"{indent}{{\n");
-		code.AppendF($"{indent}\tif (!_first{field.Name}) buffer.Append(',');\n");
+		code.AppendF($"{indent}\tif (!_first{field.Name}) stream.Write<char8>(',');\n");
 		code.AppendF($"{indent}\t_first{field.Name} = false;\n");
 
 		EmitValueSerialization(code, elementType, "_item", scope $"{indent}\t");
 
 		code.AppendF($"{indent}}}\n");
-		code.AppendF($"{indent}buffer.Append(']');\n");
+		code.AppendF($"{indent}stream.Write<char8>(']');\n");
 	}
 
 	/// Emits serialization for Dictionary<K,V> fields.
@@ -700,20 +700,20 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 		if (keyType == null || valueType == null)
 			return;
 
-		code.AppendF($"{indent}buffer.Append('{{');\n");
+		code.AppendF($"{indent}stream.Write<char8>('{{');\n");
 		code.AppendF($"{indent}bool _first{field.Name} = true;\n");
 		code.AppendF($"{indent}for (let _kv in {field.Name})\n");
 		code.AppendF($"{indent}{{\n");
-		code.AppendF($"{indent}\tif (!_first{field.Name}) buffer.Append(',');\n");
+		code.AppendF($"{indent}\tif (!_first{field.Name}) stream.Write<char8>(',');\n");
 		code.AppendF($"{indent}\t_first{field.Name} = false;\n");
-		code.AppendF($"{indent}\tbuffer.Append('\"');\n");
-		code.AppendF($"{indent}\tBJSON.JsonWriter.AppendEscaped(buffer, _kv.key);\n");
-		code.AppendF($"{indent}\tbuffer.Append(\"\\\":\");\n");
+		code.AppendF($"{indent}\tstream.Write<char8>('\"');\n");
+		code.AppendF($"{indent}\tBJSON.JsonWriter.WriteEscaped(stream, _kv.key);\n");
+		code.AppendF($"{indent}\tstream.WriteStrUnsized(\"\\\":\");\n");
 
 		EmitValueSerialization(code, valueType, "_kv.value", scope $"{indent}\t");
 
 		code.AppendF($"{indent}}}\n");
-		code.AppendF($"{indent}buffer.Append('}}');\n");
+		code.AppendF($"{indent}stream.Write<char8>('}}');\n");
 	}
 
 	/// Emits serialization for sized array fields (T[N]).
@@ -724,15 +724,15 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 		let sizedArrayType = fieldType as SizedArrayType;
 		let arraySize = sizedArrayType != null ? sizedArrayType.ElementCount : 0;
 
-		code.AppendF($"{indent}buffer.Append('[');\n");
+		code.AppendF($"{indent}stream.Write<char8>('[');\n");
 		code.AppendF($"{indent}for (int _i = 0; _i < {arraySize}; _i++)\n");
 		code.AppendF($"{indent}{{\n");
-		code.AppendF($"{indent}\tif (_i > 0) buffer.Append(',');\n");
+		code.AppendF($"{indent}\tif (_i > 0) stream.Write<char8>(',');\n");
 
 		EmitValueSerialization(code, elementType, scope $"{field.Name}[_i]", scope $"{indent}\t");
 
 		code.AppendF($"{indent}}}\n");
-		code.AppendF($"{indent}buffer.Append(']');\n");
+		code.AppendF($"{indent}stream.Write<char8>(']');\n");
 	}
 
 	/// Emits serialization for a single value (used for list/array/dict elements).
@@ -741,32 +741,29 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 	{
 		if (valueType == typeof(bool))
 		{
-			code.AppendF($"{indent}buffer.Append({valueExpr} ? \"true\" : \"false\");\n");
+			code.AppendF($"{indent}BJSON.JsonWriter.WriteBool(stream, {valueExpr});\n");
 		}
 		else if (valueType.IsInteger)
 		{
-			code.AppendF($"{indent}{valueExpr}.ToString(buffer);\n");
+			code.AppendF($"{indent}BJSON.JsonWriter.WriteInt(stream, {valueExpr});\n");
 		}
 		else if (valueType.IsFloatingPoint)
 		{
-			code.AppendF($"{indent}if ({valueExpr}.IsNaN || {valueExpr}.IsInfinity) return .Err;\n");
-			code.AppendF($"{indent}{valueExpr}.ToString(buffer);\n");
+			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteFloat(stream, {valueExpr}));\n");
 		}
 		else if (valueType == typeof(String))
 		{
-			code.AppendF($"{indent}buffer.Append('\"');\n");
-			code.AppendF($"{indent}BJSON.JsonWriter.AppendEscaped(buffer, {valueExpr});\n");
-			code.AppendF($"{indent}buffer.Append('\"');\n");
+			code.AppendF($"{indent}BJSON.JsonWriter.WriteString(stream, {valueExpr});\n");
 		}
 		else if (valueType.IsEnum)
 		{
-			code.AppendF($"{indent}buffer.Append('\"');\n");
-			code.AppendF($"{indent}{valueExpr}.ToString(buffer);\n");
-			code.AppendF($"{indent}buffer.Append('\"');\n");
+			code.AppendF($"{indent}stream.Write<char8>('\"');\n");
+			code.AppendF($"{indent}stream.WriteStrUnsized({valueExpr}.ToString(.. scope .()));\n");
+			code.AppendF($"{indent}stream.Write<char8>('\"');\n");
 		}
 		else if (valueType.HasCustomAttribute<JsonObjectAttribute>())
 		{
-			code.AppendF($"{indent}Try!({valueExpr}.JsonSerialize(buffer));\n");
+			code.AppendF($"{indent}Try!({valueExpr}.JsonSerialize(stream));\n");
 		}
 	}
 }

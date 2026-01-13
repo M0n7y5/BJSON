@@ -55,6 +55,113 @@ namespace BJSON
 			}
 		}
 
+		/// Writes a string to a stream with proper JSON escaping (without quotes).
+		/// Used by comptime-generated serialization code.
+		/// @param stream The stream to write to.
+		/// @param str The string to escape and write.
+		public static void WriteEscaped(Stream stream, StringView str)
+		{
+			int spanStart = 0;
+			int i = 0;
+
+			for (let c in str)
+			{
+				let escapeChar = JsonEscapes.GetEscapeChar(c);
+
+				if (escapeChar != 0)
+				{
+					// Write any non-escaped characters before this one
+					if (i > spanStart)
+					{
+						stream.WriteStrUnsized(str.Substring(spanStart, i - spanStart));
+					}
+
+					// Write the escape sequence
+					stream.Write<char8>('\\');
+					stream.Write<char8>(escapeChar);
+					spanStart = i + 1;
+				}
+				else if ((uint8)c < 0x20)
+				{
+					// Handle other control characters with \uXXXX
+					if (i > spanStart)
+					{
+						stream.WriteStrUnsized(str.Substring(spanStart, i - spanStart));
+					}
+
+					stream.Write<char8>('\\');
+					stream.Write<char8>('u');
+					stream.Write<char8>('0');
+					stream.Write<char8>('0');
+					let highNibble = ((uint8)c >> 4) & 0x0F;
+					let lowNibble = (uint8)c & 0x0F;
+					stream.Write<char8>(highNibble < 10 ? (char8)('0' + highNibble) : (char8)('a' + highNibble - 10));
+					stream.Write<char8>(lowNibble < 10 ? (char8)('0' + lowNibble) : (char8)('a' + lowNibble - 10));
+					spanStart = i + 1;
+				}
+
+				i++;
+			}
+
+			// Write any remaining non-escaped characters
+			if (i > spanStart)
+			{
+				stream.WriteStrUnsized(str.Substring(spanStart, i - spanStart));
+			}
+		}
+
+		/// Writes a JSON string value to a stream (with surrounding quotes).
+		/// Used by comptime-generated serialization code.
+		/// @param stream The stream to write to.
+		/// @param str The string value to write.
+		public static void WriteString(Stream stream, StringView str)
+		{
+			stream.Write<char8>('"');
+			WriteEscaped(stream, str);
+			stream.Write<char8>('"');
+		}
+
+		/// Writes a boolean value to a stream.
+		/// @param stream The stream to write to.
+		/// @param value The boolean value.
+		public static void WriteBool(Stream stream, bool value)
+		{
+			stream.WriteStrUnsized(value ? TrueLiteral : FalseLiteral);
+		}
+
+		/// Writes an integer value to a stream.
+		/// @param stream The stream to write to.
+		/// @param value The integer value.
+		public static void WriteInt(Stream stream, int64 value)
+		{
+			stream.WriteStrUnsized(value.ToString(.. scope .()));
+		}
+
+		/// Writes an unsigned integer value to a stream.
+		/// @param stream The stream to write to.
+		/// @param value The unsigned integer value.
+		public static void WriteUInt(Stream stream, uint64 value)
+		{
+			stream.WriteStrUnsized(value.ToString(.. scope .()));
+		}
+
+		/// Writes a floating-point value to a stream.
+		/// @param stream The stream to write to.
+		/// @param value The floating-point value.
+		/// @returns Ok on success, Err if value is NaN or Infinity.
+		public static Result<void, JsonSerializationError> WriteFloat(Stream stream, double value)
+		{
+			if (value.IsNaN)
+				return .Err(.NaNNotAllowed);
+			if (value.IsInfinity)
+				return .Err(.InfinityNotAllowed);
+
+			char8[25] buff;
+			BJSON.Internal.dtoa(value, &buff);
+			stream.WriteStrUnsized(StringView(&buff));
+			return .Ok;
+		}
+
 		public Result<void, JsonSerializationError> Write(JsonValue json, Stream stream)
 		{
 			return Write(json, stream, this.options);

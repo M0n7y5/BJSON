@@ -3,6 +3,7 @@ using BJSON;
 using BJSON.Models;
 using BJSON.Enums;
 using System;
+using System.IO;
 using System.Collections;
 using System.Diagnostics;
 
@@ -188,7 +189,7 @@ class ReflectTest
 		player.Position[2] = 30;
 
 		let buffer = scope String();
-		let result = player.JsonSerialize(buffer);
+		let result = Json.Serialize(player, buffer);
 
 		Test.Assert(result case .Ok, "Serialization failed");
 		Test.Assert(buffer.Length > 0, "Empty serialization output");
@@ -231,16 +232,12 @@ class ReflectTest
 
 		// Serialize
 		let buffer = scope String();
-		Test.Assert(original.JsonSerialize(buffer) case .Ok, "Serialization failed");
+		Test.Assert(Json.Serialize(original, buffer) case .Ok, "Serialization failed");
 
-		// Parse
-		var parseResult = Json.Deserialize(buffer);
-		defer parseResult.Dispose();
-		Test.Assert(parseResult case .Ok, "Parse failed");
-
-		// Deserialize into new object
+		// Parse and deserialize into new object using the new stream API
+		let stream = scope StringStream(buffer, .Reference);
 		let restored = scope Player();
-		Test.Assert(restored.JsonDeserialize(parseResult.Value) case .Ok, "Deserialization failed");
+		Test.Assert(Json.Deserialize<Player>(stream, restored) case .Ok, "Deserialization failed");
 
 		// Compare
 		Test.Assert(restored.Name == original.Name, "Name mismatch after round trip");
@@ -364,7 +361,7 @@ class ReflectTest
 
 		// Test serialization includes private field
 		let buffer = scope String();
-		Test.Assert(obj.JsonSerialize(buffer) case .Ok, "Serialize failed");
+		Test.Assert(Json.Serialize(obj, buffer) case .Ok, "Serialize failed");
 		Test.Assert(buffer.Contains("_privateValue"), "Private field should be in serialized output");
 
 		Debug.WriteLine("Reflection: Private Field with JsonInclude - PASSED");
@@ -531,7 +528,7 @@ class ReflectTest
 		player.Info.Value = 0;
 
 		let buffer = scope String();
-		Test.Assert(player.JsonSerialize(buffer) case .Ok, "Serialization failed");
+		Test.Assert(Json.Serialize(player, buffer) case .Ok, "Serialization failed");
 
 		// Verify the output is valid JSON by parsing it
 		var parseResult = Json.Deserialize(buffer);
@@ -544,5 +541,64 @@ class ReflectTest
 		Test.Assert(name == "Test\"With\\Escapes\nNewline", scope $"String escaping failed, got: {name}");
 
 		Debug.WriteLine("Reflection: String Escaping in Serialization - PASSED");
+	}
+
+	[Test(Name = "Reflection: Allocating Deserialize API")]
+	public static void T_AllocatingDeserialize()
+	{
+		let json = """
+			{
+				"Description": "Test allocation",
+				"Value": 999
+			}
+			""";
+
+		// Use the allocating API - returns a new object
+		let stream = scope StringStream(json, .Reference);
+		var result = Json.Deserialize<NestedInfo>(stream);
+
+		Test.Assert(result case .Ok, "Deserialize failed");
+
+		let info = result.Value;
+		defer delete info;
+
+		Test.Assert(info.Description == "Test allocation", scope $"Expected 'Test allocation', got '{info.Description}'");
+		Test.Assert(info.Value == 999, scope $"Expected 999, got {info.Value}");
+
+		Debug.WriteLine("Reflection: Allocating Deserialize API - PASSED");
+	}
+
+	[Test(Name = "Reflection: Stream-based Serialization")]
+	public static void T_StreamSerialization()
+	{
+		let info = scope NestedInfo();
+		info.Description.Set("Stream test");
+		info.Value = 42;
+
+		// Serialize directly to a MemoryStream
+		let memStream = scope MemoryStream();
+		Test.Assert(Json.Serialize(info, memStream) case .Ok, "Stream serialization failed");
+
+		// Read back the stream contents
+		memStream.Position = 0;
+		let buffer = scope String();
+		let len = (int)memStream.Length;
+		buffer.Reserve(len);
+		for (int i = 0; i < len; i++)
+		{
+			if (memStream.Read<char8>() case .Ok(let c))
+				buffer.Append(c);
+		}
+
+		// Verify the JSON is correct
+		var parseResult = Json.Deserialize(buffer);
+		defer parseResult.Dispose();
+		Test.Assert(parseResult case .Ok, scope $"Failed to parse stream output: {buffer}");
+
+		let root = parseResult.Value.AsObject().Value;
+		Test.Assert((StringView)root.GetValue("Description").Value == "Stream test", "Description mismatch");
+		Test.Assert((int)root.GetValue("Value").Value == 42, "Value mismatch");
+
+		Debug.WriteLine("Reflection: Stream-based Serialization - PASSED");
 	}
 }
