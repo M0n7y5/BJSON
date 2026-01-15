@@ -185,7 +185,8 @@ namespace BJSON.Test
 			}
 
 			{
-				let val = json.GetByPointerOrDefault("/nonexistent", JsonNumber(42));
+				// Use non-generic overload with JsonValue cast
+				let val = json.GetByPointerOrDefault("/nonexistent", (JsonValue)JsonNumber(42));
 				Test.Assert((int)val == 42, "GetByPointerOrDefault should return default when not found");
 			}
 

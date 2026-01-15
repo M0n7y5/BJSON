@@ -4,6 +4,7 @@ using System.Collections;
 using BJSON;
 using BJSON.Models;
 using BJSON.Attributes;
+using BJSON.Enums;
 
 namespace BJSON.Example
 {
@@ -28,7 +29,7 @@ namespace BJSON.Example
 	{
 		public static int Main(String[] args)
 		{
-		// ============================================
+			// ============================================
 			// Attribute-based Serialization/Deserialization
 			// ============================================
 			Console.WriteLine("=== Attribute-based JSON ===\n");
@@ -170,35 +171,27 @@ namespace BJSON.Example
 				}
 				""";
 
-				var result = Json.Deserialize(jsonString);
-				defer result.Dispose();
-
-				if (result case .Ok(let json))
+				using (JsonValue json = Json.Deserialize(jsonString))
 				{
 					// Direct path access with GetByPointer
-					if (let storeName = json.GetByPointer("/store/name"))
-						Console.WriteLine(scope $"Store name: {(StringView)storeName}");
+					if (StringView storeName = json.GetByPointer("/store/name"))
+						Console.WriteLine(scope $"Store name: {storeName}");
 
 					// Access array elements
-					if (let productName = json.GetByPointer("/store/products/0/name"))
-						Console.WriteLine(scope $"First product: {(StringView)productName}");
+					if (StringView productName = json.GetByPointer("/store/products/0/name"))
+						Console.WriteLine(scope $"First product: {productName}");
 
-					if (let price = json.GetByPointer("/store/products/1/price"))
-						Console.WriteLine(scope $"Second product price: {(double)price}");
+					if (double price = json.GetByPointer("/store/products/1/price"))
+						Console.WriteLine(scope $"Second product price: {price}");
 
-				// GetByPointerOrDefault - returns default on failure  
-					// Note: When using a string default, dispose if not found
-					var missing = json.GetByPointerOrDefault("/store/address", "N/A");
-					Console.WriteLine(scope $"Address: {(StringView)missing}");
-					if (json.GetByPointer("/store/address") case .Err)
-						missing.Dispose();  // Dispose the default string we created
+					// GetByPointerOrDefault<T> - returns primitive default on failure (no allocation!)
+					let addr = json.GetByPointerOrDefault<StringView>("/store/address", "N/A");
+					Console.WriteLine(scope $"Address: {addr}");
 
 					// Error handling
 					if (json.GetByPointer("/invalid/path") case .Err(let err))
 					{
-						let errStr = scope String();
-						err.ToString(errStr);
-						Console.WriteLine(scope $"Expected error: {errStr}");
+						Console.WriteLine(scope $"Expected error: {err}");
 					}
 				}
 			}
@@ -240,6 +233,33 @@ namespace BJSON.Example
 				else if (result case .Err(let err))
 				{
 					Console.WriteLine(err);
+				}
+			}
+
+
+			{
+
+				// Serialize to JSON
+				let person = scope Person();
+				person.Name.Set("John Doe");
+				person.Age = 30;
+
+				let output = scope String();
+				Json.Serialize(person, output);
+				// Output: {"Name":"John Doe","Age":30,"IsActive":false,"email_address":"","Tags":[]}
+
+				// Deserialize from JSON (pre-allocated object)
+				let json = "{\"Name\":\"Jane\",\"Age\":25}";
+				let stream = scope StringStream(json, .Reference);
+				let restored = scope Person();
+				Json.Deserialize<Person>(stream, restored);
+
+				// Or use allocating API (caller must delete)
+				let stream2 = scope StringStream(json, .Reference);
+				if (Json.Deserialize<Person>(stream2) case .Ok(let newPerson))
+				{
+				    defer delete newPerson;
+				    // use newPerson...
 				}
 			}
 

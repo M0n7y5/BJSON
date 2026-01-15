@@ -65,8 +65,8 @@ class SafeAccessTest
 			let val = json.GetOrDefault("missing");
 			Test.Assert(val.IsNull() || val.type == .NULL, "Missing key should return null default");
 
-			// Test with custom default
-			let defaultVal = JsonNumber((int64)99);
+			// Test with custom default (cast to JsonValue to use non-generic overload)
+			JsonValue defaultVal = JsonNumber((int64)99);
 			let val2 = json.GetOrDefault("missing", defaultVal);
 			int num = val2;
 			Test.Assert(num == 99, scope $"Should return custom default. Got: {num}");
@@ -129,8 +129,8 @@ class SafeAccessTest
 			let val = json.GetOrDefault(5);
 			Test.Assert(val.IsNull() || val.type == .NULL, "Out of bounds should return null default");
 
-			// Test with custom default
-			let defaultVal = JsonNumber((int64)999);
+			// Test with custom default (cast to JsonValue to use non-generic overload)
+			JsonValue defaultVal = JsonNumber((int64)999);
 			let val2 = json.GetOrDefault(-1, defaultVal);
 			int num = val2;
 			Test.Assert(num == 999, scope $"Should return custom default. Got: {num}");
@@ -210,7 +210,7 @@ class SafeAccessTest
 			JsonValue val = arr;
 			var defaultObj = JsonObject() { ("default", true) };
 			defer defaultObj.Dispose();
-			let result = val.GetOrDefault("key", defaultObj);
+			let result = val.GetOrDefault("key", (JsonValue)defaultObj);
 			
 			// Should return the default because arr is not an object
 			Test.Assert(result.IsObject(), "Should return default object on type mismatch");
@@ -249,6 +249,79 @@ class SafeAccessTest
 			}
 
 			Debug.WriteLine("  Test 14 (nested safe access): PASSED");
+		}
+
+		// Test 15: Generic GetOrDefault<T> - no allocation for primitives
+		{
+			let json = JsonObject() { ("name", "Alice"), ("age", 30), ("active", true) };
+			defer json.Dispose();
+
+			// String access without allocation
+			StringView name = json.GetOrDefault<StringView>("name", "Unknown");
+			Test.Assert(name == "Alice", scope $"Name mismatch. Got: {name}");
+
+			// Missing key returns primitive default (no allocation)
+			StringView missing = json.GetOrDefault<StringView>("nonexistent", "Default");
+			Test.Assert(missing == "Default", scope $"Should return default. Got: {missing}");
+
+			// Number access
+			int age = json.GetOrDefault<int>("age", 0);
+			Test.Assert(age == 30, scope $"Age mismatch. Got: {age}");
+
+			int missingAge = json.GetOrDefault<int>("unknown", 99);
+			Test.Assert(missingAge == 99, scope $"Should return default. Got: {missingAge}");
+
+			// Bool access
+			bool active = json.GetOrDefault<bool>("active", false);
+			Test.Assert(active == true, "Active should be true");
+
+			Debug.WriteLine("  Test 15 (Generic GetOrDefault<T>): PASSED");
+		}
+
+		// Test 16: Generic GetOrDefault<T> for arrays
+		{
+			var json = JsonArray();
+			json.Add(JsonString("first"));
+			json.Add(JsonNumber((int64)42));
+			defer json.Dispose();
+
+			StringView first = json.GetOrDefault<StringView>(0, "none");
+			Test.Assert(first == "first", scope $"First mismatch. Got: {first}");
+
+			int num = json.GetOrDefault<int>(1, 0);
+			Test.Assert(num == 42, scope $"Number mismatch. Got: {num}");
+
+			// Out of bounds returns default
+			StringView oob = json.GetOrDefault<StringView>(99, "default");
+			Test.Assert(oob == "default", scope $"Should return default. Got: {oob}");
+
+			Debug.WriteLine("  Test 16 (Generic GetOrDefault<T> for arrays): PASSED");
+		}
+
+		// Test 17: Generic GetByPointerOrDefault<T>
+		{
+			var result = Json.Deserialize("{\"user\":{\"name\":\"Bob\",\"score\":100}}");
+			defer result.Dispose();
+
+			Test.Assert(result case .Ok, "Parse should succeed");
+			if (result case .Ok(let json))
+			{
+				// Successful path access
+				StringView name = json.GetByPointerOrDefault<StringView>("/user/name", "Unknown");
+				Test.Assert(name == "Bob", scope $"Name mismatch. Got: {name}");
+
+				int score = json.GetByPointerOrDefault<int>("/user/score", 0);
+				Test.Assert(score == 100, scope $"Score mismatch. Got: {score}");
+
+				// Missing path returns default (no allocation!)
+				StringView missing = json.GetByPointerOrDefault<StringView>("/user/email", "N/A");
+				Test.Assert(missing == "N/A", scope $"Should return default. Got: {missing}");
+
+				int missingScore = json.GetByPointerOrDefault<int>("/invalid/path", -1);
+				Test.Assert(missingScore == -1, scope $"Should return default. Got: {missingScore}");
+			}
+
+			Debug.WriteLine("  Test 17 (Generic GetByPointerOrDefault<T>): PASSED");
 		}
 
 		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");

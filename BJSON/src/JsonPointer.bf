@@ -15,7 +15,7 @@ namespace BJSON
 		case InvalidArrayIndex(StringView token);
 		case TypeMismatch(StringView expected, JsonType actual);
 
-		public void ToString(String str)
+		public override void ToString(String str)
 		{
 			switch (this)
 			{
@@ -129,6 +129,19 @@ namespace BJSON
 		{
 			if (Resolve(root, pointer) case .Ok(let val))
 				return val;
+			return defaultValue;
+		}
+
+		/// Tries to resolve a JSON Pointer and convert to type T, returning a default value on failure.
+		/// This generic overload avoids allocation when using primitive defaults (StringView, int, etc.).
+		/// @param root The root JSON value to navigate from.
+		/// @param pointer The JSON Pointer string.
+		/// @param defaultValue The value to return if resolution fails.
+		/// @returns The resolved value converted to T, or defaultValue if the pointer is invalid or path doesn't exist.
+		public static T ResolveOrDefault<T>(JsonValue root, StringView pointer, T defaultValue) where T : var
+		{
+			if (Resolve(root, pointer) case .Ok(let val))
+				return (T)val;
 			return defaultValue;
 		}
 

@@ -9,7 +9,7 @@ namespace BJSON.Enums
 		case InfinityNotAllowed;
 		case UnknownType;
 
-		public void ToString(String string)
+		public override void ToString(String string)
 		{
 			switch (this)
 			{

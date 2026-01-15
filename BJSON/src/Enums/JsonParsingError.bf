@@ -17,7 +17,7 @@ namespace BJSON.Enums
 		case MissingQuotationMark(uint line, uint column);
 		case InvalidEncoding(uint line, uint column);
 
-		public void ToString(String string)
+		public override void ToString(String string)
 		{
 			switch (this)
 			{

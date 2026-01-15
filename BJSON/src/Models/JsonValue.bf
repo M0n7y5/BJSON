@@ -219,6 +219,32 @@ namespace BJSON.Models
 			return this.As<JsonArray>().GetOrDefault(index, defaultValue);
 		}
 
+		/// Gets a value by key and converts to type T, or returns a default value.
+		/// This generic overload avoids allocation when using primitive defaults (StringView, int, etc.).
+		/// @param key The key to look up.
+		/// @param defaultValue The value to return if key doesn't exist or this is not an object.
+		/// @returns The value converted to T if found, or defaultValue otherwise.
+		public T GetOrDefault<T>(StringView key, T defaultValue) where T : var
+		{
+			if (type != .OBJECT)
+				return defaultValue;
+
+			return this.As<JsonObject>().GetOrDefault<T>(key, defaultValue);
+		}
+
+		/// Gets a value by index and converts to type T, or returns a default value.
+		/// This generic overload avoids allocation when using primitive defaults.
+		/// @param index The index to look up.
+		/// @param defaultValue The value to return if index is invalid or this is not an array.
+		/// @returns The value converted to T if found, or defaultValue otherwise.
+		public T GetOrDefault<T>(int index, T defaultValue) where T : var
+		{
+			if (type != .ARRAY)
+				return defaultValue;
+
+			return this.As<JsonArray>().GetOrDefault<T>(index, defaultValue);
+		}
+
 		/// Resolves a JSON Pointer (RFC 6901) against this value.
 		/// @param pointer The JSON Pointer string (e.g., "/users/0/name").
 		/// @returns The resolved JsonValue or an error if the pointer is invalid or path doesn't exist.
@@ -234,6 +260,16 @@ namespace BJSON.Models
 		public JsonValue GetByPointerOrDefault(StringView pointer, JsonValue defaultValue = default)
 		{
 			return JsonPointer.ResolveOrDefault(this, pointer, defaultValue);
+		}
+
+		/// Resolves a JSON Pointer (RFC 6901) and converts to type T, returning a default value on failure.
+		/// This generic overload avoids allocation when using primitive defaults (StringView, int, etc.).
+		/// @param pointer The JSON Pointer string (e.g., "/users/0/name").
+		/// @param defaultValue The value to return if resolution fails.
+		/// @returns The resolved value converted to T, or defaultValue if the pointer is invalid or path doesn't exist.
+		public T GetByPointerOrDefault<T>(StringView pointer, T defaultValue) where T : var
+		{
+			return JsonPointer.ResolveOrDefault<T>(this, pointer, defaultValue);
 		}
 
 		[Inline]
@@ -568,6 +604,22 @@ namespace BJSON.Models
 
 			return defaultValue;
 		}
+
+		/// Gets a value by key and converts it to type T, or returns a default value if not found.
+		/// This generic overload avoids allocation when using primitive defaults (StringView, int, etc.).
+		/// Use this for primitive types only - for JsonValue defaults, use the non-generic overload.
+		/// @param key The key to look up.
+		/// @param defaultValue The value to return if key doesn't exist.
+		/// @returns The value converted to T if found, or defaultValue otherwise.
+		public new T GetOrDefault<T>(StringView key, T defaultValue) where T : var
+		{
+			if (data.object.TryGetValueAlt(key, let val))
+			{
+				return (T)val;
+			}
+
+			return defaultValue;
+		}
 	}
 
 	/// Represents a JSON array (ordered list of values). Owns its list.
@@ -664,6 +716,22 @@ namespace BJSON.Models
 			if (index >= 0 && index < data.array.Count)
 			{
 				return data.array[index];
+			}
+
+			return defaultValue;
+		}
+
+		/// Gets a value at the specified index and converts it to type T, or returns a default value if out of bounds.
+		/// This generic overload avoids allocation when using primitive defaults.
+		/// Use this for primitive types only - for JsonValue defaults, use the non-generic overload.
+		/// @param index The index to look up.
+		/// @param defaultValue The value to return if index is invalid.
+		/// @returns The value converted to T if index is valid, or defaultValue otherwise.
+		public new T GetOrDefault<T>(int index, T defaultValue) where T : var
+		{
+			if (index >= 0 && index < data.array.Count)
+			{
+				return (T)data.array[index];
 			}
 
 			return defaultValue;
