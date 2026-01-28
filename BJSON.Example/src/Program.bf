@@ -25,6 +25,44 @@ namespace BJSON.Example
 	public int InternalId;
 	}
 
+	// ============================================
+	// Examples of new features
+	// ============================================
+
+	// Base class for inheritance example
+	[JsonObject]
+	class Entity
+	{
+		public int Id;
+		public bool Active;
+	}
+
+	// Derived class - inherits Id and Active from Entity
+	[JsonObject]
+	class Player : Entity
+	{
+		public String Name = new .() ~ delete _;
+		public int Score;
+	}
+
+	// Enum that serializes as string by default
+	[JsonObject]
+	class DefaultStatus
+	{
+		public enum Status { Inactive, Active, Suspended }
+		public Status State;
+	}
+
+	// Enum with [JsonNumberHandling] to serialize as number
+	[JsonNumberHandling(.AsNumber)]
+	public enum NumericStatus { Inactive, Active, Suspended }
+
+	[JsonObject]
+	class NumericStatusHolder
+	{
+		public NumericStatus State;
+	}
+
 	class Program
 	{
 		public static int Main(String[] args)
@@ -45,8 +83,7 @@ namespace BJSON.Example
 				person.InternalId = 12345;  // This won't be serialized
 
 				// Serialize to string using Json.Serialize<T>
-				let output = scope String();
-				Json.Serialize(person, output);
+				let output = Json.Serialize(person, .. scope .());
 				Console.WriteLine("Serialized:");
 				Console.WriteLine(output);
 				Console.WriteLine();
@@ -84,6 +121,82 @@ namespace BJSON.Example
 				{
 					defer delete newPerson;
 					Console.WriteLine(scope $"Allocated Person: {newPerson.Name}, {newPerson.Age}");
+				}
+			}
+
+			Console.WriteLine("\n=== Inheritance Support ===\n");
+			{
+				let player = scope Player();
+				player.Id = 42;           // Inherited field
+				player.Active = true;     // Inherited field
+				player.Name.Set("Alice");
+				player.Score = 1000;
+
+				// Serialize - includes all fields from both base and derived classes
+				let json = Json.Serialize(player, .. scope .());
+				Console.WriteLine("Player with inheritance:");
+				Console.WriteLine(json);
+				Console.WriteLine();
+
+				// Deserialize - works seamlessly with inherited fields
+				let inputJson = """
+					{
+						"Id": 99,
+						"Active": false,
+						"Name": "Bob",
+						"Score": 500
+					}
+					"""
+					;
+
+				let stream = scope StringStream(inputJson, .Reference);
+				let restored = scope Player();
+				if (Json.Deserialize<Player>(stream, restored) case .Ok)
+				{
+					Console.WriteLine("Deserialized Player:");
+					Console.WriteLine(scope $"  Id (from Entity): {restored.Id}");
+					Console.WriteLine(scope $"  Active (from Entity): {restored.Active}");
+					Console.WriteLine(scope $"  Name (from Player): {restored.Name}");
+					Console.WriteLine(scope $"  Score (from Player): {restored.Score}");
+				}
+			}
+
+			Console.WriteLine("\n=== Enum Serialization as Number ===\n");
+			{
+				// Default behavior: serializes as string
+				let defaultHolder = scope DefaultStatus();
+				defaultHolder.State = .Active;
+				let defaultJson = Json.Serialize(defaultHolder, .. scope .());
+				Console.WriteLine("Default enum (as string):");
+				Console.WriteLine(defaultJson);
+
+				// With attribute: serializes as number
+				let numericHolder = scope NumericStatusHolder();
+				numericHolder.State = .Active;
+				let numericJson = Json.Serialize(numericHolder, .. scope .());
+				Console.WriteLine("\nWith [JsonNumberHandling(.AsNumber)]:");
+				Console.WriteLine(numericJson);
+
+				// Deserialization accepts both formats by default
+				let input1 = """
+					{"State":"Suspended"}
+					""";  // String format
+				let input2 = """
+					{"State":2}
+					""";  // Number format
+
+				let stream1 = scope StringStream(input1, .Reference);
+				let result1 = scope NumericStatusHolder();
+				if (Json.Deserialize<NumericStatusHolder>(stream1, result1) case .Ok)
+				{
+					Console.WriteLine(scope $"\nDeserialized from string: {result1.State}");
+				}
+
+				let stream2 = scope StringStream(input2, .Reference);
+				let result2 = scope NumericStatusHolder();
+				if (Json.Deserialize<NumericStatusHolder>(stream2, result2) case .Ok)
+				{
+					Console.WriteLine(scope $"Deserialized from number: {result2.State}");
 				}
 			}
 
@@ -233,33 +346,6 @@ namespace BJSON.Example
 				else if (result case .Err(let err))
 				{
 					Console.WriteLine(err);
-				}
-			}
-
-
-			{
-
-				// Serialize to JSON
-				let person = scope Person();
-				person.Name.Set("John Doe");
-				person.Age = 30;
-
-				let output = scope String();
-				Json.Serialize(person, output);
-				// Output: {"Name":"John Doe","Age":30,"IsActive":false,"email_address":"","Tags":[]}
-
-				// Deserialize from JSON (pre-allocated object)
-				let json = "{\"Name\":\"Jane\",\"Age\":25}";
-				let stream = scope StringStream(json, .Reference);
-				let restored = scope Person();
-				Json.Deserialize<Person>(stream, restored);
-
-				// Or use allocating API (caller must delete)
-				let stream2 = scope StringStream(json, .Reference);
-				if (Json.Deserialize<Person>(stream2) case .Ok(let newPerson))
-				{
-				    defer delete newPerson;
-				    // use newPerson...
 				}
 			}
 

@@ -158,10 +158,6 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 		if (!field.IsInstanceField)
 			return false;
 
-		// Must be declared in this type (not inherited)
-		if (field.DeclaringType != ownerType)
-			return false;
-
 		// Check JsonIgnore attribute
 		if (let ignoreAttr = field.GetCustomAttribute<JsonIgnoreAttribute>())
 		{
@@ -646,10 +642,29 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 		}
 		else if (fieldType.IsEnum)
 		{
-			// Serialize enums as strings
-			code.AppendF($"{indent}stream.Write<char8>('\"');\n");
-			code.AppendF($"{indent}stream.WriteStrUnsized({fieldExpr}.ToString(.. scope .()));\n");
-			code.AppendF($"{indent}stream.Write<char8>('\"');\n");
+			// Check for JsonNumberHandling attribute on the field first, then on the type
+			bool useNumber = false;
+			
+			if (let attr = field.GetCustomAttribute<JsonNumberHandlingAttribute>())
+			{
+				useNumber = attr.Handling == .AsNumber;
+			}
+			else if (let typeAttr = fieldType.GetCustomAttribute<JsonNumberHandlingAttribute>())
+			{
+				useNumber = typeAttr.Handling == .AsNumber;
+			}
+			
+			if (useNumber)
+			{
+				code.AppendF($"{indent}BJSON.JsonWriter.WriteInt(stream, (int){fieldExpr});\n");
+			}
+			else
+			{
+				// Serialize as string (default)
+				code.AppendF($"{indent}stream.Write<char8>('\"');\n");
+				code.AppendF($"{indent}stream.WriteStrUnsized({fieldExpr}.ToString(.. scope .()));\n");
+				code.AppendF($"{indent}stream.Write<char8>('\"');\n");
+			}
 		}
 		else if (IsList(fieldType))
 		{
@@ -757,9 +772,24 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 		}
 		else if (valueType.IsEnum)
 		{
-			code.AppendF($"{indent}stream.Write<char8>('\"');\n");
-			code.AppendF($"{indent}stream.WriteStrUnsized({valueExpr}.ToString(.. scope .()));\n");
-			code.AppendF($"{indent}stream.Write<char8>('\"');\n");
+			// Check for JsonNumberHandling attribute on the enum type
+			bool useNumber = false;
+			if (let attr = valueType.GetCustomAttribute<JsonNumberHandlingAttribute>())
+			{
+				useNumber = attr.Handling == .AsNumber;
+			}
+			
+			if (useNumber)
+			{
+				code.AppendF($"{indent}BJSON.JsonWriter.WriteInt(stream, (int){valueExpr});\n");
+			}
+			else
+			{
+				// Default: serialize as string
+				code.AppendF($"{indent}stream.Write<char8>('\"');\n");
+				code.AppendF($"{indent}stream.WriteStrUnsized({valueExpr}.ToString(.. scope .()));\n");
+				code.AppendF($"{indent}stream.Write<char8>('\"');\n");
+			}
 		}
 		else if (valueType.HasCustomAttribute<JsonObjectAttribute>())
 		{
