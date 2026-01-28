@@ -63,6 +63,104 @@ namespace BJSON.Example
 		public NumericStatus State;
 	}
 
+	// Simple CustomDateTime struct for custom converter example
+	struct CustomDateTime
+	{
+		public int Year;
+		public int Month;
+		public int Day;
+		public int Hour;
+		public int Minute;
+		public int Second;
+
+		public this(int year, int month, int day, int hour = 0, int minute = 0, int second = 0)
+		{
+			Year = year;
+			Month = month;
+			Day = day;
+			Hour = hour;
+			Minute = minute;
+			Second = second;
+		}
+
+		public override void ToString(String str)
+		{
+			str.AppendF($"{Year:D4}-{Month:D2}-{Day:D2}T{Hour:D2}:{Minute:D2}:{Second:D2}");
+		}
+
+		public static Result<CustomDateTime> Parse(StringView str)
+		{
+			// Simple ISO 8601 parser: YYYY-MM-DDTHH:MM:SS
+			if (str.Length < 19)
+				return .Err;
+
+			var dt = CustomDateTime(0, 0, 0);
+			if (int.Parse(str.Substring(0, 4)) case .Ok(let year))
+				dt.Year = year;
+			else
+				return .Err;
+
+			if (int.Parse(str.Substring(5, 2)) case .Ok(let month))
+				dt.Month = month;
+			else
+				return .Err;
+
+			if (int.Parse(str.Substring(8, 2)) case .Ok(let day))
+				dt.Day = day;
+			else
+				return .Err;
+
+			if (int.Parse(str.Substring(11, 2)) case .Ok(let hour))
+				dt.Hour = hour;
+			else
+				return .Err;
+
+			if (int.Parse(str.Substring(14, 2)) case .Ok(let minute))
+				dt.Minute = minute;
+			else
+				return .Err;
+
+			if (int.Parse(str.Substring(17, 2)) case .Ok(let second))
+				dt.Second = second;
+			else
+				return .Err;
+
+			return .Ok(dt);
+		}
+	}
+
+	// Custom converter that serializes CustomDateTime as ISO 8601 string
+	class DateTimeConverter : IJsonConverter<CustomDateTime>
+	{
+		public Result<void> WriteJson(Stream stream, CustomDateTime value)
+		{
+			let str = scope String();
+			value.ToString(str);
+			BJSON.JsonWriter.WriteString(stream, str);
+			return .Ok;
+		}
+
+		public Result<CustomDateTime> ReadJson(JsonValue value)
+		{
+			if (!value.IsString())
+				return .Err;
+
+			if (CustomDateTime.Parse((StringView)value) case .Ok(let dt))
+				return .Ok(dt);
+
+			return .Err;
+		}
+	}
+
+	[JsonObject]
+	class CalendarEvent
+	{
+		public String Title = new .() ~ delete _;
+		
+		[JsonConverter(typeof(DateTimeConverter))]
+		public CustomDateTime Timestamp;
+	}
+
 	class Program
 	{
 		public static int Main(String[] args)
@@ -77,7 +175,7 @@ namespace BJSON.Example
 				person.Name.Set("John Doe");
 				person.Age = 30;
 				person.IsActive = true;
-				person.Email.Set("john@example.com");
+				person.Email = "john@example.com";
 				person.Tags.Add(new String("developer"));
 				person.Tags.Add(new String("beef"));
 				person.InternalId = 12345;  // This won't be serialized
@@ -197,6 +295,32 @@ namespace BJSON.Example
 				if (Json.Deserialize<NumericStatusHolder>(stream2, result2) case .Ok)
 				{
 					Console.WriteLine(scope $"Deserialized from number: {result2.State}");
+				}
+			}
+
+			Console.WriteLine("\n=== Custom Converters ===\n");
+			{
+				// Custom converter that serializes CustomDateTime as ISO 8601 string
+				let eventObj = scope CalendarEvent();
+				eventObj.Title.Set("Meeting");
+				eventObj.Timestamp = CustomDateTime(2025, 1, 28, 14, 30, 0);
+
+				let json = Json.Serialize(eventObj, .. scope .());
+				Console.WriteLine("Event with custom CustomDateTime converter:");
+				Console.WriteLine(json);
+
+				// Deserialize using the custom converter
+				let input = """
+					{"Title":"Conference","Timestamp":"2025-06-15T09:00:00"}
+					""";
+
+				let stream = scope StringStream(input, .Reference);
+				let restored = scope CalendarEvent();
+				if (Json.Deserialize<CalendarEvent>(stream, restored) case .Ok)
+				{
+					Console.WriteLine("\nDeserialized Event:");
+					Console.WriteLine(scope $"  Title: {restored.Title}");
+					Console.WriteLine(scope $"  Timestamp: {restored.Timestamp}");
 				}
 			}
 

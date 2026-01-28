@@ -601,4 +601,55 @@ class ReflectTest
 
 		Debug.WriteLine("Reflection: Stream-based Serialization - PASSED");
 	}
+
+	[Test(Name = "Reflection: Inheritance")]
+	public static void T_Inheritance()
+	{
+		// Test that inherited fields are serialized/deserialized
+		let derived = scope DerivedClass();
+		derived.BaseField = 42;
+		derived.DerivedField.Set("test");
+
+		let buffer = scope String();
+		Test.Assert(Json.Serialize(derived, buffer) case .Ok, "Serialization failed");
+
+		// Debug output
+		Debug.WriteLine(scope $"Serialized JSON: {buffer}");
+
+		// Verify both base and derived fields are in JSON
+		Test.Assert(buffer.Contains("BaseField"), scope $"Base field not serialized. JSON: {buffer}");
+		Test.Assert(buffer.Contains("DerivedField"), scope $"Derived field not serialized. JSON: {buffer}");
+
+		// Deserialize
+		let json = """
+			{
+				"BaseField": 100,
+				"DerivedField": "restored"
+			}
+			""";
+		let stream = scope StringStream(json, .Reference);
+		let restored = scope DerivedClass();
+		let deserializeResult = Json.Deserialize<DerivedClass>(stream, restored);
+		Test.Assert(deserializeResult case .Ok, scope $"Deserialization failed");
+
+		// Verify both fields were restored
+		Test.Assert(restored.BaseField == 100, scope $"BaseField mismatch: {restored.BaseField}");
+		Test.Assert(restored.DerivedField == "restored", scope $"DerivedField mismatch: {restored.DerivedField}");
+
+		Debug.WriteLine("Reflection: Inheritance - PASSED");
+	}
+}
+
+/// Base class for inheritance testing
+[JsonObject]
+class BaseClass
+{
+	public int BaseField;
+}
+
+/// Derived class with inherited fields
+[JsonObject]
+class DerivedClass : BaseClass
+{
+	public String DerivedField = new .() ~ delete _;
 }
