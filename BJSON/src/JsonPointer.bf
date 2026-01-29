@@ -46,26 +46,19 @@ namespace BJSON
 	///   - "/m~0n" - references the "m~n" member (~ is escaped as ~0)
 	static class JsonPointer
 	{
-		/// Resolves a JSON Pointer against a JSON value.
-		/// @param root The root JSON value to navigate from.
-		/// @param pointer The JSON Pointer string (e.g., "/users/0/name").
-		/// @returns The resolved JsonValue or an error if the pointer is invalid or path doesn't exist.
 		public static Result<JsonValue, JsonPointerError> Resolve(JsonValue root, StringView pointer)
 		{
-			// Empty pointer references the whole document
 			if (pointer.IsEmpty)
 				return .Ok(root);
 
-			// Must start with '/'
 			if (pointer[0] != '/')
 				return .Err(.InvalidPointer);
 
 			var current = root;
-			var remaining = pointer.Substring(1); // Skip leading '/'
+			var remaining = pointer.Substring(1);
 
 			while (!remaining.IsEmpty)
 			{
-				// Find next '/' or end of string
 				int nextSlash = remaining.IndexOf('/');
 				StringView token;
 
@@ -80,12 +73,10 @@ namespace BJSON
 					remaining = remaining.Substring(nextSlash + 1);
 				}
 
-				// Unescape the token
 				let unescaped = scope String();
 				if (Unescape(token, unescaped) case .Err)
 					return .Err(.InvalidEscapeSequence);
 
-				// Navigate based on current type
 				if (current.IsObject())
 				{
 					if (current.TryGet(unescaped) case .Ok(let val))
@@ -95,12 +86,9 @@ namespace BJSON
 				}
 				else if (current.IsArray())
 				{
-					// Special case: "-" references the (nonexistent) element after the last array element
-					// For reading, this is an error (used for appending in JSON Patch)
 					if (token == "-")
 						return .Err(.IndexOutOfBounds(-1));
 
-					// Parse array index
 					let index = ParseArrayIndex(token);
 					if (index case .Err)
 						return .Err(.InvalidArrayIndex(token));
@@ -112,7 +100,6 @@ namespace BJSON
 				}
 				else
 				{
-					// Can't navigate into primitives
 					return .Err(.TypeMismatch("object or array", current.type));
 				}
 			}
@@ -120,11 +107,6 @@ namespace BJSON
 			return .Ok(current);
 		}
 
-		/// Tries to resolve a JSON Pointer, returning a default value on failure.
-		/// @param root The root JSON value to navigate from.
-		/// @param pointer The JSON Pointer string.
-		/// @param defaultValue The value to return if resolution fails.
-		/// @returns The resolved JsonValue or defaultValue if the pointer is invalid or path doesn't exist.
 		public static JsonValue ResolveOrDefault(JsonValue root, StringView pointer, JsonValue defaultValue = default)
 		{
 			if (Resolve(root, pointer) case .Ok(let val))
@@ -132,12 +114,6 @@ namespace BJSON
 			return defaultValue;
 		}
 
-		/// Tries to resolve a JSON Pointer and convert to type T, returning a default value on failure.
-		/// This generic overload avoids allocation when using primitive defaults (StringView, int, etc.).
-		/// @param root The root JSON value to navigate from.
-		/// @param pointer The JSON Pointer string.
-		/// @param defaultValue The value to return if resolution fails.
-		/// @returns The resolved value converted to T, or defaultValue if the pointer is invalid or path doesn't exist.
 		public static T ResolveOrDefault<T>(JsonValue root, StringView pointer, T defaultValue) where T : var
 		{
 			if (Resolve(root, pointer) case .Ok(let val))
@@ -145,9 +121,6 @@ namespace BJSON
 			return defaultValue;
 		}
 
-		/// Unescapes a JSON Pointer token.
-		/// Per RFC 6901: ~1 becomes /, ~0 becomes ~
-		/// Order matters: ~1 must be processed before ~0.
 		private static Result<void> Unescape(StringView token, String output)
 		{
 			var i = 0;
@@ -157,7 +130,7 @@ namespace BJSON
 				if (c == '~')
 				{
 					if (i + 1 >= token.Length)
-						return .Err; // Incomplete escape
+						return .Err;
 
 					let next = token[i + 1];
 					if (next == '1')
@@ -172,7 +145,7 @@ namespace BJSON
 					}
 					else
 					{
-						return .Err; // Invalid escape sequence
+						return .Err;
 					}
 				}
 				else
@@ -184,9 +157,6 @@ namespace BJSON
 			return .Ok;
 		}
 
-		/// Escapes a string for use in a JSON Pointer.
-		/// Per RFC 6901: ~ becomes ~0, / becomes ~1
-		/// Order matters: ~ must be escaped before /.
 		public static void Escape(StringView input, String output)
 		{
 			for (let c in input)
@@ -200,32 +170,26 @@ namespace BJSON
 			}
 		}
 
-		/// Parses an array index from a JSON Pointer token.
-		/// Per RFC 6901: Index must be "0" or a non-negative integer without leading zeros.
 		private static Result<int> ParseArrayIndex(StringView token)
 		{
 			if (token.IsEmpty)
 				return .Err;
 
-			// Leading zeros not allowed (except for "0" itself)
 			if (token.Length > 1 && token[0] == '0')
 				return .Err;
 
-			// Must be all digits
 			for (let c in token)
 			{
 				if (c < '0' || c > '9')
 					return .Err;
 			}
 
-			// Parse the integer
 			if (Int32.Parse(token) case .Ok(let val))
 				return .Ok(val);
 
 			return .Err;
 		}
 
-		/// Gets a human-readable type name for error messages.
 		private static StringView GetTypeName(JsonValue value)
 		{
 			switch (value.type)
@@ -240,9 +204,6 @@ namespace BJSON
 			}
 		}
 
-		/// Builds a JSON Pointer string from path segments.
-		/// @param segments Array of path segments (keys or indices as strings).
-		/// @param output The string to append the pointer to.
 		public static void Build(Span<StringView> segments, String output)
 		{
 			for (let segment in segments)
@@ -252,9 +213,6 @@ namespace BJSON
 			}
 		}
 
-		/// Builds a JSON Pointer string from a single path segment.
-		/// @param segment A single path segment.
-		/// @param output The string to append the pointer to.
 		public static void Build(StringView segment, String output)
 		{
 			output.Append('/');

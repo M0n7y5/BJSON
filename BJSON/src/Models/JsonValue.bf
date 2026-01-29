@@ -31,7 +31,6 @@ namespace BJSON.Models
 		public Dictionary<String, JsonValue> object;
 		public List<JsonValue> array;
 
-		/// Small string storage - strings up to 14 chars are stored inline without heap allocation.
 		public SmallString smallStr;
 	}
 
@@ -106,8 +105,6 @@ namespace BJSON.Models
 			}
 		}
 
-		/// Helper method to dispose a child JSON value's resources.
-		/// Used to avoid code duplication in container disposal.
 		[Inline]
 		public static void DisposeChild(JsonValue item)
 		{
@@ -160,7 +157,6 @@ namespace BJSON.Models
 			}
 		}
 
-		// Access array
 		public JsonValue this[int index]
 		{
 			get
@@ -374,7 +370,6 @@ namespace BJSON.Models
 			return self.data.boolean;
 		}
 
-		// types to json value
 		[Inline]
 		public static implicit operator Self(uint value)
 		{

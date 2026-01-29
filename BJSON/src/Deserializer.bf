@@ -34,7 +34,6 @@ namespace BJSON
 	/// Handles objects, arrays, strings, numbers, booleans, and null values.
 	public class Deserializer : IHandler
 	{
-		// this will gonna contain only container types
 		Queue<JsonValue> treeStack = new .(32) ~ delete _;
 
 		String currentKey = null;
@@ -111,12 +110,9 @@ namespace BJSON
 			}
 		}
 
-		/// Adds a value to the current container (object or array).
-		/// Optimized to minimize hash lookups for duplicate key handling.
 		[Inline]
 		private bool AddValue(JsonValue value)
 		{
-			// root value
 			if (treeStack.Count == 0)
 			{
 				treeStack.Add(value);
@@ -125,7 +121,6 @@ namespace BJSON
 
 			var document = ref treeStack.Back;
 
-			// Check if we're ignoring a duplicate structure first
 			if (IsIgnoringDuplicate)
 			{
 				value.Dispose();
@@ -138,7 +133,7 @@ namespace BJSON
 					if (currentKey == null)
 					{
 						value.Dispose();
-						return false; //TODO: notify invalid key error
+						return false;
 					}
 
 					return AddToObject(document.As<JsonObject>(), value);
@@ -153,15 +148,11 @@ namespace BJSON
 			}
 		}
 
-		/// Adds a value to a JSON object with optimized duplicate key handling.
-		/// Uses single hash lookup via TryGetValue instead of ContainsKey + Get/Add.
 		[Inline]
 		private bool AddToObject(JsonObject jObj, JsonValue value)
 		{
-			// Use TryGetValue for single hash lookup
 			if (jObj.data.object.TryGetValueAlt(currentKey, var existingValue))
 			{
-				// Key exists - handle based on duplicate behavior
 				switch (Config.DuplicateBehavior)
 				{
 					case .ThrowError:
@@ -175,7 +166,6 @@ namespace BJSON
 						return true;
 
 					case .AlwaysRewrite:
-						// Dispose the old content and overwrite
 						existingValue.Dispose();
 						jObj[currentKey] = value;
 						currentKey = null;
@@ -184,7 +174,6 @@ namespace BJSON
 			}
 			else
 			{
-				// Key doesn't exist - add it
 				jObj.Add(currentKey, value);
 				currentKey = null;
 				return true;
@@ -229,7 +218,6 @@ namespace BJSON
 
 		public bool StartObject()
 		{
-			// Check if we're ignoring a duplicate structure first
 			if (IsIgnoringDuplicate)
 			{
 				IgnoredDepthCounter++;
@@ -238,8 +226,6 @@ namespace BJSON
 
 			if (treeStack.Count == 0)
 			{
-				// we are root here
-				// root cant have key
 				if (currentKey != null)
 					return false;
 
@@ -254,14 +240,12 @@ namespace BJSON
 				{
 					case .OBJECT:
 						if (currentKey == null)
-							return false; //TODO: notify invalid key error
+							return false;
 
 						let jObj = document.As<JsonObject>();
 
-						// Use TryGetValue for single hash lookup
 						if (jObj.data.object.TryGetValueAlt(currentKey, var existingValue))
 						{
-							// Key exists
 							switch (Config.DuplicateBehavior)
 							{
 								case .ThrowError:
@@ -273,11 +257,9 @@ namespace BJSON
 									return true;
 
 								case .AlwaysRewrite:
-									// dispose the old content
 									existingValue.Dispose();
 									let jVal = JsonObject();
 									jObj[currentKey] = jVal;
-									// add it to stack as current container
 									treeStack.Add(jVal);
 									currentKey = null;
 									return true;
@@ -287,7 +269,6 @@ namespace BJSON
 						{
 							let jVal = JsonObject();
 							jObj.Add(currentKey, jVal);
-							// add it to stack as current container
 							treeStack.Add(jVal);
 							currentKey = null;
 							return true;
@@ -296,10 +277,7 @@ namespace BJSON
 					case .ARRAY:
 						let jVal = JsonObject();
 						document.As<JsonArray>().Add(jVal);
-
-					// add it to stack as current container
 						treeStack.Add(jVal);
-
 						return true;
 					default:
 						return false;
@@ -321,7 +299,6 @@ namespace BJSON
 			{
 				if (IgnoredDepthCounter == 0)
 				{
-					// we are ending the ignored object with duplicated key
 					IsIgnoringDuplicate = false;
 					return true;
 				}
@@ -333,14 +310,11 @@ namespace BJSON
 			if (treeStack.Count == 0)
 				return false;
 
-			//we dont pop root container
 			if (treeStack.Count == 1)
 				return true;
 
 			if (treeStack.TryPopBack() case .Ok(let val))
 			{
-				// if the latest container we want to pop is not
-				// an object then its a bad input
 				if (val.type != .OBJECT)
 					return false;
 			}
@@ -350,7 +324,6 @@ namespace BJSON
 
 		public bool StartArray()
 		{
-			// Check if we're ignoring a duplicate structure first
 			if (IsIgnoringDuplicate)
 			{
 				IgnoredDepthCounter++;
@@ -359,8 +332,6 @@ namespace BJSON
 
 			if (treeStack.Count == 0)
 			{
-				// we are root here
-				// root cant have key
 				if (currentKey != null)
 					return false;
 
@@ -375,14 +346,12 @@ namespace BJSON
 				{
 					case .OBJECT:
 						if (currentKey == null)
-							return false; //TODO: notify invalid key error
+							return false;
 
 						let jObj = document.As<JsonObject>();
 
-						// Use TryGetValue for single hash lookup
 						if (jObj.data.object.TryGetValueAlt(currentKey, var existingValue))
 						{
-							// Key exists
 							switch (Config.DuplicateBehavior)
 							{
 								case .ThrowError:
@@ -394,11 +363,9 @@ namespace BJSON
 									return true;
 
 								case .AlwaysRewrite:
-									// dispose the old content
 									existingValue.Dispose();
 									let jVal = JsonArray();
 									jObj[currentKey] = jVal;
-									// add it to stack as current container
 									treeStack.Add(jVal);
 									currentKey = null;
 									return true;
@@ -408,7 +375,6 @@ namespace BJSON
 						{
 							let jVal = JsonArray();
 							jObj.Add(currentKey, jVal);
-							// add it to stack as current container
 							treeStack.Add(jVal);
 							currentKey = null;
 							return true;
@@ -418,7 +384,6 @@ namespace BJSON
 						let jVal = JsonArray();
 						document.As<JsonArray>().Add(jVal);
 
-					// add it to stack as current container
 						treeStack.Add(jVal);
 
 						return true;
@@ -434,7 +399,6 @@ namespace BJSON
 			{
 				if (IgnoredDepthCounter == 0)
 				{
-					// we are ending the ignored array with duplicated key
 					IsIgnoringDuplicate = false;
 					return true;
 				}
@@ -446,14 +410,11 @@ namespace BJSON
 			if (treeStack.Count == 0)
 				return false;
 
-			//we don't pop root container
 			if (treeStack.Count == 1)
 				return true;
 
 			if (treeStack.TryPopBack() case .Ok(let val))
 			{
-				// if the latest container we want to pop is not
-				// an object then its a bad input
 				if (val.type != .ARRAY)
 					return false;
 			}

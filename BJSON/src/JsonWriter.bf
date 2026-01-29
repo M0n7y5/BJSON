@@ -38,7 +38,6 @@ namespace BJSON
 				}
 				else if ((uint8)c < 0x20)
 				{
-					// Handle other control characters with \uXXXX
 					buffer.Append('\\');
 					buffer.Append('u');
 					buffer.Append('0');

@@ -23,7 +23,6 @@ namespace BJSON
 		{
 			this._handler = handler;
 			
-			// Get config from handler if it's a Deserializer
 			if (handler is Deserializer)
 			{
 				this._config = ((Deserializer)handler).Config;
@@ -56,10 +55,9 @@ namespace BJSON
 				return res;
 			}
 			else
-				return .Err(.UnableToRead(line, column)); // Document empty
+				return .Err(.UnableToRead(line, column));
 		}
 
-		/// Skips whitespace characters efficiently.
 		[Inline]
 		void SkipWhitespace(Stream stream)
 		{
@@ -74,14 +72,13 @@ namespace BJSON
 				case ' ', '\t', '\r':
 					stream.Skip(1);
 					column++;
-				case '/':
-					// Check if comments are enabled
+			case '/':
 					if (_config.EnableComments)
 					{
 						if (SkipComment(stream) case .Ok)
-							continue SKIP; // Comment was skipped, continue
+							continue SKIP;
 						else
-							break SKIP; // Not a comment or error, stop skipping
+							break SKIP;
 					}
 					else
 						break SKIP;
@@ -91,22 +88,19 @@ namespace BJSON
 			}
 		}
 
-		/// Skips single-line (//) or multi-line (/* */) comments
 		Result<void, JsonParsingError> SkipComment(Stream stream)
 		{
-			// We've already peeked '/', now check the next character
 			let pos = stream.Position;
-			stream.Skip(1); // Skip first '/'
+			stream.Skip(1);
 			column++;
 
 			if (stream.Peek<char8>() case .Ok(let nextChar))
 			{
-				if (nextChar == '/') // Single-line comment
+				if (nextChar == '/')
 				{
-					stream.Skip(1); // Skip second '/'
+					stream.Skip(1);
 					column++;
 
-					// Skip until newline or end of stream
 					while (stream.Peek<char8>() case .Ok(let c))
 					{
 						stream.Skip(1);
@@ -119,7 +113,6 @@ namespace BJSON
 						else if (c == '\r')
 						{
 							column++;
-							// Check for \r\n
 							if (stream.Peek<char8>() case .Ok('\n'))
 							{
 								stream.Skip(1);
@@ -141,12 +134,11 @@ namespace BJSON
 					}
 					return .Ok;
 				}
-				else if (nextChar == '*') // Multi-line comment
+				else if (nextChar == '*')
 				{
-					stream.Skip(1); // Skip '*'
+					stream.Skip(1);
 					column++;
 
-					// Skip until closing */
 					bool foundClosing = false;
 					while (stream.Peek<char8>() case .Ok(let c))
 					{
@@ -160,7 +152,6 @@ namespace BJSON
 						else if (c == '\r')
 						{
 							column++;
-							// Check for \r\n
 							if (stream.Peek<char8>() case .Ok('\n'))
 							{
 								stream.Skip(1);
@@ -177,7 +168,6 @@ namespace BJSON
 						else if (c == '*')
 						{
 							column++;
-							// Check if next is '/'
 							if (stream.Peek<char8>() case .Ok('/'))
 							{
 								stream.Skip(1);
@@ -194,14 +184,13 @@ namespace BJSON
 
 					if (!foundClosing)
 					{
-						return .Err(.UnexpectedToken(line, column, "closing */")); // Unterminated comment
+						return .Err(.UnexpectedToken(line, column, "closing */"));
 					}
 
 					return .Ok;
 				}
 				else
 				{
-					// Not a comment, rewind
 					stream.Position = pos;
 					column--;
 					return .Err(.UnexpectedToken(line, column, "/ is not valid"));
@@ -209,7 +198,6 @@ namespace BJSON
 			}
 			else
 			{
-				// EOF after '/', rewind
 				stream.Position = pos;
 				column--;
 				return .Err(.UnableToRead(line, column));
@@ -269,7 +257,7 @@ namespace BJSON
 					return .Ok;
 				}
 
-			return .Err(.UnexpectedToken(line, column, "")); // unexpected token, Error Termination
+			return .Err(.UnexpectedToken(line, column, ""));
 		}
 
 		/// Parses 4 hex digits for unicode escape sequences.
@@ -294,7 +282,7 @@ namespace BJSON
 					else
 						return .Err(.InvalidUnicodeHexEscape(line, column));
 
-					stream.Skip(1); // if we can peek, we can skip
+					stream.Skip(1);
 					column++;
 				}
 			}
@@ -316,16 +304,16 @@ namespace BJSON
 					column++;
 				}
 				else
-					return .Err(.UnexpectedToken(line, column, "\"")); // unexpected token, Error Termination
+					return .Err(.UnexpectedToken(line, column, "\""));
 			}
 			else
-				return .Err(.UnableToRead(line, column)); //Peek error
+				return .Err(.UnableToRead(line, column));
 
 			for (;;)
 			{
 				if (let c = stream.Peek<char8>())
 				{
-					if (c == '\\') // handle escaping
+					if (c == '\\')
 					{
 						stream.Skip(1);
 						if (let e = stream.Peek<char8>())
@@ -350,13 +338,13 @@ namespace BJSON
 										let codepoint2 = Try!(ParseHex4(stream));
 										if (codepoint2 < 0xDC00 || codepoint2 > 0xDFFF)
 										{
-											return .Err(.InvalidStringSurrogate(line, column)); // Parse Error String Unicode Surrogate Invalid
+							return .Err(.InvalidStringSurrogate(line, column));
 										}
 										codepoint = (((codepoint - 0xD800) << 10) | (codepoint2 - 0xDC00)) + 0x10000;
 									}
 									else
 									{
-										return .Err(.InvalidStringSurrogate(line, column)); // Parse Error String Unicode Surrogate Invalid
+										return .Err(.InvalidStringSurrogate(line, column));
 									}
 								}
 
@@ -369,12 +357,12 @@ namespace BJSON
 								column += 2;
 							}
 							else
-								return .Err(.InvalidEscapeToken(line, column)); // Error String Escape Invalid
+								return .Err(.InvalidEscapeToken(line, column));
 						}
 						else
-							return .Err(.UnableToRead(line, column)); // peek error
+							return .Err(.UnableToRead(line, column));
 					}
-					else if (c == '"') // Closing double quote
+					else if (c == '"')
 					{
 						bool res = false;
 
@@ -386,14 +374,14 @@ namespace BJSON
 						stream.Skip(1);
 						column++;
 
-						return res ? .Ok : .Err(.InvalidValue(line, column)); // OK or Parse Error Termination
+						return res ? .Ok : .Err(.InvalidValue(line, column));
 					}
 					else if (c < (.)0x20)
 					{
 						if (c == '\0')
-							return .Err(.MissingQuotationMark(line, column)); // String Miss Quotation Mark
+							return .Err(.MissingQuotationMark(line, column));
 						else
-							return .Err(.InvalidEncoding(line, column)); // invalid encoding
+							return .Err(.InvalidEncoding(line, column));
 					}
 					else
 					{
@@ -403,18 +391,18 @@ namespace BJSON
 					}
 				}
 				else
-					return .Err(.UnableToRead(line, column)); // peek error
+					return .Err(.UnableToRead(line, column));
 			}
 		}
 
 		Result<void, JsonParsingError> ParseObject(Stream stream)
 		{
-			stream.Skip(1); //skip {
+			stream.Skip(1);
 			column++;
 
 			if (!_handler.StartObject())
 			{
-				return .Err(.UnexpectedToken(line, column, "")); // Parse Error Termination
+				return .Err(.UnexpectedToken(line, column, ""));
 			}
 
 			currentDepth++;
@@ -427,9 +415,9 @@ namespace BJSON
 			if (ConsumeCharWithWhitespace(stream, '}') case .Ok)
 			{
 				if (!_handler.EndObject())
-					return .Err(.UnexpectedToken(line, column, "")); // Error Termination
+					return .Err(.UnexpectedToken(line, column, ""));
 
-				return .Ok; // empty object
+				return .Ok;
 			}
 
 			for (;;)
@@ -437,7 +425,7 @@ namespace BJSON
 				if (let c = stream.Peek<char8>())
 				{
 					if (c != '"')
-						return .Err(.UnexpectedToken(line, column, "\"")); // MISSING OBJECT NAME
+						return .Err(.UnexpectedToken(line, column, "\""));
 
 					Try!(ParseString(stream, true));
 
@@ -459,31 +447,31 @@ namespace BJSON
 						case '}':
 							stream.Skip(1);
 							column++;
-							if (!_handler.EndObject())
-								return .Err(.UnexpectedToken(line, column, "")); //Parse error termination
+						if (!_handler.EndObject())
+							return .Err(.UnexpectedToken(line, column, ""));
 
 							currentDepth--;
 
 							return .Ok;
 						default:
-							return .Err(.UnexpectedToken(line, column, ", or }")); // Object Miss Comma Or Curly Bracket
+							return .Err(.UnexpectedToken(line, column, ", or }"));
 
 						}
 					}
 				}
 				else
-					return .Err(.UnexpectedToken(line, column, ", or }")); // peek error
+					return .Err(.UnexpectedToken(line, column, ", or }"));
 			}
 		}
 
 		Result<void, JsonParsingError> ParseArray(Stream stream)
 		{
-			stream.Skip(1); //skip [
+			stream.Skip(1);
 			column++;
 
 			if (!_handler.StartArray())
 			{
-				return .Err(.UnexpectedToken(line, column, "")); // Parse Error Termination
+				return .Err(.UnexpectedToken(line, column, ""));
 			}
 
 			currentDepth++;
@@ -496,9 +484,9 @@ namespace BJSON
 			if (ConsumeCharWithWhitespace(stream, ']') case .Ok)
 			{
 				if (!_handler.EndArray())
-					return .Err(.UnexpectedToken(line, column, "")); // Error termination
+					return .Err(.UnexpectedToken(line, column, ""));
 				else
-					return .Ok; // empty array
+					return .Ok;
 			}
 
 			for (;;)
@@ -512,13 +500,13 @@ namespace BJSON
 				else if (ConsumeCharWithWhitespace(stream, ']') case .Ok)
 				{
 					if (!_handler.EndArray())
-						return .Err(.UnexpectedToken(line, column, "")); // Error termination
+						return .Err(.UnexpectedToken(line, column, ""));
 
 					currentDepth--;
 					return .Ok;
 				}
 				else
-					return .Err(.UnexpectedToken(line, column, ", or ]")); // Array Miss Comma Or Square Bracket
+					return .Err(.UnexpectedToken(line, column, ", or ]"));
 			}
 		}
 
@@ -535,7 +523,6 @@ namespace BJSON
 			public uint startColumn;
 		}
 
-		/// Main entry point for number parsing - refactored from ParseNumberEx.
 		Result<void, JsonParsingError> ParseNumber(Stream stream)
 		{
 			ParsedNumber num = .();
@@ -547,17 +534,13 @@ namespace BJSON
 			num.intVal = 0;
 			num.startColumn = column;
 
-			// Parse the minus sign if present
 			Try!(ParseNumberSign(stream, ref num));
 
-			// Parse the integer part (required)
 			Try!(ParseIntegerPart(stream, ref num));
 
-			// Convert and report the number
 			return ReportNumber(ref num);
 		}
 
-		/// Parses an optional leading minus sign.
 		[Inline]
 		Result<void, JsonParsingError> ParseNumberSign(Stream stream, ref ParsedNumber num)
 		{
@@ -579,7 +562,6 @@ namespace BJSON
 			return .Ok;
 		}
 
-		/// Parses the integer part of a number, including optional fraction and exponent.
 		Result<void, JsonParsingError> ParseIntegerPart(Stream stream, ref ParsedNumber num)
 		{
 			bool hasDigit = false;
@@ -592,7 +574,6 @@ namespace BJSON
 				{
 					hasDigit = true;
 
-					// Check for leading zero followed by digit
 					if (digitCount == 0 && digitC == '0')
 					{
 						leadingZero = true;
@@ -605,7 +586,6 @@ namespace BJSON
 					if (!TryAppendToBuffer(ref num, digitC))
 						return .Err(.NumberTooLong(line, column));
 
-					// Calculate integer value for fast path
 					if (!num.intOverflow && !num.hasFracPart && !num.hasExpPart)
 					{
 						AccumulateIntValue(ref num, digitC, digitCount);
@@ -639,7 +619,6 @@ namespace BJSON
 			return .Ok;
 		}
 
-		/// Parses the fractional part of a number (after the decimal point).
 		Result<void, JsonParsingError> ParseFractionalPart(Stream stream, ref ParsedNumber num)
 		{
 			num.hasFracPart = true;
@@ -679,10 +658,8 @@ namespace BJSON
 			return .Ok;
 		}
 
-		/// Parses the exponent part of a number (after 'e' or 'E').
 		Result<void, JsonParsingError> ParseExponentPart(Stream stream, ref ParsedNumber num)
 		{
-			// Append the 'e' or 'E' that was already peeked
 			if (stream.Peek<char8>() case .Ok(let expChar))
 			{
 				num.hasExpPart = true;
@@ -692,7 +669,6 @@ namespace BJSON
 				column++;
 			}
 
-			// Check for +/- sign
 			if (stream.Peek<char8>() case .Ok(let sign))
 			{
 				if (sign == '-' || sign == '+')
@@ -704,7 +680,6 @@ namespace BJSON
 				}
 			}
 
-			// Parse exponent digits
 			bool hasExpDigit = false;
 
 			while (stream.Peek<char8>() case .Ok(let expC))
@@ -731,7 +706,6 @@ namespace BJSON
 			return .Ok;
 		}
 
-		/// Attempts to append a character to the buffer, returning false if buffer is full.
 		[Inline]
 		bool TryAppendToBuffer(ref ParsedNumber num, char8 c)
 		{
@@ -741,7 +715,6 @@ namespace BJSON
 			return true;
 		}
 
-		/// Accumulates the integer value for the fast path (avoiding string parsing).
 		[Inline]
 		void AccumulateIntValue(ref ParsedNumber num, char8 digitC, int digitCount)
 		{
@@ -767,10 +740,8 @@ namespace BJSON
 			}
 		}
 
-		/// Reports the parsed number to the handler.
 		Result<void, JsonParsingError> ReportNumber(ref ParsedNumber num)
 		{
-			// For floating-point or overflow cases, use the built-in parser
 			if (num.hasFracPart || num.hasExpPart || num.intOverflow)
 			{
 				StringView strNum = StringView(&num.buffer, num.bufIdx);
@@ -788,12 +759,10 @@ namespace BJSON
 			}
 			else
 			{
-				// For integers, use the fast path
 				if (num.isNegative)
 				{
 					if (num.intVal > (uint64)int64.MaxValue + 1)
 					{
-						// Overflowed int64 range (negative), fall back to double
 						StringView strNum = StringView(&num.buffer, num.bufIdx);
 						if (let value = double.Parse(strNum))
 						{
@@ -828,8 +797,6 @@ namespace BJSON
 			return .Ok;
 		}
 
-		/// Consumes a literal string (null, true, false).
-		/// Note: Does NOT skip whitespace - caller must handle that before calling.
 		[Inline]
 		Result<void, JsonParsingError> ConsumeLiteral(Stream stream, StringView expected)
 		{
@@ -848,7 +815,6 @@ namespace BJSON
 			return .Ok;
 		}
 
-		/// Consumes a single expected character without skipping whitespace.
 		[Inline]
 		Result<void, JsonParsingError> ConsumeChar(Stream stream, char8 expected)
 		{
@@ -867,7 +833,6 @@ namespace BJSON
 			return .Err(.UnableToRead(line, column));
 		}
 
-		/// Consumes a single expected character, skipping leading whitespace.
 		[Inline]
 		Result<void, JsonParsingError> ConsumeCharWithWhitespace(Stream stream, char8 expected)
 		{

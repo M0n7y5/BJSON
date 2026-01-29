@@ -8,13 +8,11 @@ namespace BJSON.CodeGen;
 /// Handles JSON deserialization code generation at compile time.
 public class JsonDeserializerCodeGen
 {
-	/// Generates the JsonDeserialize method.
 	[Comptime]
 	public static void EmitDeserializeMethod(Type type)
 	{
 		let code = scope String();
 
-		// Check if base class has [JsonObject] to determine if we need 'new' keyword
 		bool needsNewKeyword = type.BaseType != null && type.BaseType != typeof(Object)
 			&& type.BaseType.HasCustomAttribute<JsonObjectAttribute>();
 
@@ -41,22 +39,16 @@ public class JsonDeserializerCodeGen
 		Compiler.EmitTypeBody(type, code);
 	}
 
-	/// Emits all fields for a type, including inherited fields.
-	/// Uses base type's DeclaringType to avoid duplicate processing.
 	[Comptime]
 	private static void EmitAllFields(String code, Type type)
 	{
-		// Collect all fields from type hierarchy without duplicates
-		// Process base classes first
 		if (type.BaseType != null && type.BaseType != typeof(Object))
 		{
 			EmitAllFields(code, type.BaseType);
 		}
 
-		// Then add fields declared directly on this type
 		for (let field in type.GetFields())
 		{
-			// Only process fields declared directly on this type
 			if (field.DeclaringType != type)
 				continue;
 
@@ -67,7 +59,6 @@ public class JsonDeserializerCodeGen
 		}
 	}
 
-	/// Emits deserialization code for a single field.
 	[Comptime]
 	private static void EmitFieldDeserialization(String code, FieldInfo field, Type ownerType)
 	{
@@ -95,11 +86,9 @@ public class JsonDeserializerCodeGen
 		}
 	}
 
-	/// Emits the actual value assignment for a field.
 	[Comptime]
 	private static void EmitFieldValueDeserialization(String code, FieldInfo field, Type fieldType, StringView jsonVar, StringView indent)
 	{
-		// Check for custom converter first
 		if (let converterAttr = field.GetCustomAttribute<JsonConverterAttribute>())
 		{
 			String typeName = scope .();
@@ -156,7 +145,6 @@ public class JsonDeserializerCodeGen
 		}
 	}
 
-	/// Emits deserialization for enum fields.
 	[Comptime]
 	private static void EmitEnumDeserialization(String code, FieldInfo field, Type fieldType, StringView jsonVar, StringView indent)
 	{
@@ -178,7 +166,6 @@ public class JsonDeserializerCodeGen
 		code.AppendF($"{indent}\treturn .Err;\n");
 	}
 
-	/// Emits deserialization for List<T> fields.
 	[Comptime]
 	private static void EmitListDeserialization(String code, FieldInfo field, Type fieldType, StringView jsonVar, StringView indent)
 	{
@@ -196,11 +183,9 @@ public class JsonDeserializerCodeGen
 		code.AppendF($"{indent}}}\n");
 	}
 
-	/// Emits deserialization for a single list item.
 	[Comptime]
 	private static void EmitListItemDeserialization(String code, FieldInfo field, Type elementType, StringView itemVar, StringView indent)
 	{
-		// Check for type-level custom converter
 		if (let converterAttr = elementType.GetCustomAttribute<JsonConverterAttribute>())
 		{
 			String typeName = scope .();
@@ -266,7 +251,6 @@ public class JsonDeserializerCodeGen
 		}
 	}
 
-	/// Emits deserialization for Dictionary<K,V> fields.
 	[Comptime]
 	private static void EmitDictionaryDeserialization(String code, FieldInfo field, Type fieldType, StringView jsonVar, StringView indent)
 	{
@@ -290,11 +274,9 @@ public class JsonDeserializerCodeGen
 		code.AppendF($"{indent}}}\n");
 	}
 
-	/// Emits deserialization for a dictionary value.
 	[Comptime]
 	private static void EmitDictionaryValueDeserialization(String code, FieldInfo field, Type valueType, StringView keyVar, StringView valueVar, StringView indent)
 	{
-		// Check for type-level custom converter
 		if (let converterAttr = valueType.GetCustomAttribute<JsonConverterAttribute>())
 		{
 			String typeName = scope .();
@@ -344,7 +326,6 @@ public class JsonDeserializerCodeGen
 		}
 	}
 
-	/// Emits deserialization for sized array fields (T[N]).
 	[Comptime]
 	private static void EmitSizedArrayDeserialization(String code, FieldInfo field, Type fieldType, StringView jsonVar, StringView indent)
 	{
@@ -364,7 +345,6 @@ public class JsonDeserializerCodeGen
 		code.AppendF($"{indent}}}\n");
 	}
 
-	/// Emits deserialization for a single sized array item.
 	[Comptime]
 	private static void EmitSizedArrayItemDeserialization(String code, FieldInfo field, Type elementType, StringView itemVar, StringView indexVar, StringView indent)
 	{

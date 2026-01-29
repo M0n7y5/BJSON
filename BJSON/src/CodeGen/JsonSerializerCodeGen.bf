@@ -8,13 +8,11 @@ namespace BJSON.CodeGen;
 /// Handles JSON serialization code generation at compile time.
 public class JsonSerializerCodeGen
 {
-	/// Generates the JsonSerialize method.
 	[Comptime]
 	public static void EmitSerializeMethod(Type type)
 	{
 		let code = scope String();
 
-		// Check if base class has [JsonObject] to determine if we need 'new' keyword
 		bool needsNewKeyword = type.BaseType != null && type.BaseType != typeof(Object)
 			&& type.BaseType.HasCustomAttribute<JsonObjectAttribute>();
 
@@ -28,7 +26,6 @@ public class JsonSerializerCodeGen
 
 			""");
 
-		// Process all fields including inherited ones
 		EmitAllFields(code, type);
 
 		code.Append("""
@@ -40,22 +37,16 @@ public class JsonSerializerCodeGen
 		Compiler.EmitTypeBody(type, code);
 	}
 
-	/// Emits all fields for a type, including inherited fields.
-	/// Uses base type's DeclaringType to avoid duplicate processing.
 	[Comptime]
 	private static void EmitAllFields(String code, Type type)
 	{
-		// Collect all fields from type hierarchy without duplicates
-		// Process base classes first
 		if (type.BaseType != null && type.BaseType != typeof(Object))
 		{
 			EmitAllFields(code, type.BaseType);
 		}
 
-		// Then add fields declared directly on this type
 		for (let field in type.GetFields())
 		{
-			// Only process fields declared directly on this type
 			if (field.DeclaringType != type)
 				continue;
 
@@ -66,7 +57,6 @@ public class JsonSerializerCodeGen
 		}
 	}
 
-	/// Emits serialization code for a single field.
 	[Comptime]
 	private static void EmitFieldSerialization(String code, FieldInfo field, Type ownerType)
 	{
@@ -112,7 +102,6 @@ public class JsonSerializerCodeGen
 		}
 	}
 
-	/// Emits the actual value serialization for a field.
 	[Comptime]
 	private static void EmitFieldValueSerialization(String code, FieldInfo field, Type fieldType, StringView jsonName, StringView indent, bool handleComma, bool isNullable)
 	{
@@ -128,7 +117,6 @@ public class JsonSerializerCodeGen
 
 		let fieldExpr = isNullable ? scope $"{field.Name}.Value" : scope $"{field.Name}";
 
-		// Check for custom converter first
 		if (let converterAttr = field.GetCustomAttribute<JsonConverterAttribute>())
 		{
 			String converterTypeName = scope .();
@@ -199,7 +187,6 @@ public class JsonSerializerCodeGen
 		}
 	}
 
-	/// Emits serialization for List<T> fields.
 	[Comptime]
 	private static void EmitListSerialization(String code, FieldInfo field, Type fieldType, StringView indent)
 	{
@@ -220,7 +207,6 @@ public class JsonSerializerCodeGen
 		code.AppendF($"{indent}stream.Write<char8>(']');\n");
 	}
 
-	/// Emits serialization for Dictionary<K,V> fields.
 	[Comptime]
 	private static void EmitDictionarySerialization(String code, FieldInfo field, Type fieldType, StringView indent)
 	{
@@ -245,7 +231,6 @@ public class JsonSerializerCodeGen
 		code.AppendF($"{indent}stream.Write<char8>('}}');\n");
 	}
 
-	/// Emits serialization for sized array fields (T[N]).
 	[Comptime]
 	private static void EmitSizedArraySerialization(String code, FieldInfo field, Type fieldType, StringView indent)
 	{
@@ -264,11 +249,9 @@ public class JsonSerializerCodeGen
 		code.AppendF($"{indent}stream.Write<char8>(']');\n");
 	}
 
-	/// Emits serialization for a single value (used for list/array/dict elements).
 	[Comptime]
 	private static void EmitValueSerialization(String code, Type valueType, StringView valueExpr, StringView indent)
 	{
-		// Check for type-level custom converter
 		if (let converterAttr = valueType.GetCustomAttribute<JsonConverterAttribute>())
 		{
 			String converterTypeName = scope .();

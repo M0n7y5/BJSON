@@ -5,12 +5,6 @@ using System.Diagnostics;
 
 namespace BJSON.Test;
 
-/// Tests for JSON serialization functionality including:
-/// - Basic type serialization
-/// - Pretty-print formatting
-/// - Round-trip parsing and serialization
-/// - Error handling (NaN, Infinity)
-/// - String escape character handling
 class SerializationTest
 {
 	[Test(Name = "Serialization - Basic tests")]
@@ -18,7 +12,6 @@ class SerializationTest
 	{
 		Debug.WriteLine("Serialization - Basic tests ...");
 
-		// Test 1: Serialize null
 		{
 			let json = JsonNull();
 			defer json.Dispose();
@@ -31,7 +24,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 1 (null): PASSED - output: {output}");
 		}
 
-		// Test 2: Serialize boolean true
 		{
 			let json = JsonBool(true);
 			defer json.Dispose();
@@ -44,7 +36,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 2 (true): PASSED - output: {output}");
 		}
 
-		// Test 3: Serialize boolean false
 		{
 			let json = JsonBool(false);
 			defer json.Dispose();
@@ -57,7 +48,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 3 (false): PASSED - output: {output}");
 		}
 
-		// Test 4: Serialize integer number
 		{
 			let json = JsonNumber((int64)42);
 			defer json.Dispose();
@@ -70,7 +60,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 4 (int 42): PASSED - output: {output}");
 		}
 
-		// Test 5: Serialize negative integer
 		{
 			let json = JsonNumber((int64)-123);
 			defer json.Dispose();
@@ -83,7 +72,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 5 (int -123): PASSED - output: {output}");
 		}
 
-		// Test 6: Serialize unsigned integer
 		{
 			let json = JsonNumber((uint64)999);
 			defer json.Dispose();
@@ -96,7 +84,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 6 (uint 999): PASSED - output: {output}");
 		}
 
-		// Test 7: Serialize floating-point number
 		{
 			let json = JsonNumber(3.14);
 			defer json.Dispose();
