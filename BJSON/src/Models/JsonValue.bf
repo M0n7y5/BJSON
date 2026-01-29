@@ -7,11 +7,19 @@ using System.IO;
 
 namespace BJSON.Models
 {
+	/// Small string storage for SSO (Small String Optimization).
+	/// Stores length in first byte, data in remaining 14 bytes.
+	[CRepr]
+	public struct SmallString
+	{
+		public uint8 length;
+		public char8[14] data;
+	}
+
 	/// Union type that holds the actual data for a JSON value.
 	[Union]
 	public struct JsonData
 	{
-		// values
 		public bool boolean;
 
 		public uint64 unsignedNumber;
@@ -20,15 +28,11 @@ namespace BJSON.Models
 
 		public String string;
 
-		// containers
 		public Dictionary<String, JsonValue> object;
 		public List<JsonValue> array;
 
-		// Since JsonValue will always have 8 bytes and no less
-		// it will make sense to make it 15 bytes big in order to
-		// make JsonValue aligned to 16 bytes and use this space for
-		// for small strings like keys or numbers
-		public char8[15] reserved;
+		/// Small string storage - strings up to 14 chars are stored inline without heap allocation.
+		public SmallString smallStr;
 	}
 
 	/// Represents any JSON value (null, boolean, number, string, object, or array).
@@ -346,7 +350,10 @@ namespace BJSON.Models
 			if (self.type != .STRING)
 				return default;
 
-			return .(self.data.string);
+			if (self.smallString)
+				return StringView(&self.data.smallStr.data, self.data.smallStr.length);
+			else
+				return StringView(self.data.string);
 		}
 
 		/*[Inline]
@@ -409,12 +416,6 @@ namespace BJSON.Models
 		{
 			return JsonBool(value);
 		}
-
-		[Inline]
-		public static implicit operator Self((String key, String value) value)
-		{
-			return .();
-		}
 	}
 
 	/// Represents a JSON null value.
@@ -469,23 +470,56 @@ namespace BJSON.Models
 	}
 
 	/// Represents a JSON string value. Owns its string memory.
+	/// Uses Small String Optimization (SSO) for strings up to 14 characters.
 	public struct JsonString : JsonValue, IDisposable
 	{
+		public const int MaxSmallStringLength = 14;
+
 		public this(String value)
 		{
 			type = .STRING;
-			data.string = new String(value);
+			if (value.Length <= MaxSmallStringLength)
+			{
+				smallString = true;
+				data.smallStr.length = (uint8)value.Length;
+				Internal.MemCpy(&data.smallStr.data, value.Ptr, value.Length);
+			}
+			else
+			{
+				smallString = false;
+				data.string = new String(value);
+			}
 		}
 
 		public this(StringView value)
 		{
 			type = .STRING;
-			data.string = new String(value);
+			if (value.Length <= MaxSmallStringLength)
+			{
+				smallString = true;
+				data.smallStr.length = (uint8)value.Length;
+				Internal.MemCpy(&data.smallStr.data, value.Ptr, value.Length);
+			}
+			else
+			{
+				smallString = false;
+				data.string = new String(value);
+			}
+		}
+
+		/// Gets the string value as a StringView.
+		[Inline]
+		public StringView AsStringView() mut
+		{
+			if (smallString)
+				return StringView(&data.smallStr.data, data.smallStr.length);
+			else
+				return StringView(data.string);
 		}
 
 		public new void Dispose()
 		{
-			if (data.string != null)
+			if (!smallString && data.string != null)
 			{
 				delete data.string;
 			}
@@ -651,9 +685,10 @@ namespace BJSON.Models
 				return data.array[index];
 			}
 
-			set
+		set
 			{
-				data.array.Reserve(index + 1);
+				if (index >= data.array.Count)
+					data.array.Resize(index + 1);
 
 				data.array[index] = value;
 			}

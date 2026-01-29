@@ -43,8 +43,7 @@ class ComplianceTest
 			{
 				defer stream.Close();
 				var result = Json.Deserialize(stream);
-
-				result.Dispose();
+				defer result.Dispose();
 
 				if (ignoreResult == false)
 				{

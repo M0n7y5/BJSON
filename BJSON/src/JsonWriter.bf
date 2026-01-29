@@ -272,58 +272,10 @@ namespace BJSON
 			return .Ok;
 		}
 
-		/// Writes a JSON string with proper escaping (without surrounding quotes).
-		/// Used for both string values and object keys.
 		[Inline]
 		private void WriteEscapedString(StringView string)
 		{
-			int spanStart = 0;
-			int i = 0;
-			
-			for (let c in string)
-			{
-				let escapeChar = JsonEscapes.GetEscapeChar(c);
-				
-				if (escapeChar != 0)
-				{
-					// Write any non-escaped characters before this one
-					if (i > spanStart)
-					{
-						stream.WriteStrUnsized(string.Substring(spanStart, i - spanStart));
-					}
-					
-					// Write the escape sequence
-					stream.Write<char8>('\\');
-					stream.Write<char8>(escapeChar);
-					spanStart = i + 1;
-				}
-				else if ((uint8)c < 0x20)
-				{
-					// Handle other control characters with \uXXXX
-					if (i > spanStart)
-					{
-						stream.WriteStrUnsized(string.Substring(spanStart, i - spanStart));
-					}
-					
-					stream.Write<char8>('\\');
-					stream.Write<char8>('u');
-					stream.Write<char8>('0');
-					stream.Write<char8>('0');
-					let highNibble = ((uint8)c >> 4) & 0x0F;
-					let lowNibble = (uint8)c & 0x0F;
-					stream.Write<char8>(highNibble < 10 ? (char8)('0' + highNibble) : (char8)('a' + highNibble - 10));
-					stream.Write<char8>(lowNibble < 10 ? (char8)('0' + lowNibble) : (char8)('a' + lowNibble - 10));
-					spanStart = i + 1;
-				}
-				
-				i++;
-			}
-			
-			// Write any remaining non-escaped characters
-			if (i > spanStart)
-			{
-				stream.WriteStrUnsized(string.Substring(spanStart, i - spanStart));
-			}
+			WriteEscaped(stream, string);
 		}
 
 		Result<void, JsonSerializationError> WriteString(JsonValue value)

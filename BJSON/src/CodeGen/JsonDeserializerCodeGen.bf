@@ -130,6 +130,7 @@ public class JsonDeserializerCodeGen
 		else if (fieldType == typeof(String))
 		{
 			code.AppendF($"{indent}if (!{jsonVar}.IsString()) return .Err;\n");
+			code.AppendF($"{indent}if ({field.Name} == null) {field.Name} = new String();\n");
 			code.AppendF($"{indent}{field.Name}.Set((StringView){jsonVar});\n");
 		}
 		else if (fieldType.IsEnum)
