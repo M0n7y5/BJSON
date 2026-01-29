@@ -237,11 +237,12 @@ static
 		if (d.IsZero)
 		{
 			if (d.IsNegative)
-				*buffer++ = '-'; // -0.0, Issue #289
+				*buffer++ = '-';
 
 			buffer[0] = '0';
 			buffer[1] = '.';
 			buffer[2] = '0';
+			buffer[3] = '\0';
 			return &buffer[3];
 		}
 		else
@@ -253,7 +254,9 @@ static
 			}
 			int length = 0, K = 0;
 			Grisu2(value, buffer, &length, &K);
-			return Prettify(buffer, length, K, maxDecimalPlaces);
+			char8* end = Prettify(buffer, length, K, maxDecimalPlaces);
+			*end = '\0';
+			return end;
 		}
 	}
 }
