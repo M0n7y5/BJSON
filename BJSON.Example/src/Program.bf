@@ -175,7 +175,7 @@ namespace BJSON.Example
 				person.Name.Set("John Doe");
 				person.Age = 30;
 				person.IsActive = true;
-				person.Email = "john@example.com";
+				person.Email.Set("john@example.com");
 				person.Tags.Add(new String("developer"));
 				person.Tags.Add(new String("beef"));
 				person.InternalId = 12345;  // This won't be serialized

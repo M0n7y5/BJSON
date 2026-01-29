@@ -8,13 +8,12 @@ A high-performance JSON serializer and deserializer for the Beef programming lan
 
 - RFC 8259 compliant
 - RFC 6901 JSON Pointer support
-- **Attribute-based serialization** with `[JsonObject]`
+- **Attribute-based serialization** with `[JsonObject]` using compile time reflection and code generation
 - Result-based error handling
 - Pretty-print support
 - Stream-based parsing and serialization
 - Comment support (optional JSONC)
 - Safe access methods (TryGet, GetOrDefault)
-- Optimized performance
 
 ## Installation
 - Clone the repository or download the latest release from the [Releases](https://github.com/M0n7y5/BJSON/releases) page
@@ -22,6 +21,15 @@ A high-performance JSON serializer and deserializer for the Beef programming lan
 
 ## Known Issues
 > ### ⚠️ Be sure you have latest nightly of Beef IDE installed due to [some syntax not working](https://github.com/beefytech/Beef/issues/2366) properly in older versions. [This is now fixed in the compiler.](https://github.com/beefytech/Beef/commit/c592f205203d761ad6eb1861f7af5dd6f2d7cfe7)
+
+## Performance
+
+BJSON is designed for high-performance JSON processing with several key optimizations:
+
+- **Small String Optimization (SSO)** — String values ≤14 characters are stored inline within the JsonValue struct, requiring zero heap allocation
+- **BumpAllocator Integration** — Object keys are allocated using efficient bump allocation during parsing
+- **Fast Number Conversion** — Uses Grisu2 algorithm for optimal double-to-string conversion
+- **Configurable Duplicate Key Handling** — Choose between throwing errors, ignoring duplicates, or always rewriting (default)
 
 ## Usage
 

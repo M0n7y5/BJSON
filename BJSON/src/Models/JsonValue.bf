@@ -9,7 +9,6 @@ namespace BJSON.Models
 {
 	/// Small string storage for SSO (Small String Optimization).
 	/// Stores length in first byte, data in remaining 14 bytes.
-	[CRepr]
 	public struct SmallString
 	{
 		public uint8 length;
