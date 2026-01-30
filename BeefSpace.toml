@@ -14,7 +14,8 @@ BfSIMDSetting = "SSE41"
 BfSIMDSetting = "SSE41"
 
 [Configs.Release.Win64]
-BfSIMDSetting = "SSE41"
+BfSIMDSetting = "AVX2"
+BfOptimizationLevel = "O3"
 
 [Configs.Paranoid.Win32]
 BfSIMDSetting = "SSE41"
@@ -29,3 +30,25 @@ BfSIMDSetting = "SSE41"
 Toolset = "LLVM"
 BfSIMDSetting = "SSE41"
 ArithmeticCheck = true
+
+[Configs.TestRelease.Win32]
+Toolset = "Microsoft"
+BfSIMDSetting = "SSE41"
+BfOptimizationLevel = "O0"
+LTOType = "None"
+AllocType = "Debug"
+RuntimeChecks = true
+EmitDynamicCastCheck = true
+EnableObjectDebugFlags = true
+EmitObjectAccessCheck = true
+EnableRealtimeLeakCheck = true
+AllowHotSwapping = true
+IncrementalBuild = true
+COptimizationLevel = "O0"
+ConfigSelections = {BJSON = {Config = "Test"}, "BJSON.Test" = {Config = "Test"}}
+
+[Configs.TestRelease.Win64]
+BfSIMDSetting = "AVX2"
+BfOptimizationLevel = "O3"
+COptimizationLevel = "O0"
+ConfigSelections = {BJSON = {Config = "Test"}, "BJSON.Test" = {Config = "Test"}}
