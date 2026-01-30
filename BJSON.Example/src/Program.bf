@@ -16,13 +16,13 @@ namespace BJSON.Example
 		public int Age;
 		public bool IsActive;
 
-		[JsonPropertyName("email_address")]  // Custom JSON property name
+		[JsonPropertyName("email_address")] // Custom JSON property name
 		public String Email = new .() ~ delete _;
 
 		public List<String> Tags = new .() ~ DeleteContainerAndItems!(_);
 
-	[JsonIgnore(Condition = .Always)]  // This field won't be serialized
-	public int InternalId;
+		[JsonIgnore(Condition = .Always)] // This field won't be serialized
+		public int InternalId;
 	}
 
 	// ============================================
@@ -55,7 +55,9 @@ namespace BJSON.Example
 
 	// Enum with [JsonNumberHandling] to serialize as number
 	[JsonNumberHandling(.AsNumber)]
-	public enum NumericStatus { Inactive, Active, Suspended }
+	public enum NumericStatus
+	{
+		Inactive, Active, Suspended }
 
 	[JsonObject]
 	class NumericStatusHolder
@@ -156,9 +158,50 @@ namespace BJSON.Example
 	class CalendarEvent
 	{
 		public String Title = new .() ~ delete _;
-		
+
 		[JsonConverter(typeof(DateTimeConverter))]
 		public CustomDateTime Timestamp;
+	}
+
+	// ============================================
+	// Example of JsonRequired and JsonOptional attributes
+	// ============================================
+
+	// Example class with required and optional fields
+	[JsonObject]
+	class GameConfig
+	{
+		// [JsonRequired] marks this field as required - must be present in JSON
+		[JsonRequired]
+		public String GameName = new .() ~ delete _;
+
+		// [JsonRequired] works with any field type, including primitives
+		[JsonRequired]
+		public int MaxPlayers;
+
+		// [JsonOptional] marks this field as optional (same as default, but explicit)
+		// The field can be missing from JSON
+		[JsonOptional]
+		public int Port;
+
+		// By default, all fields are optional - can be missing from JSON
+		public bool EnableChat;
+
+		// String fields are also optional by default (will be empty string if missing)
+		public String Description = new .() ~ delete _;
+	}
+
+	// Example of DefaultBehavior = Required - all fields required by default
+	[JsonObject(DefaultBehavior = .Required)]
+	class StrictConfig
+	{
+		public String ServerName = new .() ~ delete _;
+		public int Port;
+		public bool DebugMode;
+
+		// Use [JsonOptional] to allow this field to be missing
+		[JsonOptional]
+		public String Description = new .() ~ delete _;
 	}
 
 	class Program
@@ -178,7 +221,7 @@ namespace BJSON.Example
 				person.Email.Set("john@example.com");
 				person.Tags.Add(new String("developer"));
 				person.Tags.Add(new String("beef"));
-				person.InternalId = 12345;  // This won't be serialized
+				person.InternalId = 12345; // This won't be serialized
 
 				// Serialize to string using Json.Serialize<T>
 				let output = Json.Serialize(person, .. scope .());
@@ -225,8 +268,8 @@ namespace BJSON.Example
 			Console.WriteLine("\n=== Inheritance Support ===\n");
 			{
 				let player = scope Player();
-				player.Id = 42;           // Inherited field
-				player.Active = true;     // Inherited field
+				player.Id = 42; // Inherited field
+				player.Active = true; // Inherited field
 				player.Name.Set("Alice");
 				player.Score = 1000;
 
@@ -278,10 +321,10 @@ namespace BJSON.Example
 				// Deserialization accepts both formats by default
 				let input1 = """
 					{"State":"Suspended"}
-					""";  // String format
+					"""; // String format
 				let input2 = """
 					{"State":2}
-					""";  // Number format
+					"""; // Number format
 
 				let stream1 = scope StringStream(input1, .Reference);
 				let result1 = scope NumericStatusHolder();
@@ -324,6 +367,130 @@ namespace BJSON.Example
 				}
 			}
 
+			Console.WriteLine("\n=== JsonRequired and JsonOptional Attributes ===\n");
+			{
+				// Example 1: Successful deserialization with all required fields present
+				let validJson = """
+					{
+						"GameName": "Space Adventure",
+						"MaxPlayers": 10,
+						"Port": 8080,
+						"EnableChat": true
+					}
+					""";
+
+				let stream = scope StringStream(validJson, .Reference);
+				let config = scope GameConfig();
+				if (Json.Deserialize<GameConfig>(stream, config) case .Ok)
+				{
+					Console.WriteLine("Valid JSON deserialized successfully:");
+					Console.WriteLine(scope $"  GameName: {config.GameName}");
+					Console.WriteLine(scope $"  MaxPlayers: {config.MaxPlayers}");
+					Console.WriteLine(scope $"  Port: {config.Port}");
+					Console.WriteLine(scope $"  EnableChat: {config.EnableChat}");
+				}
+				Console.WriteLine();
+
+				// Example 2: Optional fields can be missing
+				let jsonWithoutOptional = """
+					{
+						"GameName": "Puzzle Game",
+						"MaxPlayers": 4
+					}
+					""";
+
+				let stream2 = scope StringStream(jsonWithoutOptional, .Reference);
+				let config2 = scope GameConfig();
+				if (Json.Deserialize<GameConfig>(stream2, config2) case .Ok)
+				{
+					Console.WriteLine("JSON without optional fields deserialized successfully:");
+					Console.WriteLine(scope $"  GameName: {config2.GameName}");
+					Console.WriteLine(scope $"  MaxPlayers: {config2.MaxPlayers}");
+					Console.WriteLine(scope $"  Port: {config2.Port} (default value)");
+					Console.WriteLine(scope $"  EnableChat: {config2.EnableChat} (default value)");
+				}
+				Console.WriteLine();
+
+				// Example 3: Missing required field causes failure
+				let jsonMissingRequired = """
+					{
+						"GameName": "Incomplete Config"
+					}
+					""";
+
+				let stream3 = scope StringStream(jsonMissingRequired, .Reference);
+				let config3 = scope GameConfig();
+				if (Json.Deserialize<GameConfig>(stream3, config3) case .Err)
+				{
+					Console.WriteLine("JSON missing required field 'MaxPlayers' - Deserialization failed as expected!");
+				}
+			}
+
+			Console.WriteLine("\n=== DefaultBehavior = Required ===\n");
+			{
+				// When DefaultBehavior = Required, ALL fields are required by default
+				// Use [JsonOptional] to mark specific fields as optional
+
+				// Example 1: All fields present - succeeds
+				let completeJson = """
+					{
+						"ServerName": "Production Server",
+						"Port": 8080,
+						"DebugMode": false,
+						"Description": "Main game server"
+					}
+					""";
+
+				let stream = scope StringStream(completeJson, .Reference);
+				let strict = scope StrictConfig();
+				if (Json.Deserialize<StrictConfig>(stream, strict) case .Ok)
+				{
+					Console.WriteLine("Complete JSON with DefaultBehavior=Required:");
+					Console.WriteLine(scope $"  ServerName: {strict.ServerName}");
+					Console.WriteLine(scope $"  Port: {strict.Port}");
+					Console.WriteLine(scope $"  DebugMode: {strict.DebugMode}");
+					Console.WriteLine(scope $"  Description: {strict.Description}");
+				}
+				Console.WriteLine();
+
+				// Example 2: Missing optional field Description - succeeds
+				let jsonWithoutDescription = """
+					{
+						"ServerName": "Test Server",
+						"Port": 3000,
+						"DebugMode": true
+					}
+					""";
+
+				let stream2 = scope StringStream(jsonWithoutDescription, .Reference);
+				let strict2 = scope StrictConfig();
+				if (Json.Deserialize<StrictConfig>(stream2, strict2) case .Ok)
+				{
+					Console.WriteLine("JSON without [JsonOptional] field 'Description' - succeeds:");
+					Console.WriteLine(scope $"  ServerName: {strict2.ServerName}");
+					Console.WriteLine(scope $"  Description: '{strict2.Description}' (empty, was optional)");
+				}
+				Console.WriteLine();
+
+				// Example 3: Missing required field Port - fails
+				let jsonMissingPort = """
+					{
+						"ServerName": "Bad Config",
+						"DebugMode": false
+					}
+					""";
+
+				let stream3 = scope StringStream(jsonMissingPort, .Reference);
+				let strict3 = scope StrictConfig();
+				if (Json.Deserialize<StrictConfig>(stream3, strict3) case .Err)
+				{
+					Console.WriteLine("JSON missing required field 'Port' - Deserialization failed as expected!");
+				}
+				Console.WriteLine();
+				Console.WriteLine("With DefaultBehavior = Required, you can make all fields required by default,");
+				Console.WriteLine("and use [JsonOptional] to allow specific fields to be missing.");
+			}
+
 			Console.WriteLine("\n=== JsonValue API ===\n");
 			{
 				let jsonString = "{\"name\":\"BJSON\",\"version\":1.0}";
@@ -333,19 +500,18 @@ namespace BJSON.Example
 				if (result case .Ok(let jsonValue))
 				{
 					// we expect object
-				    if (let root = jsonValue.AsObject())
-				    {
-				        if (StringView name = root.GetValue("name"))
-				            Console.WriteLine(name);
-				    }
+					if (let root = jsonValue.AsObject())
+					{
+						if (StringView name = root.GetValue("name"))
+							Console.WriteLine(name);
+					}
 				}
 				else if (result case .Err(let error))
 				{
-				    Console.WriteLine("Error: {}", error);
+					Console.WriteLine("Error: {}", error);
 				}
 				//Note: You can also use switch case statement as well
 			}
-
 			{
 				// Basic serialization
 				let json = JsonObject()

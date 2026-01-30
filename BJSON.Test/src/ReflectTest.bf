@@ -456,19 +456,10 @@ class ReflectTest
 	[Test(Name = "Reflection: Error on Missing Required Field")]
 	public static void T_ErrorOnMissingRequired()
 	{
-		// Missing required field "Health"
+		// Test that missing a field marked with [JsonRequired] causes an error
 		let json = """
 			{
-				"Name": "Test",
-				"Speed": 1.0,
-				"IsAlive": true,
-				"player_level": 1,
-				"Status": "Active",
-				"Info": {"Description": "", "Value": 0},
-				"Scores": [],
-				"Tags": [],
-				"Stats": {},
-				"Position": [0, 0, 0]
+				"OptionalField": "Test"
 			}
 			""";
 
@@ -476,9 +467,9 @@ class ReflectTest
 		defer result.Dispose();
 		Test.Assert(result case .Ok, "Parse failed");
 
-		let player = scope Player();
-		let deserializeResult = player.JsonDeserialize(result.Value);
-		Test.Assert(deserializeResult case .Err, "Should fail on missing required field 'Health'");
+		let obj = scope RequiredFieldClass();
+		let deserializeResult = obj.JsonDeserialize(result.Value);
+		Test.Assert(deserializeResult case .Err, "Should fail on missing required field 'RequiredField'");
 
 		Debug.WriteLine("Reflection: Error on Missing Required Field - PASSED");
 	}
@@ -638,6 +629,244 @@ class ReflectTest
 
 		Debug.WriteLine("Reflection: Inheritance - PASSED");
 	}
+
+	[Test(Name = "Reflection: JsonRequired Attribute")]
+	public static void T_JsonRequiredAttribute()
+	{
+		// Test that JsonRequired makes non-nullable field required
+		let jsonMissing = """
+			{
+				"OptionalField": "test"
+			}
+			""";
+
+		var result = Json.Deserialize(jsonMissing);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let obj1 = scope RequiredFieldClass();
+		let deserializeResult = obj1.JsonDeserialize(result.Value);
+		Test.Assert(deserializeResult case .Err, "Should fail on missing required field 'RequiredField'");
+
+		// Test with required field present
+		let jsonPresent = """
+			{
+				"RequiredField": "required",
+				"OptionalField": "optional"
+			}
+			""";
+
+		var result2 = Json.Deserialize(jsonPresent);
+		defer result2.Dispose();
+		Test.Assert(result2 case .Ok, "Parse failed");
+
+		let obj2 = scope RequiredFieldClass();
+		let deserializeResult2 = obj2.JsonDeserialize(result2.Value);
+		Test.Assert(deserializeResult2 case .Ok, "Deserialization should succeed with required field present");
+		Test.Assert(obj2.RequiredField == "required", scope $"Expected RequiredField='required', got '{obj2.RequiredField}'");
+		Test.Assert(obj2.OptionalField == "optional", scope $"Expected OptionalField='optional', got '{obj2.OptionalField}'");
+
+		Debug.WriteLine("Reflection: JsonRequired Attribute - PASSED");
+	}
+
+	[Test(Name = "Reflection: JsonOptional Attribute")]
+	public static void T_JsonOptionalAttribute()
+	{
+		// Test that JsonOptional makes field optional even without nullable
+		let jsonMissing = """
+			{
+				"RequiredField": "test"
+			}
+			""";
+
+		var result = Json.Deserialize(jsonMissing);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let obj = scope OptionalFieldClass();
+		let deserializeResult = obj.JsonDeserialize(result.Value);
+		Test.Assert(deserializeResult case .Ok, "Deserialization should succeed because OptionalField is marked [JsonOptional]");
+		Test.Assert(obj.RequiredField == "test", scope $"Expected RequiredField='test', got '{obj.RequiredField}'");
+		Test.Assert(obj.OptionalField == 0, "OptionalField should have default value 0 when missing");
+
+		// Test with optional field present
+		let jsonPresent = """
+			{
+				"RequiredField": "test",
+				"OptionalField": 42
+			}
+			""";
+
+		var result2 = Json.Deserialize(jsonPresent);
+		defer result2.Dispose();
+		Test.Assert(result2 case .Ok, "Parse failed");
+
+		let obj2 = scope OptionalFieldClass();
+		let deserializeResult2 = obj2.JsonDeserialize(result2.Value);
+		Test.Assert(deserializeResult2 case .Ok, "Deserialization should succeed");
+		Test.Assert(obj2.OptionalField == 42, scope $"Expected OptionalField=42, got {obj2.OptionalField}");
+
+		Debug.WriteLine("Reflection: JsonOptional Attribute - PASSED");
+	}
+
+	[Test(Name = "Reflection: Class Fields Are Optional By Default")]
+	public static void T_ClassFieldsOptionalByDefault()
+	{
+		// Test that class/nested object fields are optional by default
+		let jsonWithoutNested = """
+			{
+				"Name": "Test",
+				"Value": 42
+			}
+			""";
+
+		var result = Json.Deserialize(jsonWithoutNested);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let obj = scope ClassWithNestedObject();
+		let deserializeResult = obj.JsonDeserialize(result.Value);
+		Test.Assert(deserializeResult case .Ok, "Deserialization should succeed because NestedObject is optional by default");
+		Test.Assert(obj.Name == "Test", scope $"Expected Name='Test', got '{obj.Name}'");
+		Test.Assert(obj.Value == 42, scope $"Expected Value=42, got {obj.Value}");
+		// NestedObject should remain null since it wasn't in JSON
+		Test.Assert(obj.NestedObject == null, "NestedObject should be null when missing from JSON");
+
+		// Test with nested object present
+		let jsonWithNested = """
+			{
+				"Name": "Test",
+				"Value": 42,
+				"NestedObject": {
+					"Description": "nested",
+					"Value": 99
+				}
+			}
+			""";
+
+		var result2 = Json.Deserialize(jsonWithNested);
+		defer result2.Dispose();
+		Test.Assert(result2 case .Ok, "Parse failed");
+
+		let obj2 = scope ClassWithNestedObject();
+		obj2.NestedObject = scope NestedInfo(); // Pre-allocate for deserialization
+		let deserializeResult2 = obj2.JsonDeserialize(result2.Value);
+		Test.Assert(deserializeResult2 case .Ok, "Deserialization should succeed");
+		Test.Assert(obj2.NestedObject != null, "NestedObject should be set");
+		Test.Assert(obj2.NestedObject.Value == 99, scope $"Expected NestedObject.Value=99, got {obj2.NestedObject.Value}");
+
+		Debug.WriteLine("Reflection: Class Fields Are Optional By Default - PASSED");
+	}
+
+	[Test(Name = "Reflection: Both Attributes with Nested Objects")]
+	public static void T_RequiredWithNestedObjects()
+	{
+		// Test that JsonRequired works with nested object fields
+		let jsonMissingNested = """
+			{
+				"Name": "Test"
+			}
+			""";
+
+		var result = Json.Deserialize(jsonMissingNested);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let obj1 = scope ClassWithRequiredNested();
+		let deserializeResult1 = obj1.JsonDeserialize(result.Value);
+		Test.Assert(deserializeResult1 case .Err, "Should fail on missing required nested object");
+
+		// Test with required nested object present
+		let jsonWithNested = """
+			{
+				"Name": "Test",
+				"RequiredNested": {
+					"Description": "required",
+					"Value": 100
+				}
+			}
+			""";
+
+		var result2 = Json.Deserialize(jsonWithNested);
+		defer result2.Dispose();
+		Test.Assert(result2 case .Ok, "Parse failed");
+
+		let obj2 = scope ClassWithRequiredNested();
+		obj2.RequiredNested = scope NestedInfo(); // Pre-allocate
+		let deserializeResult2 = obj2.JsonDeserialize(result2.Value);
+		Test.Assert(deserializeResult2 case .Ok, "Deserialization should succeed with required nested object present");
+		Test.Assert(obj2.RequiredNested.Value == 100, scope $"Expected RequiredNested.Value=100, got {obj2.RequiredNested.Value}");
+
+		Debug.WriteLine("Reflection: Both Attributes with Nested Objects - PASSED");
+	}
+
+	[Test(Name = "Reflection: DefaultBehavior Required")]
+	public static void T_DefaultBehaviorRequired()
+	{
+		// Test class with DefaultBehavior = Required
+		// All fields should be required by default
+		let jsonMissingField = """
+			{
+				"Name": "Test",
+				"Score": 100
+			}
+			""";
+
+		var result = Json.Deserialize(jsonMissingField);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let obj1 = scope AllRequiredClass();
+		let deserializeResult = obj1.JsonDeserialize(result.Value);
+		Test.Assert(deserializeResult case .Err, "Should fail on missing required field 'Level'");
+
+		// Test with all fields present
+		let jsonComplete = """
+			{
+				"Name": "Test",
+				"Score": 100,
+				"Level": 5
+			}
+			""";
+
+		var result2 = Json.Deserialize(jsonComplete);
+		defer result2.Dispose();
+		Test.Assert(result2 case .Ok, "Parse failed");
+
+		let obj2 = scope AllRequiredClass();
+		let deserializeResult2 = obj2.JsonDeserialize(result2.Value);
+		Test.Assert(deserializeResult2 case .Ok, "Deserialization should succeed with all required fields present");
+		Test.Assert(obj2.Name == "Test", scope $"Expected Name='Test', got '{obj2.Name}'");
+		Test.Assert(obj2.Score == 100, scope $"Expected Score=100, got {obj2.Score}");
+		Test.Assert(obj2.Level == 5, scope $"Expected Level=5, got {obj2.Level}");
+
+		Debug.WriteLine("Reflection: DefaultBehavior Required - PASSED");
+	}
+
+	[Test(Name = "Reflection: DefaultBehavior Required with JsonOptional")]
+	public static void T_DefaultBehaviorRequiredWithOptional()
+	{
+		// Test class with DefaultBehavior = Required but one field marked [JsonOptional]
+		let jsonWithOptionalMissing = """
+			{
+				"RequiredField": "test",
+				"AnotherRequired": 42
+			}
+			""";
+
+		var result = Json.Deserialize(jsonWithOptionalMissing);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let obj = scope MixedRequiredOptionalClass();
+		let deserializeResult = obj.JsonDeserialize(result.Value);
+		Test.Assert(deserializeResult case .Ok, "Deserialization should succeed because OptionalField is marked [JsonOptional]");
+		Test.Assert(obj.RequiredField == "test", scope $"Expected RequiredField='test', got '{obj.RequiredField}'");
+		Test.Assert(obj.AnotherRequired == 42, scope $"Expected AnotherRequired=42, got {obj.AnotherRequired}");
+		Test.Assert(obj.OptionalField == 0, "OptionalField should have default value 0 when missing");
+
+		Debug.WriteLine("Reflection: DefaultBehavior Required with JsonOptional - PASSED");
+	}
 }
 
 /// Base class for inheritance testing
@@ -652,4 +881,65 @@ class BaseClass
 class DerivedClass : BaseClass
 {
 	public String DerivedField = new .() ~ delete _;
+}
+
+/// Test class with JsonRequired attribute
+[JsonObject]
+class RequiredFieldClass
+{
+	[JsonRequired]
+	public String RequiredField = new .() ~ delete _;
+
+	public String OptionalField = new .() ~ delete _;
+}
+
+/// Test class with JsonOptional attribute
+[JsonObject]
+class OptionalFieldClass
+{
+	[JsonRequired]
+	public String RequiredField = new .() ~ delete _;
+
+	[JsonOptional]
+	public int OptionalField;
+}
+
+/// Test class with nested object that is optional by default
+[JsonObject]
+class ClassWithNestedObject
+{
+	public String Name = new .() ~ delete _;
+	public int Value;
+	public NestedInfo NestedObject;
+}
+
+/// Test class with required nested object
+[JsonObject]
+class ClassWithRequiredNested
+{
+	public String Name = new .() ~ delete _;
+
+	[JsonRequired]
+	public NestedInfo RequiredNested;
+}
+
+/// Test class with DefaultBehavior = Required - all fields required by default
+[JsonObject(DefaultBehavior = .Required)]
+class AllRequiredClass
+{
+	public String Name = new .() ~ delete _;
+	public int Score;
+	public int Level;
+}
+
+/// Test class with DefaultBehavior = Required but some fields marked [JsonOptional]
+[JsonObject(DefaultBehavior = .Required)]
+class MixedRequiredOptionalClass
+{
+	public String RequiredField = new .() ~ delete _;
+
+	[JsonOptional]
+	public int OptionalField;
+
+	public int AnotherRequired;
 }

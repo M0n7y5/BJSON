@@ -2,6 +2,7 @@ using System;
 using System.Reflection;
 using System.Collections;
 using BJSON.Attributes;
+using BJSON.Enums;
 
 namespace BJSON.CodeGen;
 
@@ -67,22 +68,44 @@ public class JsonDeserializerCodeGen
 
 		var fieldType = field.FieldType;
 		let isNullable = fieldType.IsNullable;
+		let isRequired = field.HasCustomAttribute<JsonRequiredAttribute>();
+		let isOptional = field.HasCustomAttribute<JsonOptionalAttribute>();
 
 		if (isNullable)
 			fieldType = JsonCodeGenHelper.UnwrapNullable(fieldType);
 
-		if (isNullable)
+		// Get the default behavior from the owner's JsonObjectAttribute
+		JsonFieldDefaultBehavior defaultBehavior = .Optional;
+		if (let objAttr = ownerType.GetCustomAttribute<JsonObjectAttribute>())
+		{
+			defaultBehavior = objAttr.DefaultBehavior;
+		}
+
+		// Determine if field is required based on default behavior and attributes
+		bool isFieldRequired;
+		if (defaultBehavior == .Required)
+		{
+			// Default is required, unless marked [JsonOptional]
+			isFieldRequired = !isOptional;
+		}
+		else
+		{
+			// Default is optional, unless marked [JsonRequired]
+			isFieldRequired = isRequired;
+		}
+
+		if (isFieldRequired)
+		{
+			code.AppendF($"\tlet _{field.Name}Json = Try!(root.GetValue(\"{jsonName}\"));\n");
+			EmitFieldValueDeserialization(code, field, fieldType, scope $"_{field.Name}Json", "\t");
+			code.Append("\n");
+		}
+		else
 		{
 			code.AppendF($"\tif (root.GetValue(\"{jsonName}\") case .Ok(let _{field.Name}Json))\n");
 			code.Append("\t{\n");
 			EmitFieldValueDeserialization(code, field, fieldType, scope $"_{field.Name}Json", "\t\t");
 			code.Append("\t}\n\n");
-		}
-		else
-		{
-			code.AppendF($"\tlet _{field.Name}Json = Try!(root.GetValue(\"{jsonName}\"));\n");
-			EmitFieldValueDeserialization(code, field, fieldType, scope $"_{field.Name}Json", "\t");
-			code.Append("\n");
 		}
 	}
 

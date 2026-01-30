@@ -10,10 +10,12 @@ namespace BJSON.Attributes;
 public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 {
 	public String Name;
+	public JsonFieldDefaultBehavior DefaultBehavior;
 
-	public this(String name = "")
+	public this(String name = "", JsonFieldDefaultBehavior defaultBehavior = .Optional)
 	{
 		this.Name = name;
+		this.DefaultBehavior = defaultBehavior;
 	}
 
 	[Comptime]
