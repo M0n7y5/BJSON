@@ -193,7 +193,7 @@ namespace BJSON
 				{
 					stream.Position = pos;
 					column--;
-					return .Err(.UnexpectedToken(line, column, "/ is not valid"));
+					return .Err(.UnexpectedToken(line, column, "// or /* to start comment"));
 				}
 			}
 			else

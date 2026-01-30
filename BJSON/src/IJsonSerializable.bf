@@ -13,6 +13,12 @@ interface IJsonSerializable
 	/// @returns Ok on success, Err on serialization failure.
 	public Result<void> JsonSerialize(Stream stream);
 
+	/// Serializes this object to a stream with formatting options.
+	/// @param stream The stream to write JSON to.
+	/// @param options Formatting options (indentation, newlines).
+	/// @returns Ok on success, Err on serialization failure.
+	public Result<void> JsonSerialize(Stream stream, JsonWriterOptions options);
+
 	/// Deserializes a JSON value into this object.
 	/// @param value The JsonValue to deserialize from.
 	/// @returns Ok on success, Err on deserialization failure.

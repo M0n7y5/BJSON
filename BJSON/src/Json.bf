@@ -92,10 +92,21 @@ namespace BJSON
 			return obj.JsonSerialize(stream);
 		}
 
+		public static Result<void> Serialize<T>(T obj, Stream stream, JsonWriterOptions options) where T : IJsonSerializable
+		{
+			return obj.JsonSerialize(stream, options);
+		}
+
 		public static Result<void> Serialize<T>(T obj, String outText) where T : IJsonSerializable
 		{
 			var stream = scope StringStream(outText, .Reference);
 			return obj.JsonSerialize(stream);
+		}
+
+		public static Result<void> Serialize<T>(T obj, String outText, JsonWriterOptions options) where T : IJsonSerializable
+		{
+			var stream = scope StringStream(outText, .Reference);
+			return obj.JsonSerialize(stream, options);
 		}
 	}
 }

@@ -340,7 +340,7 @@ namespace BJSON.Models
 		}
 
 		[Inline]
-		public static implicit operator StringView(Self self)
+		public static implicit operator StringView(ref Self self)
 		{
 			if (self.type != .STRING)
 				return default;

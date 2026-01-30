@@ -190,20 +190,6 @@ namespace BJSON
 			return .Err;
 		}
 
-		private static StringView GetTypeName(JsonValue value)
-		{
-			switch (value.type)
-			{
-			case .NULL: return "null";
-			case .BOOL: return "boolean";
-			case .NUMBER, .NUMBER_SIGNED, .NUMBER_UNSIGNED: return "number";
-			case .STRING: return "string";
-			case .OBJECT: return "object";
-			case .ARRAY: return "array";
-			default: return "unknown";
-			}
-		}
-
 		public static void Build(Span<StringView> segments, String output)
 		{
 			for (let segment in segments)
