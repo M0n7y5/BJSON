@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.3.0
+
+### New Features
+
+**JsonRequired and JsonOptional Attributes**
+- Added `[JsonRequired]` attribute to mark fields that must be present in JSON
+- Added `[JsonOptional]` attribute to explicitly mark fields as optional
+- Default behavior: all fields are optional (backward compatible)
+- Supports primitives, classes, structs, and nested objects
+
+**DefaultBehavior Configuration**
+- New `JsonFieldDefaultBehavior` enum with `.Optional` and `.Required` values
+- Configure at class level: `[JsonObject(DefaultBehavior = .Required)]`
+- When DefaultBehavior is `.Required`, all fields are required by default
+- Use `[JsonOptional]` to override Required default behavior
+
+### API Changes
+
+- Extended `[JsonObject]` attribute constructor to accept `DefaultBehavior` parameter
+- Updated deserialization code generation to respect the new attributes and default behavior
+
+---
+
 ## v1.2.0
 
 ### New Features

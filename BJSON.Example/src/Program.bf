@@ -639,6 +639,132 @@ namespace BJSON.Example
 				}
 			}
 
+			Console.WriteLine("\n=== JSON Schema Validation ===\n");
+			{
+				// Define a JSON Schema for a User object
+				let schemaJson = """
+					{
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"name": { "type": "string", "minLength": 1 },
+							"age": { "type": "integer", "minimum": 0, "maximum": 150 },
+							"email": { "type": "string" },
+							"active": { "type": "boolean" }
+						},
+						"required": ["name", "age"]
+					}
+					""";
+
+				// Parse the schema - Result<JsonSchema, JsonSchemaError>
+				let schemaResult = JsonSchema.Parse(schemaJson);
+				if (schemaResult case .Err(let err))
+				{
+					let msg = scope String();
+					err.ToString(msg);
+					Console.WriteLine(scope $"Failed to parse schema: {msg}");
+					return 1;
+				}
+				
+				// Get a reference to the schema from the Result
+				// We'll use it through the Result to avoid ownership issues
+
+				// Valid JSON that matches the schema
+				let validJson = """
+					{
+						"name": "Alice",
+						"age": 30,
+						"email": "alice@example.com",
+						"active": true
+					}
+					""";
+
+				// Invalid JSON - missing required field 'name'
+				let invalidJson = """
+					{
+						"age": 25,
+						"email": "bob@example.com"
+					}
+					""";
+
+				// Invalid JSON - wrong type for age
+				let wrongTypeJson = """
+					{
+						"name": "Charlie",
+						"age": "twenty"
+					}
+					""";
+
+				// Validate the valid JSON
+				Console.WriteLine("Validating valid JSON:");
+				{
+					let instanceResult = Json.Deserialize(validJson);
+					defer instanceResult.Dispose();
+					
+					if (instanceResult case .Ok(let value))
+					{
+						let validateResult = schemaResult.Value.Validate(value);
+						if (validateResult case .Ok(let validation))
+						{
+							Console.WriteLine(scope $"  Valid: {validation.IsValid}");
+							if (!validation.IsValid && validation.Errors != null)
+							{
+								for (let error in validation.Errors)
+									Console.WriteLine(scope $"    Error: {error.Message}");
+							}
+						}
+					}
+				}
+
+				// Validate the invalid JSON (missing required field)
+				Console.WriteLine("\nValidating JSON with missing required field:");
+				{
+					let instanceResult = Json.Deserialize(invalidJson);
+					defer instanceResult.Dispose();
+					
+					if (instanceResult case .Ok(let value))
+					{
+						let validateResult = schemaResult.Value.Validate(value);
+						if (validateResult case .Ok(let validation))
+						{
+							Console.WriteLine(scope $"  Valid: {validation.IsValid}");
+							if (!validation.IsValid && validation.Errors != null)
+							{
+								for (let error in validation.Errors)
+									Console.WriteLine(scope $"    Error: {error.Message} at {error.InstancePointer}");
+							}
+						}
+					}
+				}
+
+				// Validate the wrong type JSON
+				Console.WriteLine("\nValidating JSON with wrong type:");
+				{
+					let instanceResult = Json.Deserialize(wrongTypeJson);
+					defer instanceResult.Dispose();
+					
+					if (instanceResult case .Ok(let value))
+					{
+						let validateResult = schemaResult.Value.Validate(value);
+						if (validateResult case .Ok(let validation))
+						{
+							Console.WriteLine(scope $"  Valid: {validation.IsValid}");
+							if (!validation.IsValid && validation.Errors != null)
+							{
+								for (let error in validation.Errors)
+									Console.WriteLine(scope $"    Error: {error.Message} at {error.InstancePointer}");
+							}
+						}
+					}
+				}
+
+				Console.WriteLine("\nSchema validation allows you to verify JSON conforms to a defined structure");
+				Console.WriteLine("before processing it in your application.");
+				
+				// Delete the schema - destructor automatically cleans up internal resources
+				delete schemaResult.Value;
+			}
+
 			return 0;
 		}
 	}
