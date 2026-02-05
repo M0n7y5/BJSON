@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Employee",
+  "type": "object",
+  "allOf": [
+    {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "age": { "type": "integer" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "employee_id": { "type": "integer" },
+        "department": { "type": "string" }
+      }
+    }
+  ],
+  "required": ["name", "employee_id"]
+}
