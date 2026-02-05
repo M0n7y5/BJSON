@@ -1,8 +1,8 @@
 FileVersion = 1
-Projects = {BJSON = {Path = "BJSON"}, "BJSON.Test" = {Path = "BJSON.Test"}, "BJSON.Example" = {Path = "BJSON.Example"}, "BJSON.SchemaCodeGen" = {Path = "BJSON.SchemaCodeGen"}}
+Projects = {BJSON = {Path = "BJSON"}, "BJSON.Test" = {Path = "BJSON.Test"}, "BJSON.Example" = {Path = "BJSON.Example"}, "BJSON.SchemaCodeGen" = {Path = "BJSON.SchemaCodeGen"}, "BJSON.SchemaCodeGenTest" = {Path = "BJSON.SchemaCodeGenTest"}}
 
 [Workspace]
-StartupProject = "BJSON.Example"
+StartupProject = "BJSON.SchemaCodeGen"
 
 [Configs.Debug.Win64]
 BfSIMDSetting = "SSE41"

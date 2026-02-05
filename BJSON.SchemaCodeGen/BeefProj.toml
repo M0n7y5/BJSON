@@ -1,0 +1,9 @@
+FileVersion = 1
+Dependencies = {corlib = "*", BJSON = "*"}
+
+[Project]
+Name = "BJSON.SchemaCodeGen"
+StartupObject = "BJSON.SchemaCodeGen.Program"
+
+[Configs.Debug.Win64]
+DebugCommandArguments = "\"tests/inheritance.schema.json\" -n \"BJSON.SchemaCodeGenTest\" -o \"../BJSON.SchemaCodeGenTest/src\""
