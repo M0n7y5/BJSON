@@ -212,14 +212,12 @@ namespace BJSON.Test
 		{
 			let currentDir = Directory.GetCurrentDirectory(.. scope .());
 			let schemaPath = scope String();
-			schemaPath.Append(currentDir);
-			schemaPath.Append("\\TestData\\person.schema.json");
-			
+			Path.InternalCombine(schemaPath, currentDir, "TestData", "person.schema.json");
+
 			if (!File.Exists(schemaPath))
 			{
 				schemaPath.Clear();
-				schemaPath.Append(currentDir);
-				schemaPath.Append("\\BJSON.Test\\TestData\\person.schema.json");
+				Path.InternalCombine(schemaPath, currentDir, "BJSON.Test", "TestData", "person.schema.json");
 			}
 
 			Test.Assert(File.Exists(schemaPath), scope $"External schema file not found at: {schemaPath}");
