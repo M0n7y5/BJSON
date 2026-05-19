@@ -207,6 +207,207 @@ class SchemaCodeGenTests
 		}
 	}
 
+	[Test(Name = "SchemaCodeGen resolves fragmentless external file refs")]
+	public static void T_FragmentlessExternalFileRefResolvesRoot()
+	{
+		String tempDir = scope String();
+		CreateTempDirectory(tempDir);
+		defer { CleanupDirectory(tempDir); }
+
+		String rootPath = scope String();
+		BuildOutputFilePath(tempDir, "customer.schema.json", rootPath);
+		String addressPath = scope String();
+		BuildOutputFilePath(tempDir, "address.schema.json", addressPath);
+
+		let rootText = "{\"title\":\"Customer\",\"type\":\"object\",\"properties\":{\"address\":{\"$ref\":\"address.schema.json\"}}}";
+		let addressText = "{\"title\":\"Address\",\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}";
+		Test.Assert(File.WriteAllText(rootPath, rootText) case .Ok, "Expected root fixture write");
+		Test.Assert(File.WriteAllText(addressPath, addressText) case .Ok, "Expected address fixture write");
+
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(rootText, "Customer", rootPath);
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Ok, "Expected fragmentless local file ref to resolve");
+
+			if (resolveResult case .Ok(let schemas))
+			{
+				Test.Assert(schemas.Count == 2, scope $"Expected two generated types, got {schemas.Count}");
+				let customer = FindSchema(schemas, "Customer");
+				Test.Assert(customer != null, "Expected Customer type");
+				Test.Assert(FindSchema(schemas, "Address") != null, "Expected Address type");
+
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(customer);
+				defer delete code;
+				Test.Assert(code.Contains("public Address Address = new .() ~ delete _;"), scope $"Expected fragmentless ref field. Code:\n{code}");
+
+				delete schemas;
+			}
+
+			resolver.Cleanup();
+		}
+	}
+
+	[Test(Name = "SchemaCodeGen resolves absolute external file refs")]
+	public static void T_AbsoluteExternalFileRefResolves()
+	{
+		String tempDir = scope String();
+		CreateTempDirectory(tempDir);
+		defer { CleanupDirectory(tempDir); }
+
+		String rootPath = scope String();
+		BuildOutputFilePath(tempDir, "customer.schema.json", rootPath);
+		String commonPath = scope String();
+		BuildOutputFilePath(tempDir, "common.schema.json", commonPath);
+
+		String rootText = scope String("{\"title\":\"Customer\",\"type\":\"object\",\"properties\":{\"address\":{\"$ref\":\"");
+		rootText.Append(commonPath);
+		rootText.Append("#/$defs/Address\"}}}");
+		let commonText = "{\"$defs\":{\"Address\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}}";
+		Test.Assert(File.WriteAllText(rootPath, rootText) case .Ok, "Expected root fixture write");
+		Test.Assert(File.WriteAllText(commonPath, commonText) case .Ok, "Expected external fixture write");
+
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(rootText, "Customer", rootPath);
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Ok, "Expected absolute local file ref to resolve");
+
+			if (resolveResult case .Ok(let schemas))
+			{
+				let customer = FindSchema(schemas, "Customer");
+				Test.Assert(customer != null, "Expected Customer type");
+				Test.Assert(FindSchema(schemas, "Address") != null, "Expected Address type");
+
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(customer);
+				defer delete code;
+				Test.Assert(code.Contains("public Address Address = new .() ~ delete _;"), scope $"Expected absolute ref field. Code:\n{code}");
+
+				delete schemas;
+			}
+
+			resolver.Cleanup();
+		}
+	}
+
+	[Test(Name = "SchemaCodeGen resolves file URI external refs")]
+	public static void T_FileUriExternalRefResolves()
+	{
+		String tempDir = scope String();
+		CreateTempDirectory(tempDir);
+		defer { CleanupDirectory(tempDir); }
+
+		String rootPath = scope String();
+		BuildOutputFilePath(tempDir, "customer.schema.json", rootPath);
+		String commonPath = scope String();
+		BuildOutputFilePath(tempDir, "common.schema.json", commonPath);
+
+		String rootText = scope String("{\"title\":\"Customer\",\"type\":\"object\",\"properties\":{\"address\":{\"$ref\":\"file://");
+		rootText.Append(commonPath);
+		rootText.Append("#/$defs/Address\"}}}");
+		let commonText = "{\"$defs\":{\"Address\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}}";
+		Test.Assert(File.WriteAllText(rootPath, rootText) case .Ok, "Expected root fixture write");
+		Test.Assert(File.WriteAllText(commonPath, commonText) case .Ok, "Expected external fixture write");
+
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(rootText, "Customer", rootPath);
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Ok, "Expected file URI local ref to resolve");
+
+			if (resolveResult case .Ok(let schemas))
+			{
+				let customer = FindSchema(schemas, "Customer");
+				Test.Assert(customer != null, "Expected Customer type");
+				Test.Assert(FindSchema(schemas, "Address") != null, "Expected Address type");
+
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(customer);
+				defer delete code;
+				Test.Assert(code.Contains("public Address Address = new .() ~ delete _;"), scope $"Expected file URI ref field. Code:\n{code}");
+
+				delete schemas;
+			}
+
+			resolver.Cleanup();
+		}
+	}
+
+	[Test(Name = "SchemaCodeGen normalizes dot-dot external ref paths")]
+	public static void T_DotDotExternalRefPathResolves()
+	{
+		String tempDir = scope String();
+		CreateTempDirectory(tempDir);
+		defer { CleanupDirectory(tempDir); }
+
+		String nestedDir = scope String();
+		BuildOutputFilePath(tempDir, "schemas", nestedDir);
+		Test.Assert(Directory.CreateDirectory(nestedDir) case .Ok, "Expected nested schema directory");
+
+		String rootPath = scope String();
+		BuildOutputFilePath(nestedDir, "customer.schema.json", rootPath);
+		String commonPath = scope String();
+		BuildOutputFilePath(tempDir, "common.schema.json", commonPath);
+
+		let rootText = "{\"title\":\"Customer\",\"type\":\"object\",\"properties\":{\"address\":{\"$ref\":\"../common.schema.json#/$defs/Address\"}}}";
+		let commonText = "{\"$defs\":{\"Address\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}}";
+		Test.Assert(File.WriteAllText(rootPath, rootText) case .Ok, "Expected root fixture write");
+		Test.Assert(File.WriteAllText(commonPath, commonText) case .Ok, "Expected external fixture write");
+
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(rootText, "Customer", rootPath);
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Ok, "Expected dot-dot local file ref to resolve");
+
+			if (resolveResult case .Ok(let schemas))
+			{
+				let customer = FindSchema(schemas, "Customer");
+				Test.Assert(customer != null, "Expected Customer type");
+				Test.Assert(FindSchema(schemas, "Address") != null, "Expected Address type");
+
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(customer);
+				defer delete code;
+				Test.Assert(code.Contains("public Address Address = new .() ~ delete _;"), scope $"Expected dot-dot ref field. Code:\n{code}");
+
+				delete schemas;
+			}
+
+			resolver.Cleanup();
+		}
+	}
+
 	[Test(Name = "SchemaCodeGen caches repeated external document refs")]
 	public static void T_RepeatedExternalRefsShareDocument()
 	{
@@ -276,6 +477,37 @@ class SchemaCodeGenTests
 			let resolver = scope TypeResolver();
 			let resolveResult = resolver.Resolve(rootSchema);
 			Test.Assert(resolveResult case .Err(.UnresolvedRef), "Expected missing external file to fail");
+			Test.Assert(resolver.Errors.Count == 1, scope $"Expected one resolver error, got {resolver.Errors.Count}");
+			resolver.Cleanup();
+		}
+	}
+
+	[Test(Name = "SchemaCodeGen invalid external schema JSON fails")]
+	public static void T_InvalidExternalSchemaJsonFails()
+	{
+		String tempDir = scope String();
+		CreateTempDirectory(tempDir);
+		defer { CleanupDirectory(tempDir); }
+
+		String rootPath = scope String();
+		BuildOutputFilePath(tempDir, "broken.schema.json", rootPath);
+		String commonPath = scope String();
+		BuildOutputFilePath(tempDir, "invalid.schema.json", commonPath);
+
+		let schemaText = "{\"title\":\"Broken\",\"type\":\"object\",\"properties\":{\"missing\":{\"$ref\":\"invalid.schema.json#\"}}}";
+		let invalidText = "{\"title\":\"Invalid\",\"type\":\"object\",\"properties\":";
+		Test.Assert(File.WriteAllText(rootPath, schemaText) case .Ok, "Expected root fixture write");
+		Test.Assert(File.WriteAllText(commonPath, invalidText) case .Ok, "Expected invalid external fixture write");
+
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(schemaText, "Broken", rootPath);
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Err(.UnresolvedRef), "Expected invalid external JSON to fail");
 			Test.Assert(resolver.Errors.Count == 1, scope $"Expected one resolver error, got {resolver.Errors.Count}");
 			resolver.Cleanup();
 		}
