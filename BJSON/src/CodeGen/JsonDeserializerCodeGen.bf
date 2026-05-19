@@ -43,9 +43,16 @@ public class JsonDeserializerCodeGen
 	[Comptime]
 	private static void EmitAllFields(String code, Type type)
 	{
+		EmitAllFieldsRecursive(code, type);
+		EmitExtensionDataFields(code, type, type);
+	}
+
+	[Comptime]
+	private static void EmitAllFieldsRecursive(String code, Type type)
+	{
 		if (type.BaseType != null && type.BaseType != typeof(Object))
 		{
-			EmitAllFields(code, type.BaseType);
+			EmitAllFieldsRecursive(code, type.BaseType);
 		}
 
 		for (let field in type.GetFields())
@@ -56,8 +63,113 @@ public class JsonDeserializerCodeGen
 			if (!JsonCodeGenHelper.ShouldSerializeField(field, type))
 				continue;
 
+			if (JsonCodeGenHelper.IsExtensionDataField(field))
+				continue;
+
 			EmitFieldDeserialization(code, field, type);
 		}
+	}
+
+	[Comptime]
+	private static void EmitExtensionDataFields(String code, Type type, Type ownerType)
+	{
+		if (type.BaseType != null && type.BaseType != typeof(Object))
+		{
+			EmitExtensionDataFields(code, type.BaseType, ownerType);
+		}
+
+		for (let field in type.GetFields())
+		{
+			if (field.DeclaringType != type)
+				continue;
+
+			if (!JsonCodeGenHelper.ShouldSerializeField(field, type))
+				continue;
+
+			if (!JsonCodeGenHelper.IsExtensionDataField(field))
+				continue;
+
+			EmitExtensionDataDeserialization(code, field, ownerType);
+		}
+	}
+
+	[Comptime]
+	private static void EmitExtensionDataDeserialization(String code, FieldInfo field, Type ownerType)
+	{
+		JsonCodeGenHelper.ValidateExtensionDataField(field);
+
+		Type keyType, valueType;
+		JsonCodeGenHelper.GetDictionaryTypes(field.FieldType, out keyType, out valueType);
+		if (keyType == null || valueType == null)
+			return;
+
+		code.Append("\tfor (let _kv in root)\n");
+		code.Append("\t{\n");
+		let knownNameCheck = scope String();
+		if (AppendKnownJsonNameCheck(knownNameCheck, ownerType, "_kv.key"))
+		{
+			code.Append("\t\tif (");
+			code.Append(knownNameCheck);
+			code.Append(")\n");
+			code.Append("\t\t\tcontinue;\n");
+		}
+
+		EmitDictionaryValueDeserialization(code, field, valueType, "_kv.key", "_kv.value", "\t\t");
+
+		code.Append("\t}\n\n");
+	}
+
+	[Comptime]
+	private static bool AppendKnownJsonNameCheck(String code, Type ownerType, StringView keyExpr)
+	{
+		bool hasKnownField = false;
+		for (let field in ownerType.GetFields())
+		{
+			if (!JsonCodeGenHelper.ShouldSerializeField(field, ownerType))
+				continue;
+
+			if (JsonCodeGenHelper.IsExtensionDataField(field))
+				continue;
+
+			if (hasKnownField)
+			{
+				code.Append(" || ");
+			}
+
+			let jsonName = scope String();
+			JsonCodeGenHelper.GetJsonPropertyName(field, jsonName);
+			code.AppendF($"{keyExpr} == ");
+			AppendStringLiteral(code, jsonName);
+			hasKnownField = true;
+		}
+
+		return hasKnownField;
+	}
+
+	[Comptime]
+	private static void AppendStringLiteral(String code, StringView value)
+	{
+		code.Append("\"");
+		for (int i = 0; i < value.Length; i++)
+		{
+			char8 c = value[i];
+			switch (c)
+			{
+			case '\\':
+				code.Append("\\\\");
+			case '"':
+				code.Append("\\\"");
+			case '\n':
+				code.Append("\\n");
+			case '\r':
+				code.Append("\\r");
+			case '\t':
+				code.Append("\\t");
+			default:
+				code.Append(c);
+			}
+		}
+		code.Append("\"");
 	}
 
 	[Comptime]

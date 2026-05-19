@@ -232,6 +232,33 @@ class SchemaParser
 			}
 		}
 
+		if (obj.TryGet("additionalProperties") case .Ok(let additionalVal))
+		{
+			if (additionalVal.IsObject())
+			{
+				if (model.Type == .Any)
+				{
+					model.Type = .Object;
+				}
+
+				String additionalName = scope String();
+				additionalName.Append(model.Name);
+				additionalName.Append("AdditionalProperty");
+
+				var additionalResult = ParseSchema(additionalVal, additionalName, sourcePath);
+				if (additionalResult case .Err(let additionalErr))
+				{
+					delete model;
+					return .Err(additionalErr);
+				}
+
+				if (additionalResult case .Ok(let additionalSchema))
+				{
+					model.AdditionalProperties = additionalSchema;
+				}
+			}
+		}
+
 		if (obj.TryGet("required") case .Ok(let reqVal))
 		{
 			if (reqVal.IsArray())
@@ -463,9 +490,19 @@ class SchemaParser
 			case "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
 				"minLength", "maxLength", "format", "pattern",
 				"minItems", "maxItems", "uniqueItems", "contains", "minContains", "maxContains",
-				"minProperties", "maxProperties", "additionalProperties", "patternProperties",
+				"minProperties", "maxProperties", "patternProperties",
 				"propertyNames", "dependentSchemas", "dependentRequired", "dependencies",
 				"unevaluatedItems", "unevaluatedProperties":
+				AddWarning(scope $"Ignoring validation keyword '{kvp.key}' in schema '{schemaName}'.");
+			case "additionalProperties":
+				if (kvp.value.IsObject())
+				{
+					continue;
+				}
+				if (kvp.value.IsBool() && (bool)kvp.value)
+				{
+					continue;
+				}
 				AddWarning(scope $"Ignoring validation keyword '{kvp.key}' in schema '{schemaName}'.");
 			case "anyOf", "oneOf", "not", "if", "then", "else", "const", "$dynamicRef", "$dynamicAnchor":
 				AddWarning(scope $"Unsupported schema keyword '{kvp.key}' in schema '{schemaName}'; structural generation will ignore it.");

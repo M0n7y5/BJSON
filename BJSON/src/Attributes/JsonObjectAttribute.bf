@@ -30,10 +30,26 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 	[Comptime]
 	private void ValidateFields(Type type)
 	{
+		int extensionDataFieldCount = 0;
+
 		for (let field in type.GetFields())
 		{
 			if (!JsonCodeGenHelper.ShouldSerializeField(field, type))
 				continue;
+
+			if (JsonCodeGenHelper.IsExtensionDataField(field))
+			{
+				extensionDataFieldCount++;
+				if (extensionDataFieldCount > 1)
+				{
+					String typeName = scope .();
+					type.GetFullName(typeName);
+					Runtime.FatalError(scope $"Type '{typeName}' has more than one JsonExtensionData field.");
+				}
+
+				JsonCodeGenHelper.ValidateExtensionDataField(field);
+				continue;
+			}
 
 			var fieldType = JsonCodeGenHelper.UnwrapNullable(field.FieldType);
 

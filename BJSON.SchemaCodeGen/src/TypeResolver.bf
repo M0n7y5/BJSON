@@ -149,6 +149,7 @@ class TypeResolver
 			SetSourcePath(kvp.value.Schema, sourcePath);
 		}
 
+		SetSourcePath(schema.AdditionalProperties, sourcePath);
 		SetSourcePath(schema.Items, sourcePath);
 
 		for (var baseSchema in schema.AllOf)
@@ -181,6 +182,7 @@ class TypeResolver
 			CollectAllSchemas(kvp.value.Schema);
 		}
 
+		CollectAllSchemas(schema.AdditionalProperties);
 		CollectAllSchemas(schema.Items);
 
 		for (var baseSchema in schema.AllOf)
@@ -268,6 +270,13 @@ class TypeResolver
 			RegisterRefTargets(schema.Items, childPointer);
 		}
 
+		if (schema.AdditionalProperties != null)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "additionalProperties", childPointer);
+			RegisterRefTargets(schema.AdditionalProperties, childPointer);
+		}
+
 		for (int i = 0; i < schema.AllOf.Count; i++)
 		{
 			String childPointer = scope String();
@@ -343,6 +352,13 @@ class TypeResolver
 			String childPointer = scope String();
 			AppendChildPointer(childParentPointer, "items", childPointer);
 			RegisterUriTargets(schema.Items, nextBase, childPointer);
+		}
+
+		if (schema.AdditionalProperties != null)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "additionalProperties", childPointer);
+			RegisterUriTargets(schema.AdditionalProperties, nextBase, childPointer);
 		}
 
 		for (int i = 0; i < schema.AllOf.Count; i++)
@@ -431,6 +447,11 @@ class TypeResolver
 			{
 				return .Err(err);
 			}
+		}
+
+		if (ResolveReferences(schema.AdditionalProperties) case .Err(let additionalErr))
+		{
+			return .Err(additionalErr);
 		}
 
 		if (ResolveReferences(schema.Items) case .Err(let itemsErr))
@@ -1087,9 +1108,14 @@ class TypeResolver
 			}
 		}
 
-		if (FlattenAllOf(schema.Items, processed, visiting) case .Err(let err))
+		if (FlattenAllOf(schema.AdditionalProperties, processed, visiting) case .Err(let additionalErr))
 		{
-			return .Err(err);
+			return .Err(additionalErr);
+		}
+
+		if (FlattenAllOf(schema.Items, processed, visiting) case .Err(let itemsErr))
+		{
+			return .Err(itemsErr);
 		}
 
 		visiting.Remove(schema);
@@ -1139,6 +1165,18 @@ class TypeResolver
 			if (propCopy.IsRequired)
 			{
 				AddRequired(target, kvp.key);
+			}
+		}
+
+		if (source.AdditionalProperties != null)
+		{
+			if (target.AdditionalProperties == null)
+			{
+				target.AdditionalProperties = source.AdditionalProperties;
+			}
+			else if (target.AdditionalProperties != source.AdditionalProperties)
+			{
+				AddWarning(scope $"Schema '{target.Name}' already has additionalProperties while flattening allOf; keeping the existing field.");
 			}
 		}
 	}
@@ -1219,6 +1257,11 @@ class TypeResolver
 			{
 				return .Err(err);
 			}
+		}
+
+		if (AddToOrder(schema.AdditionalProperties, processed, visiting) case .Err(let additionalErr))
+		{
+			return .Err(additionalErr);
 		}
 
 		if (AddToOrder(schema.Items, processed, visiting) case .Err(let itemsErr))

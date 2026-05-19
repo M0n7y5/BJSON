@@ -100,6 +100,34 @@ class GameData
 	};
 }
 
+/// Test class for unknown integer object properties
+[JsonObject]
+class ExtensionIntData
+{
+	public String Name = new .() ~ delete _;
+
+	[JsonExtensionData]
+	public Dictionary<String, int> AdditionalProperties = new .() ~ DeleteDictionaryAndKeys!(_);
+}
+
+/// Test class for unknown string object properties
+[JsonObject]
+class ExtensionStringData
+{
+	[JsonExtensionData]
+	public Dictionary<String, String> Extra = new .() ~ DeleteDictionaryAndKeysAndValues!(_);
+}
+
+/// Test class for unknown object properties
+[JsonObject]
+class ExtensionObjectData
+{
+	public int Known;
+
+	[JsonExtensionData]
+	public Dictionary<String, NestedInfo> Extra = new .() ~ DeleteDictionaryAndKeysAndValues!(_);
+}
+
 class ReflectTest
 {
 	[Test(Name = "Reflection: Basic Deserialization")]
@@ -451,6 +479,112 @@ class ReflectTest
 		}
 
 		Debug.WriteLine("Reflection: Dictionary of Objects - PASSED");
+	}
+
+	[Test(Name = "Reflection: Extension Data Integers")]
+	public static void T_ExtensionDataIntegers()
+	{
+		let json = """
+			{
+				"Name": "Known",
+				"score": 42
+			}
+			""";
+
+		var result = Json.Deserialize(json);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let data = scope ExtensionIntData();
+		Test.Assert(data.JsonDeserialize(result.Value) case .Ok, "Deserialize failed");
+		Test.Assert(data.Name == "Known", scope $"Expected Name='Known', got '{data.Name}'");
+		Test.Assert(data.AdditionalProperties.Count == 1, scope $"Expected one extension entry, got {data.AdditionalProperties.Count}");
+		Test.Assert(data.AdditionalProperties.ContainsKeyAlt("score"), "Missing score extension value");
+		if (data.AdditionalProperties.TryGetValueAlt("score", let score))
+			Test.Assert(score == 42, scope $"Expected score=42, got {score}");
+
+		data.AdditionalProperties.Add(new String("level"), 7);
+		data.AdditionalProperties.Add(new String("Name"), 999);
+
+		let buffer = scope String();
+		Test.Assert(Json.Serialize(data, buffer) case .Ok, "Serialize failed");
+		Test.Assert(buffer.Contains("\"level\":7"), scope $"Expected extension field in output: {buffer}");
+		Test.Assert(!buffer.Contains("\"Name\":999"), scope $"Declared field should win over extension key conflict: {buffer}");
+
+		var serialized = Json.Deserialize(buffer);
+		defer serialized.Dispose();
+		Test.Assert(serialized case .Ok, scope $"Serialized JSON should parse: {buffer}");
+		let root = serialized.Value.AsObject().Value;
+		Test.Assert((StringView)root.GetValue("Name").Value == "Known", "Known field should keep declared value");
+		Test.Assert((int)root.GetValue("level").Value == 7, "Extension value mismatch");
+
+		Debug.WriteLine("Reflection: Extension Data Integers - PASSED");
+	}
+
+	[Test(Name = "Reflection: Extension Data Strings")]
+	public static void T_ExtensionDataStrings()
+	{
+		let json = """
+			{
+				"nickname": "Ace"
+			}
+			""";
+
+		var result = Json.Deserialize(json);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let data = scope ExtensionStringData();
+		Test.Assert(data.JsonDeserialize(result.Value) case .Ok, "Deserialize failed");
+		Test.Assert(data.Extra.Count == 1, scope $"Expected one extension entry, got {data.Extra.Count}");
+		if (data.Extra.TryGetValueAlt("nickname", let nickname))
+			Test.Assert(nickname == "Ace", scope $"Expected nickname='Ace', got '{nickname}'");
+		else
+			Test.Assert(false, "Missing nickname extension value");
+
+		let buffer = scope String();
+		Test.Assert(Json.Serialize(data, buffer) case .Ok, "Serialize failed");
+		Test.Assert(buffer.Contains("\"nickname\":\"Ace\""), scope $"Expected string extension field in output: {buffer}");
+
+		Debug.WriteLine("Reflection: Extension Data Strings - PASSED");
+	}
+
+	[Test(Name = "Reflection: Extension Data Objects")]
+	public static void T_ExtensionDataObjects()
+	{
+		let json = """
+			{
+				"Known": 5,
+				"metadata": {
+					"Description": "extra object",
+					"Value": 123
+				}
+			}
+			""";
+
+		var result = Json.Deserialize(json);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let data = scope ExtensionObjectData();
+		Test.Assert(data.JsonDeserialize(result.Value) case .Ok, "Deserialize failed");
+		Test.Assert(data.Known == 5, scope $"Expected Known=5, got {data.Known}");
+		Test.Assert(data.Extra.Count == 1, scope $"Expected one extension entry, got {data.Extra.Count}");
+		if (data.Extra.TryGetValueAlt("metadata", let metadata))
+		{
+			Test.Assert(metadata.Description == "extra object", "Extension object description mismatch");
+			Test.Assert(metadata.Value == 123, "Extension object value mismatch");
+		}
+		else
+		{
+			Test.Assert(false, "Missing metadata extension value");
+		}
+
+		let buffer = scope String();
+		Test.Assert(Json.Serialize(data, buffer) case .Ok, "Serialize failed");
+		Test.Assert(buffer.Contains("\"metadata\":{\"Description\":\"extra object\",\"Value\":123}"), scope $"Expected object extension field in output: {buffer}");
+
+		Debug.WriteLine("Reflection: Extension Data Objects - PASSED");
 	}
 
 	[Test(Name = "Reflection: Error on Missing Required Field")]

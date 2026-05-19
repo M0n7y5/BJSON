@@ -26,6 +26,7 @@ class SchemaModel
 	public List<String> Required = new List<String>() ~ delete _;
 	public List<String> EnumValues = new List<String>() ~ delete _;
 	public SchemaModel Items;
+	public SchemaModel AdditionalProperties;
 	public List<SchemaModel> AllOf = new List<SchemaModel>() ~ delete _;
 	public Dictionary<String, SchemaModel> Defs = new Dictionary<String, SchemaModel>() ~ delete _;
 	public Dictionary<String, SchemaModel> Definitions = new Dictionary<String, SchemaModel>() ~ delete _;
@@ -74,6 +75,7 @@ class SchemaModel
 
 		// SchemaModel references are centrally owned by TypeResolver.Cleanup().
 		Items = null;
+		AdditionalProperties = null;
 		ReferencedSchema = null;
 		AllOf.Clear();
 	}

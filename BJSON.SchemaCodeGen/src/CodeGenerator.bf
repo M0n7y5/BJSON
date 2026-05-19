@@ -54,6 +54,11 @@ class CodeGenerator
 		{
 			GenerateField(sb, kvp.value);
 		}
+
+		if (schema.AdditionalProperties != null)
+		{
+			GenerateAdditionalPropertiesField(sb, schema);
+		}
 		
 		sb.Append("}\n");
 	}
@@ -97,6 +102,48 @@ class CodeGenerator
 		}
 		
 		sb.Append("\n\n");
+	}
+
+	private void GenerateAdditionalPropertiesField(String sb, SchemaModel schema)
+	{
+		String typeName = scope String();
+		GetBeefType(schema.AdditionalProperties, typeName);
+
+		String fieldName = scope String();
+		GetAdditionalPropertiesFieldName(schema, fieldName);
+
+		sb.Append("\t[JsonExtensionData]\n");
+		sb.AppendF($"\tpublic Dictionary<String, {typeName}> {fieldName}");
+
+		String init = scope String();
+		GetAdditionalPropertiesInitializer(schema.AdditionalProperties, init);
+		sb.Append(init);
+		sb.Append("\n\n");
+	}
+
+	private void GetAdditionalPropertiesFieldName(SchemaModel schema, String output)
+	{
+		output.Set("AdditionalProperties");
+		int suffix = 2;
+		while (HasPropertyFieldName(schema, output))
+		{
+			output.Set("AdditionalProperties");
+			output.Append(suffix);
+			suffix++;
+		}
+	}
+
+	private bool HasPropertyFieldName(SchemaModel schema, StringView fieldName)
+	{
+		for (var kvp in schema.Properties)
+		{
+			if (kvp.value.Name == fieldName)
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 	
 	private void GenerateEnum(String sb, SchemaModel schema)
@@ -223,6 +270,31 @@ class CodeGenerator
 			output.Clear();
 		}
 	}
+
+	private void GetAdditionalPropertiesInitializer(SchemaModel valueSchema, String output)
+	{
+		if (SchemaIsArrayWithItemsNeedDelete(valueSchema))
+		{
+			output.Append(" = new .() ~ {\n");
+			output.Append("\t\tfor (let kv in _)\n");
+			output.Append("\t\t{\n");
+			output.Append("\t\t\tdelete kv.key;\n");
+			output.Append("\t\t\tDeleteContainerAndItems!(kv.value);\n");
+			output.Append("\t\t}\n");
+			output.Append("\t\tdelete _;\n");
+			output.Append("\t};");
+			return;
+		}
+
+		if (SchemaNeedsDelete(valueSchema))
+		{
+			output.Append(" = new .() ~ DeleteDictionaryAndKeysAndValues!(_);");
+		}
+		else
+		{
+			output.Append(" = new .() ~ DeleteDictionaryAndKeys!(_);");
+		}
+	}
 	
 	private bool ArrayItemsNeedDelete(SchemaModel schema)
 	{
@@ -253,6 +325,21 @@ class CodeGenerator
 		default:
 			return false;
 		}
+	}
+
+	private bool SchemaIsArrayWithItemsNeedDelete(SchemaModel schema)
+	{
+		if (schema == null)
+		{
+			return false;
+		}
+
+		if (schema.Type == .Ref && schema.ReferencedSchema != null)
+		{
+			return SchemaIsArrayWithItemsNeedDelete(schema.ReferencedSchema);
+		}
+
+		return schema.Type == .Array && ArrayItemsNeedDelete(schema);
 	}
 	
 	private void ToValidEnumName(StringView input, String output)

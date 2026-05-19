@@ -772,6 +772,167 @@ class SchemaCodeGenTests
 		Test.Assert(!Directory.Exists(strictOutputDir), scope $"Strict generation should not create output directory: {strictOutputDir}");
 	}
 
+	[Test(Name = "SchemaCodeGen emits string additionalProperties extension data")]
+	public static void T_EmitsStringAdditionalProperties()
+	{
+		let schemaText = "{\"title\":\"Settings\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}},\"additionalProperties\":{\"type\":\"string\"}}";
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(schemaText, "Settings");
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+		Test.Assert(parser.Warnings.Count == 0, scope $"Expected schema-valued additionalProperties to avoid warnings, got {parser.Warnings.Count}");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Ok, "Expected schema to resolve");
+
+			if (resolveResult case .Ok(let schemas))
+			{
+				let settings = FindSchema(schemas, "Settings");
+				Test.Assert(settings != null, "Expected Settings type");
+
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(settings);
+				defer delete code;
+
+				Test.Assert(code.Contains("public int64 Id;"), scope $"Expected declared property field. Code:\n{code}");
+				Test.Assert(code.Contains("[JsonExtensionData]\n\tpublic Dictionary<String, String> AdditionalProperties = new .() ~ DeleteDictionaryAndKeysAndValues!(_);"), scope $"Expected string extension data field. Code:\n{code}");
+
+				delete schemas;
+			}
+
+			resolver.Cleanup();
+		}
+	}
+
+	[Test(Name = "SchemaCodeGen emits ref additionalProperties extension data")]
+	public static void T_EmitsRefAdditionalProperties()
+	{
+		let schemaText = "{\"title\":\"Labels\",\"type\":\"object\",\"additionalProperties\":{\"$ref\":\"#/$defs/Label\"},\"$defs\":{\"Label\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}}}}}";
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(schemaText, "Labels");
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Ok, "Expected additionalProperties ref to resolve");
+
+			if (resolveResult case .Ok(let schemas))
+			{
+				let labels = FindSchema(schemas, "Labels");
+				Test.Assert(labels != null, "Expected Labels type");
+				Test.Assert(FindSchema(schemas, "Label") != null, "Expected referenced Label type");
+
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(labels);
+				defer delete code;
+
+				Test.Assert(code.Contains("[JsonExtensionData]\n\tpublic Dictionary<String, Label> AdditionalProperties = new .() ~ DeleteDictionaryAndKeysAndValues!(_);"), scope $"Expected ref extension data field. Code:\n{code}");
+
+				delete schemas;
+			}
+
+			resolver.Cleanup();
+		}
+	}
+
+	[Test(Name = "SchemaCodeGen disambiguates additionalProperties field name")]
+	public static void T_AdditionalPropertiesFieldNameCollision()
+	{
+		let schemaText = "{\"title\":\"Settings\",\"type\":\"object\",\"properties\":{\"additionalProperties\":{\"type\":\"integer\"}},\"additionalProperties\":{\"type\":\"string\"}}";
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(schemaText, "Settings");
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Ok, "Expected schema to resolve");
+
+			if (resolveResult case .Ok(let schemas))
+			{
+				let settings = FindSchema(schemas, "Settings");
+				Test.Assert(settings != null, "Expected Settings type");
+
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(settings);
+				defer delete code;
+
+				Test.Assert(code.Contains("public int64 AdditionalProperties;"), scope $"Expected declared property to keep its natural field name. Code:\n{code}");
+				Test.Assert(code.Contains("public Dictionary<String, String> AdditionalProperties2"), scope $"Expected extension data field to be suffixed. Code:\n{code}");
+
+				delete schemas;
+			}
+
+			resolver.Cleanup();
+		}
+	}
+
+	[Test(Name = "SchemaCodeGen bool additionalProperties behavior")]
+	public static void T_BoolAdditionalPropertiesBehavior()
+	{
+		let trueSchemaText = "{\"title\":\"OpenModel\",\"type\":\"object\",\"additionalProperties\":true}";
+		let trueParser = scope SchemaParser();
+		let trueParseResult = trueParser.Parse(trueSchemaText, "OpenModel");
+		Test.Assert(trueParseResult case .Ok, "Expected true additionalProperties schema to parse");
+		Test.Assert(trueParser.Warnings.Count == 0, scope $"additionalProperties:true should not warn, got {trueParser.Warnings.Count}");
+		if (trueParseResult case .Ok(let trueSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(trueSchema);
+			Test.Assert(resolveResult case .Ok, "Expected true additionalProperties schema to resolve");
+			if (resolveResult case .Ok(let schemas))
+			{
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(schemas[0]);
+				defer delete code;
+				Test.Assert(!code.Contains("[JsonExtensionData]"), scope $"additionalProperties:true should not generate extension data. Code:\n{code}");
+				delete schemas;
+			}
+			resolver.Cleanup();
+		}
+
+		let falseSchemaText = "{\"title\":\"ClosedModel\",\"type\":\"object\",\"additionalProperties\":false}";
+		let falseParser = scope SchemaParser();
+		let falseParseResult = falseParser.Parse(falseSchemaText, "ClosedModel");
+		Test.Assert(falseParseResult case .Ok, "Expected false additionalProperties schema to parse");
+		Test.Assert(falseParser.Warnings.Count == 1, scope $"additionalProperties:false should warn once, got {falseParser.Warnings.Count}");
+		if (falseParseResult case .Ok(let falseSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(falseSchema);
+			Test.Assert(resolveResult case .Ok, "Expected false additionalProperties schema to resolve");
+			if (resolveResult case .Ok(let schemas))
+			{
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(schemas[0]);
+				defer delete code;
+				Test.Assert(!code.Contains("[JsonExtensionData]"), scope $"additionalProperties:false should not generate extension data. Code:\n{code}");
+				delete schemas;
+			}
+			resolver.Cleanup();
+		}
+	}
+
 	[Test(Name = "SchemaCodeGen warns but emits structural model")]
 	public static void T_WarningsDoNotFail()
 	{

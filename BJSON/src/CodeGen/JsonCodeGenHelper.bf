@@ -31,6 +31,25 @@ public class JsonCodeGenHelper
 		return false;
 	}
 
+	/// Checks if a field captures unknown JSON object properties.
+	[Comptime]
+	public static bool IsExtensionDataField(FieldInfo field)
+	{
+		return field.HasCustomAttribute<JsonExtensionDataAttribute>();
+	}
+
+	/// Validates the shape required by [JsonExtensionData].
+	[Comptime]
+	public static void ValidateExtensionDataField(FieldInfo field)
+	{
+		Type keyType, valueType;
+		GetDictionaryTypes(field.FieldType, out keyType, out valueType);
+		if (keyType == null || valueType == null || keyType != typeof(String))
+		{
+			Runtime.FatalError(scope $"JsonExtensionData field '{field.Name}' must be Dictionary<String, TValue>.");
+		}
+	}
+
 	/// Gets the JSON property name for a field (uses [JsonPropertyName] if present).
 	[Comptime]
 	public static void GetJsonPropertyName(FieldInfo field, String outName)

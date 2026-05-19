@@ -56,6 +56,7 @@ BJSON.SchemaCodeGen data.json -n Models --warnings-as-errors
 | `"type": "object"` | Custom class | `= new .() ~ delete _` |
 | `enum: [...]` | Beef enum | None (value type) |
 | Internal, anchored, or local file `$ref` | Referenced class/enum | Based on referenced type |
+| Schema-valued `additionalProperties` | `[JsonExtensionData] Dictionary<String, T>` | Deletes keys, and values when `T` is a reference type |
 
 ## Architecture
 
@@ -89,6 +90,7 @@ BJSON.SchemaCodeGen/
 - Resolve local `$id` aliases and use `$id` as the base URI for nested refs
 - Parse `definitions` and `$defs`
 - Flatten object fields from `allOf` into the generated class
+- Generate `[JsonExtensionData] Dictionary<String, T>` for schema-valued `additionalProperties`
 - Emit warnings for unsupported validation keywords while still generating useful structural models
 - Resolve naming conflicts (Appends numbers: Address, Address2)
 - Documentation comments from schema `description`
@@ -98,6 +100,7 @@ BJSON.SchemaCodeGen/
 Generated classes use proper Beef destructors:
 - `String` fields: `~ delete _`
 - `List` fields: `~ DeleteContainerAndItems!(_)`
+- Extension-data dictionaries: `~ DeleteDictionaryAndKeys!(_)` for value items, or `~ DeleteDictionaryAndKeysAndValues!(_)` for reference items
 - Reference type fields: `~ delete _`
 
 ## Exit Codes
@@ -130,8 +133,8 @@ Not supported in v1:
 - patternProperties
 - if/then/else
 - $dynamicRef / $dynamicAnchor
-- Validation-only keywords such as `minimum`, `maxLength`, `format`, `pattern`, `minItems`, and `additionalProperties`
-- additionalProperties with schemas
+- Validation-only keywords such as `minimum`, `maxLength`, `format`, `pattern`, `minItems`, and `additionalProperties: false`
+- `additionalProperties: true` does not generate an extension-data field
 - propertyNames
 - contains, minContains, maxContains
 - dependencies / dependentSchemas
