@@ -1,5 +1,5 @@
 FileVersion = 1
-Projects = {BJSON = {Path = "BJSON"}, "BJSON.Test" = {Path = "BJSON.Test"}, "BJSON.Example" = {Path = "BJSON.Example"}, "BJSON.SchemaCodeGen" = {Path = "BJSON.SchemaCodeGen"}, "BJSON.SchemaCodeGenTest" = {Path = "BJSON.SchemaCodeGenTest"}}
+Projects = {BJSON = {Path = "BJSON"}, "BJSON.Test" = {Path = "BJSON.Test"}, "BJSON.Example" = {Path = "BJSON.Example"}, "BJSON.SchemaCodeGen" = {Path = "BJSON.SchemaCodeGen"}, "BJSON.SchemaCodeGenTest" = {Path = "BJSON.SchemaCodeGenTest"}, "BJSON.SchemaCodeGen.Tests" = {Path = "BJSON.SchemaCodeGen.Tests"}}
 
 [Workspace]
 StartupProject = "BJSON.SchemaCodeGen"

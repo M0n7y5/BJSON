@@ -7,7 +7,7 @@ namespace BJSON.SchemaCodeGenTest;
 
 /// A user in the system
 [JsonObject]
-class Primitives
+class User
 {
 	/// The user's unique identifier
 	[JsonRequired]

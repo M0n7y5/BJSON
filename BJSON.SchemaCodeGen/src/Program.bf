@@ -50,6 +50,8 @@ class Program
 			return 1;
 		}
 		
+		var parser = scope SchemaParser();
+		
 		String rootName = scope String();
 		if (!options.RootClassName.IsEmpty)
 		{
@@ -57,13 +59,22 @@ class Program
 		}
 		else
 		{
-			String fileName = scope String();
-			Path.GetFileNameWithoutExtension(options.SchemaFile, fileName);
-			rootName.Append(fileName);
-			int dotIndex = rootName.IndexOf('.');
-			if (dotIndex >= 0)
+			String titleName = scope String();
+			let titleResult = parser.ExtractTitle(schemaContent, titleName);
+			if (titleResult case .Ok && !titleName.IsEmpty)
 			{
-				rootName.RemoveToEnd(dotIndex);
+				rootName.Append(titleName);
+			}
+			else
+			{
+				String fileName = scope String();
+				Path.GetFileNameWithoutExtension(options.SchemaFile, fileName);
+				rootName.Append(fileName);
+				int dotIndex = rootName.IndexOf('.');
+				if (dotIndex >= 0)
+				{
+					rootName.RemoveToEnd(dotIndex);
+				}
 			}
 		}
 		String pascalRootName = scope String();
@@ -72,7 +83,6 @@ class Program
 		
 		Console.WriteLine(scope $"Parsing schema: {options.SchemaFile}");
 		
-		var parser = scope SchemaParser();
 		var parseResult = parser.Parse(schemaContent, rootName);
 		
 		if (parseResult case .Err(let parseErr))
@@ -100,12 +110,18 @@ class Program
 			if (resolveResult case .Err)
 			{
 				Console.Error.WriteLine("Error: Type resolution failed");
-				delete rootSchema;
+				PrintWarnings(parser.Warnings);
+				PrintWarnings(resolver.Warnings);
+				PrintErrors(resolver.Errors);
+				resolver.Cleanup();
 				return 3;
 			}
 			
 			if (resolveResult case .Ok(let schemas))
 			{
+				PrintWarnings(parser.Warnings);
+				PrintWarnings(resolver.Warnings);
+				
 				Console.WriteLine(scope $"Found {schemas.Count} types to generate");
 				
 				GeneratorConfig config = .();
@@ -229,31 +245,58 @@ class Program
 		Console.WriteLine("  BJSON.SchemaCodeGen schema.json -n MyApp -c ApiResponse");
 	}
 	
+	private static void PrintWarnings(List<String> warnings)
+	{
+		for (var warning in warnings)
+		{
+			Console.Error.WriteLine(scope $"Warning: {warning}");
+		}
+	}
+	
+	private static void PrintErrors(List<String> errors)
+	{
+		for (var err in errors)
+		{
+			Console.Error.WriteLine(scope $"  {err}");
+		}
+	}
+	
 	private static void ToPascalCase(StringView input, String output)
 	{
 		bool nextUpper = true;
 		for (int i = 0; i < input.Length; i++)
 		{
 			char8 c = input[i];
-			if (c == '_' || c == '-' || c == ' ')
+			bool isLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+			bool isDigit = c >= '0' && c <= '9';
+			
+			if (!isLetter && !isDigit)
 			{
 				nextUpper = true;
 			}
-			else if (nextUpper)
+			else
 			{
-				if (c >= 'a' && c <= 'z')
+				if (output.IsEmpty && isDigit)
 				{
-					output.Append((char8)(c - 32));
+					output.Append("_");
+				}
+				
+				if (nextUpper)
+				{
+					if (c >= 'a' && c <= 'z')
+					{
+						output.Append((char8)(c - 32));
+					}
+					else
+					{
+						output.Append(c);
+					}
+					nextUpper = false;
 				}
 				else
 				{
 					output.Append(c);
 				}
-				nextUpper = false;
-			}
-			else
-			{
-				output.Append(c);
 			}
 		}
 	}

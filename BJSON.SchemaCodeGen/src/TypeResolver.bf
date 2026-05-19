@@ -9,21 +9,41 @@ class TypeResolver
 	private HashSet<String> mUsedNames = new HashSet<String>() ~ delete _;
 	private Dictionary<String, SchemaModel> mRefTargets = new Dictionary<String, SchemaModel>() ~ delete _;
 	private List<SchemaModel> mGenerationOrder = new List<SchemaModel>() ~ delete _;
+	private SchemaModel mRootSchema;
 	
-
+	public List<String> Warnings = new List<String>() ~ DeleteContainerAndItems!(_);
+	public List<String> Errors = new List<String>() ~ DeleteContainerAndItems!(_);
 	
 	public Result<List<SchemaModel>, SchemaError> Resolve(SchemaModel rootSchema)
 	{
 		mAllSchemas.Clear();
-		mUsedNames.Clear();
-		mRefTargets.Clear();
+		ClearUsedNames();
+		ClearRefTargets();
 		mGenerationOrder.Clear();
+		ClearAndDeleteItems(Warnings);
+		ClearAndDeleteItems(Errors);
+		mRootSchema = rootSchema;
 		
-		CollectAllSchemas(rootSchema, null);
+		CollectAllSchemas(rootSchema);
 		AssignNames();
-		ResolveReferences(rootSchema);
-		ProcessInheritance(rootSchema);
-		BuildGenerationOrder();
+		RegisterRefTargets(rootSchema, "#");
+		
+		if (ResolveReferences(rootSchema) case .Err(let resolveErr))
+		{
+			return .Err(resolveErr);
+		}
+		
+		HashSet<SchemaModel> flattened = scope HashSet<SchemaModel>();
+		HashSet<SchemaModel> flattening = scope HashSet<SchemaModel>();
+		if (FlattenAllOf(rootSchema, flattened, flattening) case .Err(let flattenErr))
+		{
+			return .Err(flattenErr);
+		}
+		
+		if (BuildGenerationOrder() case .Err(let orderErr))
+		{
+			return .Err(orderErr);
+		}
 		
 		var result = new List<SchemaModel>();
 		for (var schema in mGenerationOrder)
@@ -36,63 +56,79 @@ class TypeResolver
 	
 	public void Cleanup()
 	{
-		// Delete all schemas in mAllSchemas
-		// Note: Caller must ensure rootSchema is not used after this
 		for (var schema in mAllSchemas)
 		{
 			delete schema;
 		}
 		mAllSchemas.Clear();
 		
-		// Clean up all strings in mUsedNames
+		ClearUsedNames();
+		ClearRefTargets();
+		mGenerationOrder.Clear();
+		mRootSchema = null;
+	}
+	
+	private void ClearUsedNames()
+	{
 		for (var name in mUsedNames)
 		{
 			delete name;
 		}
 		mUsedNames.Clear();
-		
-		mRefTargets.Clear();
-		mGenerationOrder.Clear();
 	}
 	
-	private void CollectAllSchemas(SchemaModel schema, SchemaModel parent)
+	private void ClearRefTargets()
+	{
+		for (var kvp in mRefTargets)
+		{
+			delete kvp.key;
+		}
+		mRefTargets.Clear();
+	}
+	
+	private void CollectAllSchemas(SchemaModel schema)
 	{
 		if (schema == null) return;
 		
-		bool alreadyAdded = false;
-		for (var existing in mAllSchemas)
-		{
-			if (existing == schema)
-			{
-				alreadyAdded = true;
-				break;
-			}
-		}
-		
-		if (!alreadyAdded)
+		if (!ContainsSchema(schema))
 		{
 			mAllSchemas.Add(schema);
 		}
 		
-		for (var kvp in schema.Properties)
+		for (var kvp in schema.Defs)
 		{
-			CollectAllSchemas(kvp.value.Schema, schema);
+			CollectAllSchemas(kvp.value);
 		}
 		
-		if (schema.Items != null)
+		for (var kvp in schema.Definitions)
 		{
-			CollectAllSchemas(schema.Items, schema);
+			CollectAllSchemas(kvp.value);
 		}
+		
+		for (var kvp in schema.Properties)
+		{
+			CollectAllSchemas(kvp.value.Schema);
+		}
+		
+		CollectAllSchemas(schema.Items);
 		
 		for (var baseSchema in schema.AllOf)
 		{
-			CollectAllSchemas(baseSchema, schema);
+			CollectAllSchemas(baseSchema);
+		}
+	}
+	
+	private bool ContainsSchema(SchemaModel schema)
+	{
+		for (var existing in mAllSchemas)
+		{
+			if (existing == schema)
+			{
+				return true;
+			}
 		}
 		
-		if (schema.ReferencedSchema != null)
-		{
-			CollectAllSchemas(schema.ReferencedSchema, schema);
-		}
+		return false;
 	}
 	
 	private void AssignNames()
@@ -101,199 +137,451 @@ class TypeResolver
 		{
 			if (schema.Type == .Object || schema.Type == .Enum)
 			{
-				String name = scope String();
-				name.Append(schema.Name);
+				String baseName = scope String();
+				ToValidTypeName(schema.Name, baseName);
+				if (baseName.IsEmpty)
+				{
+					baseName.Append("GeneratedType");
+				}
 				
 				int suffix = 1;
-				String uniqueName = scope String();
-				uniqueName.Append(name);
+				String uniqueName = scope String(baseName);
 				
 				while (mUsedNames.Contains(uniqueName))
 				{
 					uniqueName.Clear();
-					uniqueName.Append(name);
+					uniqueName.Append(baseName);
 					uniqueName.Append(++suffix);
 				}
 				
-				mUsedNames.Add(uniqueName);
+				mUsedNames.Add(new String(uniqueName));
 				schema.Name.Set(uniqueName);
 			}
 		}
 	}
 	
-	private void ResolveReferences(SchemaModel schema)
+	private void RegisterRefTargets(SchemaModel schema, StringView pointer)
 	{
 		if (schema == null) return;
+		
+		AddRefTarget(pointer, schema);
+		
+		for (var kvp in schema.Defs)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "$defs", childPointer);
+			AppendChildPointer(childPointer, kvp.key, childPointer);
+			RegisterRefTargets(kvp.value, childPointer);
+		}
+		
+		for (var kvp in schema.Definitions)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "definitions", childPointer);
+			AppendChildPointer(childPointer, kvp.key, childPointer);
+			RegisterRefTargets(kvp.value, childPointer);
+		}
+		
+		for (var kvp in schema.Properties)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "properties", childPointer);
+			AppendChildPointer(childPointer, kvp.key, childPointer);
+			RegisterRefTargets(kvp.value.Schema, childPointer);
+		}
+		
+		if (schema.Items != null)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "items", childPointer);
+			RegisterRefTargets(schema.Items, childPointer);
+		}
+		
+		for (int i = 0; i < schema.AllOf.Count; i++)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "allOf", childPointer);
+			String index = scope String();
+			index.Append(i);
+			AppendChildPointer(childPointer, index, childPointer);
+			RegisterRefTargets(schema.AllOf[i], childPointer);
+		}
+	}
+	
+	private void AddRefTarget(StringView pointer, SchemaModel schema)
+	{
+		SchemaModel existing;
+		if (mRefTargets.TryGetValueAlt(pointer, out existing))
+		{
+			return;
+		}
+		
+		mRefTargets.Add(new String(pointer), schema);
+	}
+	
+	private void AppendChildPointer(StringView parent, StringView token, String output)
+	{
+		String original = scope String(parent);
+		output.Clear();
+		output.Append(original);
+		output.Append("/");
+		AppendEscapedPointerToken(token, output);
+	}
+	
+	private void AppendEscapedPointerToken(StringView token, String output)
+	{
+		for (int i = 0; i < token.Length; i++)
+		{
+			char8 c = token[i];
+			if (c == '~')
+			{
+				output.Append("~0");
+			}
+			else if (c == '/')
+			{
+				output.Append("~1");
+			}
+			else
+			{
+				output.Append(c);
+			}
+		}
+	}
+	
+	private Result<void, SchemaError> ResolveReferences(SchemaModel schema)
+	{
+		if (schema == null) return .Ok;
 		
 		if (schema.Type == .Ref && !schema.RefPath.IsEmpty)
 		{
-			var target = FindRefTarget(schema.RefPath, schema);
-			if (target != null)
+			if (!schema.RefPath.StartsWith("#"))
+			{
+				AddWarning(scope $"External $ref '{schema.RefPath}' is not supported; using JsonValue fallback.");
+				schema.Type = .Any;
+				schema.RefPath.Clear();
+				return .Ok;
+			}
+			
+			SchemaModel target;
+			if (mRefTargets.TryGetValueAlt(schema.RefPath, out target))
 			{
 				schema.ReferencedSchema = target;
 			}
+			else
+			{
+				AddError(scope $"Unresolved internal $ref '{schema.RefPath}'.");
+				return .Err(.UnresolvedRef);
+			}
+		}
+		
+		for (var kvp in schema.Defs)
+		{
+			if (ResolveReferences(kvp.value) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+		
+		for (var kvp in schema.Definitions)
+		{
+			if (ResolveReferences(kvp.value) case .Err(let err))
+			{
+				return .Err(err);
+			}
 		}
 		
 		for (var kvp in schema.Properties)
 		{
-			ResolveReferences(kvp.value.Schema);
+			if (ResolveReferences(kvp.value.Schema) case .Err(let err))
+			{
+				return .Err(err);
+			}
 		}
 		
-		ResolveReferences(schema.Items);
+		if (ResolveReferences(schema.Items) case .Err(let itemsErr))
+		{
+			return .Err(itemsErr);
+		}
 		
 		for (var baseSchema in schema.AllOf)
 		{
-			ResolveReferences(baseSchema);
-		}
-	}
-	
-	private SchemaModel FindRefTarget(StringView refPath, SchemaModel context)
-	{
-		if (refPath.IsEmpty) return null;
-		
-		if (refPath[0] == '#')
-		{
-			return FindInternalRef(refPath, context);
-		}
-		
-		return null;
-	}
-	
-	private SchemaModel FindInternalRef(StringView refPath, SchemaModel context)
-	{
-		if (refPath.Length < 2 || refPath[0] != '#') return null;
-		
-		if (refPath.StartsWith("#/definitions/"))
-		{
-			StringView defName = refPath.Substring(14);
-			for (var schema in mAllSchemas)
+			if (ResolveReferences(baseSchema) case .Err(let allOfErr))
 			{
-				if (schema.Name.Equals(defName, .OrdinalIgnoreCase))
-				{
-					return schema;
-				}
+				return .Err(allOfErr);
 			}
 		}
 		
-		if (refPath == "#")
-		{
-			for (var schema in mAllSchemas)
-			{
-				bool isReferenced = false;
-				for (var s in mAllSchemas)
-				{
-					if (s != schema && s.ReferencedSchema == schema)
-					{
-						isReferenced = true;
-						break;
-					}
-				}
-				if (!isReferenced)
-				{
-					return schema;
-				}
-			}
-		}
-		
-		return null;
+		return .Ok;
 	}
 	
-	private void ProcessInheritance(SchemaModel schema)
+	private Result<void, SchemaError> FlattenAllOf(SchemaModel schema, HashSet<SchemaModel> processed, HashSet<SchemaModel> visiting)
 	{
-		if (schema == null) return;
+		if (schema == null) return .Ok;
+		if (processed.Contains(schema)) return .Ok;
 		
-		if (schema.AllOf.Count > 0)
+		if (visiting.Contains(schema))
 		{
-			for (int i = schema.AllOf.Count - 1; i >= 0; i--)
+			AddError(scope $"Circular allOf reference involving '{schema.Name}'.");
+			return .Err(.CircularRef);
+		}
+		
+		visiting.Add(schema);
+		
+		for (var baseSchema in schema.AllOf)
+		{
+			SchemaModel resolvedBase = ResolveAlias(baseSchema);
+			if (resolvedBase == null)
 			{
-				var baseSchema = schema.AllOf[i];
-				if (baseSchema.Type == .Ref && baseSchema.ReferencedSchema != null)
-				{
-					schema.AllOf[i] = baseSchema.ReferencedSchema;
-					delete baseSchema;
-				}
+				continue;
 			}
 			
-			for (int i = 0; i < schema.AllOf.Count; i++)
+			if (FlattenAllOf(resolvedBase, processed, visiting) case .Err(let err))
 			{
-				var baseSchema = schema.AllOf[i];
-				if (baseSchema.Type != .Object)
-				{
-					continue;
-				}
-				
-				for (var kvp in baseSchema.Properties)
-				{
-					String matchKey;
-					PropertyModel existingProp;
-					if (!schema.Properties.TryGet(kvp.key, out matchKey, out existingProp))
-					{
-						var propCopy = new PropertyModel();
-						propCopy.Name.Set(kvp.value.Name);
-						propCopy.JsonName.Set(kvp.value.JsonName);
-						propCopy.IsRequired = kvp.value.IsRequired;
-						propCopy.Description.Set(kvp.value.Description);
-						
-						if (kvp.value.Schema != null)
-						{
-							propCopy.Schema = kvp.value.Schema;
-						}
-						
-						// Clone the key to avoid double-free when both base and derived schemas are destroyed
-						var keyClone = new String(kvp.key);
-						schema.Properties.Add(keyClone, propCopy);
-						
-						if (kvp.value.IsRequired)
-						{
-							schema.Required.Add(new String(kvp.key));
-						}
-					}
-				}
+				return .Err(err);
 			}
 			
-
+			if (resolvedBase.Type == .Object)
+			{
+				CopyObjectProperties(schema, resolvedBase);
+			}
+			else if (resolvedBase.Type != .Any)
+			{
+				AddWarning(scope $"Schema '{schema.Name}' has a non-object allOf member; ignoring it for structural generation.");
+			}
+		}
+		
+		ApplyRequired(schema);
+		
+		for (var kvp in schema.Defs)
+		{
+			if (FlattenAllOf(kvp.value, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+		
+		for (var kvp in schema.Definitions)
+		{
+			if (FlattenAllOf(kvp.value, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
 		}
 		
 		for (var kvp in schema.Properties)
 		{
-			ProcessInheritance(kvp.value.Schema);
+			if (FlattenAllOf(kvp.value.Schema, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
 		}
 		
-		ProcessInheritance(schema.Items);
-	}
-	
-	private void BuildGenerationOrder()
-	{
-		HashSet<SchemaModel> processed = scope HashSet<SchemaModel>();
-		
-		for (var schema in mAllSchemas)
+		if (FlattenAllOf(schema.Items, processed, visiting) case .Err(let err))
 		{
-			AddToOrder(schema, processed);
+			return .Err(err);
 		}
+		
+		visiting.Remove(schema);
+		processed.Add(schema);
+		return .Ok;
 	}
 	
-	private void AddToOrder(SchemaModel schema, HashSet<SchemaModel> processed)
+	private SchemaModel ResolveAlias(SchemaModel schema)
 	{
-		if (schema == null || processed.Contains(schema)) return;
+		if (schema == null) return null;
 		
 		if (schema.Type == .Ref && schema.ReferencedSchema != null)
 		{
-			AddToOrder(schema.ReferencedSchema, processed);
+			return schema.ReferencedSchema;
+		}
+		
+		return schema;
+	}
+	
+	private void CopyObjectProperties(SchemaModel target, SchemaModel source)
+	{
+		for (var kvp in source.Properties)
+		{
+			String matchKey;
+			PropertyModel existingProp;
+			if (target.Properties.TryGet(kvp.key, out matchKey, out existingProp))
+			{
+				if (kvp.value.IsRequired)
+				{
+					existingProp.IsRequired = true;
+					AddRequired(target, kvp.key);
+				}
+				AddWarning(scope $"Schema '{target.Name}' already has property '{kvp.key}' while flattening allOf; keeping the existing field.");
+				continue;
+			}
+			
+			var propCopy = new PropertyModel();
+			propCopy.Name.Set(kvp.value.Name);
+			propCopy.JsonName.Set(kvp.value.JsonName);
+			propCopy.Schema = kvp.value.Schema;
+			propCopy.IsRequired = kvp.value.IsRequired;
+			propCopy.DefaultValue.Set(kvp.value.DefaultValue);
+			propCopy.Description.Set(kvp.value.Description);
+			
+			target.Properties.Add(new String(kvp.key), propCopy);
+			
+			if (propCopy.IsRequired)
+			{
+				AddRequired(target, kvp.key);
+			}
+		}
+	}
+	
+	private void ApplyRequired(SchemaModel schema)
+	{
+		for (var req in schema.Required)
+		{
+			String matchKey;
+			PropertyModel prop;
+			if (schema.Properties.TryGetAlt(req, out matchKey, out prop))
+			{
+				prop.IsRequired = true;
+			}
+		}
+	}
+	
+	private void AddRequired(SchemaModel schema, StringView name)
+	{
+		for (var req in schema.Required)
+		{
+			if (req == name)
+			{
+				return;
+			}
+		}
+		
+		schema.Required.Add(new String(name));
+	}
+	
+	private Result<void, SchemaError> BuildGenerationOrder()
+	{
+		HashSet<SchemaModel> processed = scope HashSet<SchemaModel>();
+		HashSet<SchemaModel> visiting = scope HashSet<SchemaModel>();
+		
+		for (var schema in mAllSchemas)
+		{
+			if (AddToOrder(schema, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+		
+		return .Ok;
+	}
+	
+	private Result<void, SchemaError> AddToOrder(SchemaModel schema, HashSet<SchemaModel> processed, HashSet<SchemaModel> visiting)
+	{
+		if (schema == null || processed.Contains(schema)) return .Ok;
+		
+		if (visiting.Contains(schema))
+		{
+			AddError(scope $"Circular schema reference involving '{schema.Name}'.");
+			return .Err(.CircularRef);
+		}
+		
+		visiting.Add(schema);
+		
+		if (schema.Type == .Ref && schema.ReferencedSchema != null)
+		{
+			if (AddToOrder(schema.ReferencedSchema, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
 		}
 		
 		for (var baseSchema in schema.AllOf)
 		{
-			AddToOrder(baseSchema, processed);
+			if (AddToOrder(ResolveAlias(baseSchema), processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
 		}
 		
-		AddToOrder(schema.Items, processed);
+		for (var kvp in schema.Properties)
+		{
+			if (AddToOrder(kvp.value.Schema, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
 		
+		if (AddToOrder(schema.Items, processed, visiting) case .Err(let itemsErr))
+		{
+			return .Err(itemsErr);
+		}
+		
+		for (var kvp in schema.Defs)
+		{
+			if (AddToOrder(kvp.value, processed, visiting) case .Err(let defsErr))
+			{
+				return .Err(defsErr);
+			}
+		}
+		
+		for (var kvp in schema.Definitions)
+		{
+			if (AddToOrder(kvp.value, processed, visiting) case .Err(let definitionsErr))
+			{
+				return .Err(definitionsErr);
+			}
+		}
+		
+		visiting.Remove(schema);
 		processed.Add(schema);
 		
-		if (schema.Type == .Enum || schema.Type == .Object || 
-			(schema.Type == .Ref && schema.ReferencedSchema != null))
+		if (schema.Emit && (schema.Type == .Enum || schema.Type == .Object))
 		{
 			mGenerationOrder.Add(schema);
 		}
+		
+		return .Ok;
+	}
+	
+	private void ToValidTypeName(StringView input, String output)
+	{
+		bool nextUpper = true;
+		for (int i = 0; i < input.Length; i++)
+		{
+			char8 c = input[i];
+			bool isLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+			bool isDigit = c >= '0' && c <= '9';
+			
+			if (isLetter || isDigit)
+			{
+				if (output.IsEmpty && isDigit)
+				{
+					output.Append("_");
+				}
+				
+				if (nextUpper && c >= 'a' && c <= 'z')
+				{
+					output.Append((char8)(c - 32));
+				}
+				else
+				{
+					output.Append(c);
+				}
+				nextUpper = false;
+			}
+			else
+			{
+				nextUpper = true;
+			}
+		}
+	}
+	
+	private void AddWarning(StringView message)
+	{
+		Warnings.Add(new String(message));
+	}
+	
+	private void AddError(StringView message)
+	{
+		Errors.Add(new String(message));
 	}
 }

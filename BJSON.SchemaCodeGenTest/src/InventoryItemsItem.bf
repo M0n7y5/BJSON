@@ -6,10 +6,10 @@ using BJSON.Models;
 namespace BJSON.SchemaCodeGenTest;
 
 [JsonObject]
-class References
+class InventoryItemsItem
 {
 	public String Name = new .() ~ delete _;
 
-	public int64 Age;
+	public int64 Quantity;
 
 }

@@ -5,7 +5,7 @@ using BJSON.Models;
 
 namespace BJSON.SchemaCodeGenTest;
 
-enum Enums
+enum StatusEnum
 {
 	Pending,
 	Processing,

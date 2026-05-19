@@ -48,18 +48,6 @@ class CodeGenerator
 		
 		sb.Append("[JsonObject]\n");
 		sb.AppendF($"class {schema.Name}");
-		
-		bool hasBaseClass = false;
-		for (var baseSchema in schema.AllOf)
-		{
-			if (baseSchema.Type == .Object)
-			{
-				sb.AppendF($" : {baseSchema.Name}");
-				hasBaseClass = true;
-				break;
-			}
-		}
-		
 		sb.Append("\n{\n");
 		
 		for (var kvp in schema.Properties)
@@ -84,7 +72,9 @@ class CodeGenerator
 		
 		if (!prop.JsonName.IsEmpty && !prop.Name.Equals(prop.JsonName, .OrdinalIgnoreCase))
 		{
-			sb.AppendF($"\t[JsonPropertyName(\"{prop.JsonName}\")]\n");
+			sb.Append("\t[JsonPropertyName(\"");
+			AppendEscapedString(prop.JsonName, sb);
+			sb.Append("\")]\n");
 		}
 		
 		sb.AppendF($"\tpublic ");
@@ -208,7 +198,7 @@ class CodeGenerator
 	{
 		if (schema.Type == .Ref && schema.ReferencedSchema != null)
 		{
-			output.Append(" = new .() ~ delete _;");
+			GetInitializer(schema.ReferencedSchema, output);
 			return;
 		}
 		
@@ -219,11 +209,49 @@ class CodeGenerator
 		case .Integer, .Number, .Boolean:
 			output.Clear();
 		case .Array:
-			output.Append(" = new .() ~ DeleteContainerAndItems!(_);");
+			if (ArrayItemsNeedDelete(schema))
+			{
+				output.Append(" = new .() ~ DeleteContainerAndItems!(_);");
+			}
+			else
+			{
+				output.Append(" = new .() ~ delete _;");
+			}
 		case .Object:
 			output.Append(" = new .() ~ delete _;");
 		default:
 			output.Clear();
+		}
+	}
+	
+	private bool ArrayItemsNeedDelete(SchemaModel schema)
+	{
+		if (schema.Items == null)
+		{
+			return false;
+		}
+		
+		return SchemaNeedsDelete(schema.Items);
+	}
+	
+	private bool SchemaNeedsDelete(SchemaModel schema)
+	{
+		if (schema == null)
+		{
+			return false;
+		}
+		
+		if (schema.Type == .Ref && schema.ReferencedSchema != null)
+		{
+			return SchemaNeedsDelete(schema.ReferencedSchema);
+		}
+		
+		switch (schema.Type)
+		{
+		case .String, .Object, .Array:
+			return true;
+		default:
+			return false;
 		}
 	}
 	
@@ -244,6 +272,11 @@ class CodeGenerator
 			{
 				if (first)
 				{
+					if (c >= '0' && c <= '9')
+					{
+						output.Append("_");
+					}
+					
 					if (c >= 'a' && c <= 'z')
 					{
 						output.Append((char8)(c - 32));
@@ -268,6 +301,29 @@ class CodeGenerator
 		if (output.IsEmpty)
 		{
 			output.Append("Unknown");
+		}
+	}
+	
+	private void AppendEscapedString(StringView input, String output)
+	{
+		for (int i = 0; i < input.Length; i++)
+		{
+			char8 c = input[i];
+			switch (c)
+			{
+			case '\\':
+				output.Append("\\\\");
+			case '"':
+				output.Append("\\\"");
+			case '\n':
+				output.Append("\\n");
+			case '\r':
+				output.Append("\\r");
+			case '\t':
+				output.Append("\\t");
+			default:
+				output.Append(c);
+			}
 		}
 	}
 }

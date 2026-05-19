@@ -6,10 +6,11 @@ using BJSON.Models;
 namespace BJSON.SchemaCodeGenTest;
 
 [JsonObject]
-class InheritanceBase0
+class Address
 {
-	public String Name = new .() ~ delete _;
+	public String Street = new .() ~ delete _;
 
-	public int64 Age;
+	[JsonRequired]
+	public String City = new .() ~ delete _;
 
 }

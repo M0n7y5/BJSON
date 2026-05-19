@@ -6,11 +6,11 @@ using BJSON.Models;
 namespace BJSON.SchemaCodeGenTest;
 
 [JsonObject]
-class InheritanceBase1
+class Product
 {
-	[JsonPropertyName("employee_id")]
-	public int64 EmployeeId;
+	[JsonRequired]
+	public String Sku = new .() ~ delete _;
 
-	public String Department = new .() ~ delete _;
+	public double Price;
 
 }

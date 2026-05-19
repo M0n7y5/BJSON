@@ -2,23 +2,28 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Person",
   "type": "object",
+  "required": ["name", "address"],
   "properties": {
     "name": {
       "type": "string"
     },
     "age": {
       "type": "integer"
+    },
+    "address": {
+      "$ref": "#/definitions/Address"
     }
   },
   "definitions": {
-    "Person": {
+    "Address": {
       "type": "object",
+      "required": ["city"],
       "properties": {
-        "name": {
+        "street": {
           "type": "string"
         },
-        "age": {
-          "type": "integer"
+        "city": {
+          "type": "string"
         }
       }
     }

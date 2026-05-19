@@ -27,12 +27,14 @@ class SchemaModel
 	public List<String> EnumValues = new List<String>() ~ delete _;
 	public SchemaModel Items;
 	public List<SchemaModel> AllOf = new List<SchemaModel>() ~ delete _;
+	public Dictionary<String, SchemaModel> Defs = new Dictionary<String, SchemaModel>() ~ delete _;
+	public Dictionary<String, SchemaModel> Definitions = new Dictionary<String, SchemaModel>() ~ delete _;
 	public SchemaModel ReferencedSchema;
 	public String RefPath = new String() ~ delete _;
+	public bool Emit = true;
 	
 	public ~this()
 	{
-		// Delete all PropertyModels in Properties
 		for (var kvp in Properties)
 		{
 			delete kvp.key;
@@ -54,20 +56,22 @@ class SchemaModel
 		}
 		EnumValues.Clear();
 		
-		// Don't delete AllOf items here - they are also in mAllSchemas and will be deleted there
-		// Just clear the list to prevent dangling pointers
-		AllOf.Clear();
+		for (var kvp in Defs)
+		{
+			delete kvp.key;
+		}
+		Defs.Clear();
 		
-		if (Items != null)
+		for (var kvp in Definitions)
 		{
-			delete Items;
-			Items = null;
+			delete kvp.key;
 		}
-		if (ReferencedSchema != null)
-		{
-			delete ReferencedSchema;
-			ReferencedSchema = null;
-		}
+		Definitions.Clear();
+		
+		// SchemaModel references are centrally owned by TypeResolver.Cleanup().
+		Items = null;
+		ReferencedSchema = null;
+		AllOf.Clear();
 	}
 }
 
@@ -82,10 +86,7 @@ class PropertyModel
 	
 	public ~this()
 	{
-		if (Schema != null)
-		{
-			delete Schema;
-			Schema = null;
-		}
+		// SchemaModel references are centrally owned by TypeResolver.Cleanup().
+		Schema = null;
 	}
 }

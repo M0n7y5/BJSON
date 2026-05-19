@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Catalog",
+  "type": "object",
+  "required": ["primaryProduct"],
+  "properties": {
+    "primaryProduct": {
+      "$ref": "#/$defs/Product"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "Product": {
+      "type": "object",
+      "required": ["sku"],
+      "properties": {
+        "sku": {
+          "type": "string"
+        },
+        "price": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}
