@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.IO;
 using BJSON.SchemaCodeGen;
 
 namespace BJSON.SchemaCodeGen.Tests;
@@ -122,7 +123,55 @@ class SchemaCodeGenTests
 			resolver.Cleanup();
 		}
 	}
-	
+
+	[Test(Name = "SchemaCodeGen warnings-as-errors blocks output")]
+	public static void T_WarningsAsErrorsBlocksOutput()
+	{
+		let schemaText = "{\"title\":\"WarningSample\",\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\",\"minLength\":2},\"score\":{\"type\":\"integer\",\"minimum\":0}}}";
+		String schemaPath = scope String();
+		let tempResult = Path.GetTempFileName(schemaPath);
+		Test.Assert(tempResult case .Ok, "Expected temp schema path");
+		defer { File.Delete(schemaPath).IgnoreError(); }
+
+		let writeSchemaResult = File.WriteAllText(schemaPath, schemaText);
+		Test.Assert(writeSchemaResult case .Ok, "Expected schema fixture to be written");
+
+		String defaultOutputDir = scope String(schemaPath);
+		defaultOutputDir.Append(".default");
+		String strictOutputDir = scope String(schemaPath);
+		strictOutputDir.Append(".strict");
+		CleanupDirectory(defaultOutputDir);
+		CleanupDirectory(strictOutputDir);
+		defer { CleanupDirectory(defaultOutputDir); }
+		defer { CleanupDirectory(strictOutputDir); }
+
+		String[] defaultArgs = scope .(
+			schemaPath,
+			"-n",
+			"BJSON.SchemaCodeGen.Tests.Generated",
+			"-o",
+			defaultOutputDir
+		);
+		let defaultExitCode = Program.Main(defaultArgs);
+		Test.Assert(defaultExitCode == 0, scope $"Expected default generation to return 0, got {defaultExitCode}");
+
+		String defaultGeneratedFile = scope String();
+		BuildOutputFilePath(defaultOutputDir, "WarningSample.bf", defaultGeneratedFile);
+		Test.Assert(File.Exists(defaultGeneratedFile), scope $"Expected generated file: {defaultGeneratedFile}");
+
+		String[] strictArgs = scope .(
+			schemaPath,
+			"-n",
+			"BJSON.SchemaCodeGen.Tests.Generated",
+			"-o",
+			strictOutputDir,
+			"--warnings-as-errors"
+		);
+		let strictExitCode = Program.Main(strictArgs);
+		Test.Assert(strictExitCode == 5, scope $"Expected warnings-as-errors to return 5, got {strictExitCode}");
+		Test.Assert(!Directory.Exists(strictOutputDir), scope $"Strict generation should not create output directory: {strictOutputDir}");
+	}
+
 	[Test(Name = "SchemaCodeGen unresolved internal ref fails")]
 	public static void T_UnresolvedInternalRefFails()
 	{
@@ -139,5 +188,23 @@ class SchemaCodeGenTests
 			Test.Assert(resolver.Errors.Count == 1, scope $"Expected one resolver error, got {resolver.Errors.Count}");
 			resolver.Cleanup();
 		}
+	}
+
+	private static void CleanupDirectory(StringView path)
+	{
+		if (Directory.Exists(path))
+		{
+			Directory.DelTree(path).IgnoreError();
+		}
+	}
+
+	private static void BuildOutputFilePath(StringView outputDir, StringView fileName, String outPath)
+	{
+		outPath.Append(outputDir);
+		if (!outputDir.EndsWith("\\") && !outputDir.EndsWith("/"))
+		{
+			outPath.Append(Path.DirectorySeparatorChar);
+		}
+		outPath.Append(fileName);
 	}
 }

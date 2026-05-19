@@ -22,6 +22,8 @@ Usage remains:
 BJSON.SchemaCodeGen [options] <schema.json>
 ```
 
+Use `--warnings-as-errors` for strict CI runs that should reject schemas which emit parser or resolver warnings. Warnings are still printed before the tool exits.
+
 Root class naming order:
 1. `--class`
 2. Schema `title`
@@ -33,6 +35,7 @@ Exit codes:
 - `2`: invalid JSON or schema parse failure
 - `3`: type resolution failure, such as unresolved internal refs or circular refs
 - `4`: file write failure
+- `5`: warnings were emitted with `--warnings-as-errors`; no files are written for that run
 
 ## Generation Rules
 
@@ -80,6 +83,8 @@ Ignored validation-only examples:
 - `additionalProperties`, `patternProperties`, `propertyNames`
 
 Unsupported constructs that warn and are ignored structurally include `anyOf`, `oneOf`, `not`, `if`, `then`, `else`, `$dynamicRef`, and `$dynamicAnchor`.
+
+When `--warnings-as-errors` is enabled, parser and resolver warnings are printed after successful type resolution, then generation exits with code `5` before creating the output directory or writing files. Type resolution errors keep higher priority and return code `3`.
 
 ## Verification
 

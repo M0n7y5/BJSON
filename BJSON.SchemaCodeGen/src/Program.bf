@@ -121,6 +121,14 @@ class Program
 			{
 				PrintWarnings(parser.Warnings);
 				PrintWarnings(resolver.Warnings);
+				int warningCount = parser.Warnings.Count + resolver.Warnings.Count;
+				if (options.WarningsAsErrors && warningCount > 0)
+				{
+					Console.Error.WriteLine("Error: Warnings were treated as errors.");
+					delete schemas;
+					resolver.Cleanup();
+					return 5;
+				}
 				
 				Console.WriteLine(scope $"Found {schemas.Count} types to generate");
 				
@@ -208,6 +216,10 @@ class Program
 			{
 				options.SkipDocs = true;
 			}
+			else if (arg == "--warnings-as-errors")
+			{
+				options.WarningsAsErrors = true;
+			}
 			else if (!arg.StartsWith("-"))
 			{
 				if (!options.SchemaFile.IsEmpty)
@@ -238,6 +250,7 @@ class Program
 		Console.WriteLine("  --integer-type <type>   Integer type: int32, int64 (default: int64)");
 		Console.WriteLine("  --number-type <type>    Number type: float, double (default: double)");
 		Console.WriteLine("  --skip-docs             Skip documentation comments");
+		Console.WriteLine("  --warnings-as-errors    Exit with code 5 instead of writing files when warnings are emitted");
 		Console.WriteLine("  -h, --help              Show this help\n");
 		Console.WriteLine("Examples:");
 		Console.WriteLine("  BJSON.SchemaCodeGen user.schema.json -n MyApp.Models");
@@ -311,5 +324,6 @@ class CommandLineOptions
 	public IntegerType IntegerType = .Int64;
 	public NumberType NumberType = .Double;
 	public bool SkipDocs;
+	public bool WarningsAsErrors;
 	public bool ShowHelp;
 }

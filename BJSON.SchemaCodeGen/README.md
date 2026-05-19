@@ -22,6 +22,7 @@ BJSON.SchemaCodeGen [options] <schema.json>
 | `--integer-type` | | Integer type: int32, int64 | `int64` |
 | `--number-type` | | Number type: float, double | `double` |
 | `--skip-docs` | | Skip documentation comments | `false` |
+| `--warnings-as-errors` | | Treat warnings as errors and skip file writes | `false` |
 | `--help` | `-h` | Show help | |
 
 ### Examples
@@ -38,6 +39,9 @@ BJSON.SchemaCodeGen schema.json -n MyApp -c ApiResponse
 
 # Use 32-bit integers
 BJSON.SchemaCodeGen data.json -n Models --integer-type int32
+
+# Fail CI when unsupported schema features emit warnings
+BJSON.SchemaCodeGen data.json -n Models --warnings-as-errors
 ```
 
 ## Type Mapping
@@ -102,8 +106,9 @@ Generated classes use proper Beef destructors:
 | 2 | Schema parse error |
 | 3 | Type resolution error |
 | 4 | File write error |
+| 5 | Warnings were emitted with `--warnings-as-errors` |
 
-Warnings do not change the exit code. Invalid JSON, invalid arguments, unresolved internal refs, circular refs, and file-write failures return nonzero codes.
+Warnings do not change the exit code unless `--warnings-as-errors` is enabled. In that mode, parser and resolver warnings are printed, generation stops before writing files, and the process exits with code 5. Invalid JSON, invalid arguments, unresolved internal refs, circular refs, and file-write failures return nonzero codes.
 
 ## Building
 
