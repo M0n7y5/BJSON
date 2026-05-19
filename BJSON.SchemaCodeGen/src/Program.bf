@@ -9,39 +9,39 @@ class Program
 	public static int Main(String[] args)
 	{
 		var options = scope CommandLineOptions();
-		
+
 		if (!ParseArguments(args, options))
 		{
 			PrintUsage();
 			return 1;
 		}
-		
+
 		if (options.ShowHelp || args.Count == 0)
 		{
 			PrintUsage();
 			return 0;
 		}
-		
+
 		if (options.SchemaFile.IsEmpty)
 		{
 			Console.Error.WriteLine("Error: Schema file is required.\n");
 			PrintUsage();
 			return 1;
 		}
-		
+
 		if (options.Namespace.IsEmpty)
 		{
 			Console.Error.WriteLine("Error: Namespace is required. Use -n or --namespace.\n");
 			PrintUsage();
 			return 1;
 		}
-		
+
 		if (!File.Exists(options.SchemaFile))
 		{
 			Console.Error.WriteLine(scope $"Error: Schema file not found: {options.SchemaFile}\n");
 			return 1;
 		}
-		
+
 		String schemaContent = scope String();
 		var readResult = File.ReadAllText(options.SchemaFile, schemaContent);
 		if (readResult case .Err(let fileErr))
@@ -49,9 +49,11 @@ class Program
 			Console.Error.WriteLine(scope $"Error: Failed to read schema file: {fileErr}\n");
 			return 1;
 		}
-		
+
 		var parser = scope SchemaParser();
-		
+		String schemaSourcePath = scope String();
+		Path.GetFullPath(options.SchemaFile, schemaSourcePath);
+
 		String rootName = scope String();
 		if (!options.RootClassName.IsEmpty)
 		{
@@ -80,11 +82,11 @@ class Program
 		String pascalRootName = scope String();
 		ToPascalCase(rootName, pascalRootName);
 		rootName.Set(pascalRootName);
-		
+
 		Console.WriteLine(scope $"Parsing schema: {options.SchemaFile}");
-		
-		var parseResult = parser.Parse(schemaContent, rootName);
-		
+
+		var parseResult = parser.Parse(schemaContent, rootName, schemaSourcePath);
+
 		if (parseResult case .Err(let parseErr))
 		{
 			Console.Error.Write("Error: Failed to parse schema: ");
@@ -99,14 +101,14 @@ class Program
 			}
 			return 2;
 		}
-		
+
 		if (parseResult case .Ok(let rootSchema))
 		{
 			Console.WriteLine("Resolving types...");
-			
+
 			var resolver = scope TypeResolver();
 			var resolveResult = resolver.Resolve(rootSchema);
-			
+
 			if (resolveResult case .Err)
 			{
 				Console.Error.WriteLine("Error: Type resolution failed");
@@ -116,7 +118,7 @@ class Program
 				resolver.Cleanup();
 				return 3;
 			}
-			
+
 			if (resolveResult case .Ok(let schemas))
 			{
 				PrintWarnings(parser.Warnings);
@@ -129,18 +131,18 @@ class Program
 					resolver.Cleanup();
 					return 5;
 				}
-				
+
 				Console.WriteLine(scope $"Found {schemas.Count} types to generate");
-				
+
 				GeneratorConfig config = .();
 				config.Namespace = options.Namespace;
 				config.IntegerType = options.IntegerType;
 				config.NumberType = options.NumberType;
 				config.SkipDocs = options.SkipDocs;
-				
+
 				var writer = scope FileWriter();
 				var writeResult = writer.WriteFiles(schemas, config, options.OutputDir);
-				
+
 				if (writeResult case .Err(let writeErr))
 				{
 					switch (writeErr)
@@ -154,26 +156,26 @@ class Program
 					resolver.Cleanup();
 					return 4;
 				}
-				
+
 				Console.WriteLine(scope $"\nSuccessfully generated code in: {options.OutputDir}");
-				
+
 				// Delete the list but not the items (TypeResolver will clean them up)
 				delete schemas;
 			}
-			
+
 			// TypeResolver cleanup deletes all schemas including rootSchema
 			resolver.Cleanup();
 		}
-		
+
 		return 0;
 	}
-	
+
 	private static bool ParseArguments(String[] args, CommandLineOptions options)
 	{
 		for (int i = 0; i < args.Count; i++)
 		{
 			StringView arg = args[i];
-			
+
 			if (arg == "-h" || arg == "--help")
 			{
 				options.ShowHelp = true;
@@ -233,10 +235,10 @@ class Program
 				return false;
 			}
 		}
-		
+
 		return true;
 	}
-	
+
 	private static void PrintUsage()
 	{
 		Console.WriteLine("BJSON.SchemaCodeGen - JSON Schema to Beef Code Generator\n");
@@ -257,7 +259,7 @@ class Program
 		Console.WriteLine("  BJSON.SchemaCodeGen api.schema.json -o ./src/Models -n Api.Models");
 		Console.WriteLine("  BJSON.SchemaCodeGen schema.json -n MyApp -c ApiResponse");
 	}
-	
+
 	private static void PrintWarnings(List<String> warnings)
 	{
 		for (var warning in warnings)
@@ -265,7 +267,7 @@ class Program
 			Console.Error.WriteLine(scope $"Warning: {warning}");
 		}
 	}
-	
+
 	private static void PrintErrors(List<String> errors)
 	{
 		for (var err in errors)
@@ -273,7 +275,7 @@ class Program
 			Console.Error.WriteLine(scope $"  {err}");
 		}
 	}
-	
+
 	private static void ToPascalCase(StringView input, String output)
 	{
 		bool nextUpper = true;
@@ -282,7 +284,7 @@ class Program
 			char8 c = input[i];
 			bool isLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 			bool isDigit = c >= '0' && c <= '9';
-			
+
 			if (!isLetter && !isDigit)
 			{
 				nextUpper = true;
@@ -293,7 +295,7 @@ class Program
 				{
 					output.Append("_");
 				}
-				
+
 				if (nextUpper)
 				{
 					if (c >= 'a' && c <= 'z')

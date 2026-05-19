@@ -31,8 +31,9 @@ class SchemaModel
 	public Dictionary<String, SchemaModel> Definitions = new Dictionary<String, SchemaModel>() ~ delete _;
 	public SchemaModel ReferencedSchema;
 	public String RefPath = new String() ~ delete _;
+	public String SourcePath = new String() ~ delete _;
 	public bool Emit = true;
-	
+
 	public ~this()
 	{
 		for (var kvp in Properties)
@@ -41,33 +42,33 @@ class SchemaModel
 			delete kvp.value;
 		}
 		Properties.Clear();
-		
+
 		// Delete all Strings in Required list
 		for (var item in Required)
 		{
 			delete item;
 		}
 		Required.Clear();
-		
+
 		// Delete all Strings in EnumValues list
 		for (var item in EnumValues)
 		{
 			delete item;
 		}
 		EnumValues.Clear();
-		
+
 		for (var kvp in Defs)
 		{
 			delete kvp.key;
 		}
 		Defs.Clear();
-		
+
 		for (var kvp in Definitions)
 		{
 			delete kvp.key;
 		}
 		Definitions.Clear();
-		
+
 		// SchemaModel references are centrally owned by TypeResolver.Cleanup().
 		Items = null;
 		ReferencedSchema = null;
@@ -83,7 +84,7 @@ class PropertyModel
 	public bool IsRequired;
 	public String DefaultValue = new String() ~ delete _;
 	public String Description = new String() ~ delete _;
-	
+
 	public ~this()
 	{
 		// SchemaModel references are centrally owned by TypeResolver.Cleanup().

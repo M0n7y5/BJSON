@@ -9,17 +9,17 @@ namespace BJSON.SchemaCodeGen;
 class SchemaParser
 {
 	public List<String> Warnings = new List<String>() ~ DeleteContainerAndItems!(_);
-	
+
 	public Result<void, SchemaError> ExtractTitle(StringView schemaJson, String output)
 	{
 		Result<JsonValue, JsonParsingError> parseResult = BJSON.Json.Deserialize(schemaJson);
 		defer parseResult.Dispose();
-		
+
 		if (parseResult case .Err)
 		{
 			return .Err(.JsonError);
 		}
-		
+
 		if (parseResult case .Ok(let jsonValue))
 		{
 			if (jsonValue.IsObject())
@@ -34,44 +34,50 @@ class SchemaParser
 				}
 			}
 		}
-		
+
 		return .Ok;
 	}
-	
+
 	public Result<SchemaModel, SchemaError> Parse(StringView schemaJson, StringView rootName)
 	{
+		return Parse(schemaJson, rootName, default);
+	}
+
+	public Result<SchemaModel, SchemaError> Parse(StringView schemaJson, StringView rootName, StringView sourcePath)
+	{
 		ClearAndDeleteItems(Warnings);
-		
+
 		Result<JsonValue, JsonParsingError> parseResult = BJSON.Json.Deserialize(schemaJson);
 		defer parseResult.Dispose();
-		
+
 		if (parseResult case .Err)
 		{
 			return .Err(.JsonError);
 		}
-		
+
 		if (parseResult case .Ok(let jsonValue))
 		{
-			return ParseSchema(jsonValue, rootName);
+			return ParseSchema(jsonValue, rootName, sourcePath);
 		}
-		
+
 		return .Err(.InvalidSchema);
 	}
-	
-	private Result<SchemaModel, SchemaError> ParseSchema(JsonValue json, StringView name)
+
+	private Result<SchemaModel, SchemaError> ParseSchema(JsonValue json, StringView name, StringView sourcePath)
 	{
 		var model = new SchemaModel();
 		model.Name.Set(name);
-		
+		model.SourcePath.Set(sourcePath);
+
 		if (!json.IsObject())
 		{
 			AddWarning(scope $"Schema '{name}' is not an object; using JsonValue fallback.");
 			model.Type = .Any;
 			return .Ok(model);
 		}
-		
+
 		let obj = json.As<JsonObject>();
-		
+
 		if (obj.TryGet("title") case .Ok(let titleVal))
 		{
 			if (titleVal.IsString())
@@ -84,7 +90,7 @@ class SchemaParser
 				}
 			}
 		}
-		
+
 		if (obj.TryGet("description") case .Ok(let desc))
 		{
 			if (desc.IsString())
@@ -92,21 +98,21 @@ class SchemaParser
 				model.Description.Set((StringView)desc);
 			}
 		}
-		
+
 		AddUnsupportedWarnings(obj, model.Name);
-		
-		if (ParseDefinitionMap(obj, "$defs", model.Defs, model.Name) case .Err(let defsErr))
+
+		if (ParseDefinitionMap(obj, "$defs", model.Defs, model.Name, sourcePath) case .Err(let defsErr))
 		{
 			delete model;
 			return .Err(defsErr);
 		}
-		
-		if (ParseDefinitionMap(obj, "definitions", model.Definitions, model.Name) case .Err(let definitionsErr))
+
+		if (ParseDefinitionMap(obj, "definitions", model.Definitions, model.Name, sourcePath) case .Err(let definitionsErr))
 		{
 			delete model;
 			return .Err(definitionsErr);
 		}
-		
+
 		if (obj.TryGet("$ref") case .Ok(let refVal))
 		{
 			if (refVal.IsString())
@@ -115,12 +121,12 @@ class SchemaParser
 				model.RefPath.Set((StringView)refVal);
 				return .Ok(model);
 			}
-			
+
 			AddWarning(scope $"Schema '{model.Name}' has a non-string $ref; using JsonValue fallback.");
 			model.Type = .Any;
 			return .Ok(model);
 		}
-		
+
 		if (obj.TryGet("type") case .Ok(let typeVal))
 		{
 			ParseType(typeVal, model);
@@ -129,7 +135,7 @@ class SchemaParser
 		{
 			model.Type = .Any;
 		}
-		
+
 		if (obj.TryGet("enum") case .Ok(let enumVal))
 		{
 			if (enumVal.IsArray())
@@ -147,7 +153,7 @@ class SchemaParser
 						AddWarning(scope $"Schema '{model.Name}' has a non-string enum value; ignoring it.");
 					}
 				}
-				
+
 				if (hasStringValues)
 				{
 					model.Type = .Enum;
@@ -162,7 +168,7 @@ class SchemaParser
 				AddWarning(scope $"Schema '{model.Name}' has a non-array enum; using JsonValue fallback.");
 			}
 		}
-		
+
 		if (obj.TryGet("properties") case .Ok(let props))
 		{
 			if (props.IsObject())
@@ -171,7 +177,7 @@ class SchemaParser
 				{
 					model.Type = .Object;
 				}
-				
+
 				var dict = props.As<JsonObject>();
 				for (var kvp in dict)
 				{
@@ -181,25 +187,25 @@ class SchemaParser
 					var pascalName = ToPascalCase(propName);
 					propModel.Name.Set(pascalName);
 					delete pascalName;
-					
+
 					String nestedName = scope String();
 					nestedName.Append(model.Name);
 					nestedName.Append(propModel.Name);
-					
-					var nestedResult = ParseSchema(kvp.value, nestedName);
+
+					var nestedResult = ParseSchema(kvp.value, nestedName, sourcePath);
 					if (nestedResult case .Err(let nestedErr))
 					{
 						delete propModel;
 						delete model;
 						return .Err(nestedErr);
 					}
-					
+
 					if (nestedResult case .Ok(let nestedSchema))
 					{
 						propModel.Schema = nestedSchema;
 						propModel.Description.Set(nestedSchema.Description);
 					}
-					
+
 					var keyClone = new String(kvp.key);
 					model.Properties.Add(keyClone, propModel);
 				}
@@ -209,7 +215,7 @@ class SchemaParser
 				AddWarning(scope $"Schema '{model.Name}' has non-object properties; ignoring them.");
 			}
 		}
-		
+
 		if (obj.TryGet("required") case .Ok(let reqVal))
 		{
 			if (reqVal.IsArray())
@@ -238,18 +244,18 @@ class SchemaParser
 				AddWarning(scope $"Schema '{model.Name}' has non-array required; ignoring it.");
 			}
 		}
-		
+
 		if (obj.TryGet("items") case .Ok(let items))
 		{
 			if (model.Type == .Any)
 			{
 				model.Type = .Array;
 			}
-			
+
 			String itemName = scope String();
 			itemName.Append(model.Name);
 			itemName.Append("Item");
-			
+
 			JsonValue itemSchema = items;
 			if (items.IsArray())
 			{
@@ -260,20 +266,20 @@ class SchemaParser
 					itemSchema = itemsArray[0];
 				}
 			}
-			
-			var itemsParseResult = ParseSchema(itemSchema, itemName);
+
+			var itemsParseResult = ParseSchema(itemSchema, itemName, sourcePath);
 			if (itemsParseResult case .Err(let itemsErr))
 			{
 				delete model;
 				return .Err(itemsErr);
 			}
-			
+
 			if (itemsParseResult case .Ok(let itemsModel))
 			{
 				model.Items = itemsModel;
 			}
 		}
-		
+
 		if (obj.TryGet("allOf") case .Ok(let allOfVal))
 		{
 			if (allOfVal.IsArray())
@@ -282,7 +288,7 @@ class SchemaParser
 				{
 					model.Type = .Object;
 				}
-				
+
 				int i = 0;
 				for (var item in allOfVal.As<JsonArray>())
 				{
@@ -290,14 +296,14 @@ class SchemaParser
 					subName.Append(model.Name);
 					subName.Append("Base");
 					subName.Append(i);
-					
-					var subResult = ParseSchema(item, subName);
+
+					var subResult = ParseSchema(item, subName, sourcePath);
 					if (subResult case .Err(let allOfErr))
 					{
 						delete model;
 						return .Err(allOfErr);
 					}
-					
+
 					if (subResult case .Ok(let subModel))
 					{
 						subModel.Emit = false;
@@ -311,30 +317,30 @@ class SchemaParser
 				AddWarning(scope $"Schema '{model.Name}' has non-array allOf; ignoring it.");
 			}
 		}
-		
+
 		return .Ok(model);
 	}
-	
-	private Result<void, SchemaError> ParseDefinitionMap(JsonObject obj, StringView keyword, Dictionary<String, SchemaModel> target, StringView ownerName)
+
+	private Result<void, SchemaError> ParseDefinitionMap(JsonObject obj, StringView keyword, Dictionary<String, SchemaModel> target, StringView ownerName, StringView sourcePath)
 	{
 		let defsResult = obj.TryGet(keyword);
 		if (defsResult case .Err)
 		{
 			return .Ok;
 		}
-		
+
 		JsonValue defsVal = default;
 		if (defsResult case .Ok(let val))
 		{
 			defsVal = val;
 		}
-		
+
 		if (!defsVal.IsObject())
 		{
 			AddWarning(scope $"Schema '{ownerName}' has non-object {keyword}; ignoring it.");
 			return .Ok;
 		}
-		
+
 		let defsObj = defsVal.As<JsonObject>();
 		for (var kvp in defsObj)
 		{
@@ -345,22 +351,22 @@ class SchemaParser
 				defName.Append(ownerName);
 				defName.Append("Definition");
 			}
-			
-			var defResult = ParseSchema(kvp.value, defName);
+
+			var defResult = ParseSchema(kvp.value, defName, sourcePath);
 			if (defResult case .Err(let err))
 			{
 				return .Err(err);
 			}
-			
+
 			if (defResult case .Ok(let defSchema))
 			{
 				target.Add(new String(kvp.key), defSchema);
 			}
 		}
-		
+
 		return .Ok;
 	}
-	
+
 	private void ParseType(JsonValue typeVal, SchemaModel model)
 	{
 		if (typeVal.IsString())
@@ -385,7 +391,7 @@ class SchemaParser
 			bool hasNull = false;
 			StringView firstType = default;
 			int nonNullTypeCount = 0;
-			
+
 			for (var item in typeVal.As<JsonArray>())
 			{
 				if (item.IsString())
@@ -406,9 +412,9 @@ class SchemaParser
 					}
 				}
 			}
-			
+
 			model.IsNullable = hasNull;
-			
+
 			switch (firstType)
 			{
 			case "string": model.Type = .String;
@@ -419,7 +425,7 @@ class SchemaParser
 			case "object": model.Type = .Object;
 			default: model.Type = .Any;
 			}
-			
+
 			if (nonNullTypeCount > 1)
 			{
 				AddWarning(scope $"Schema '{model.Name}' uses a multi-type union; using the first non-null type.");
@@ -431,7 +437,7 @@ class SchemaParser
 			AddWarning(scope $"Schema '{model.Name}' has non-string type; using JsonValue fallback.");
 		}
 	}
-	
+
 	private void AddUnsupportedWarnings(JsonObject obj, StringView schemaName)
 	{
 		for (var kvp in obj)
@@ -451,12 +457,12 @@ class SchemaParser
 			}
 		}
 	}
-	
+
 	private void AddWarning(StringView message)
 	{
 		Warnings.Add(new String(message));
 	}
-	
+
 	private void ToPascalCase(StringView input, String output)
 	{
 		bool nextUpper = true;
@@ -465,7 +471,7 @@ class SchemaParser
 			char8 c = input[i];
 			bool isLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 			bool isDigit = c >= '0' && c <= '9';
-			
+
 			if (!isLetter && !isDigit)
 			{
 				nextUpper = true;
@@ -476,7 +482,7 @@ class SchemaParser
 				{
 					output.Append("_");
 				}
-				
+
 				if (nextUpper)
 				{
 					if (c >= 'a' && c <= 'z')
@@ -496,7 +502,7 @@ class SchemaParser
 			}
 		}
 	}
-	
+
 	private String ToPascalCase(StringView input)
 	{
 		var result = new String();

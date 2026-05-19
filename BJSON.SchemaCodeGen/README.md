@@ -55,7 +55,7 @@ BJSON.SchemaCodeGen data.json -n Models --warnings-as-errors
 | `"type": "array"` | `List<T>` | `= new .() ~ delete _` for value items, `DeleteContainerAndItems!(_)` for reference items |
 | `"type": "object"` | Custom class | `= new .() ~ delete _` |
 | `enum: [...]` | Beef enum | None (value type) |
-| Internal `$ref` | Referenced class/enum | Based on referenced type |
+| Internal or local file `$ref` | Referenced class/enum | Based on referenced type |
 
 ## Architecture
 
@@ -84,6 +84,7 @@ BJSON.SchemaCodeGen/
 - Generate `[JsonPropertyName]` for custom JSON property names
 - Handle nullable types with `?` suffix
 - Resolve internal refs: `#`, `#/definitions/...`, and `#/$defs/...`
+- Resolve local file refs such as `common.schema.json`, `common.schema.json#`, and `common.schema.json#/$defs/Address`
 - Parse `definitions` and `$defs`
 - Flatten object fields from `allOf` into the generated class
 - Emit warnings for unsupported validation keywords while still generating useful structural models
@@ -121,7 +122,7 @@ From the workspace root:
 ## Limitations
 
 Not supported in v1:
-- External/file `$ref` resolution. These produce warnings and fall back to `JsonValue`.
+- Remote HTTP/HTTPS `$ref` resolution. These produce warnings and fall back to `JsonValue`.
 - Generated validation methods. Use `BJSON.JsonSchema` for runtime validation.
 - oneOf / anyOf (complex unions)
 - patternProperties
