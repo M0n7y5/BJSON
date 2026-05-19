@@ -125,6 +125,7 @@ class TypeResolver
 		String targetPrefix = scope String();
 		BuildDocumentRefPrefix(normalizedPath, targetPrefix);
 		RegisterRefTargets(rootSchema, targetPrefix);
+		RegisterUriTargets(rootSchema, normalizedPath, "");
 	}
 
 	private void SetSourcePath(SchemaModel schema, StringView sourcePath)
@@ -278,6 +279,83 @@ class TypeResolver
 		}
 	}
 
+	private void RegisterUriTargets(SchemaModel schema, StringView baseUri, StringView pointer)
+	{
+		if (schema == null) return;
+
+		String nextBase = scope String(baseUri);
+		schema.BaseUri.Set(nextBase);
+
+		String targetKey = scope String();
+		BuildRefTargetKey(nextBase, pointer, targetKey);
+		AddRefTarget(targetKey, schema);
+
+		bool hasId = !schema.Id.IsEmpty;
+		if (hasId)
+		{
+			ResolveSchemaUri(baseUri, schema.Id, nextBase);
+			schema.BaseUri.Set(nextBase);
+
+			String idTargetKey = scope String();
+			BuildRefTargetKey(nextBase, "", idTargetKey);
+			AddRefTarget(idTargetKey, schema);
+		}
+
+		if (!schema.Anchor.IsEmpty)
+		{
+			String anchorTargetKey = scope String();
+			BuildRefTargetKey(nextBase, schema.Anchor, anchorTargetKey);
+			AddRefTarget(anchorTargetKey, schema);
+		}
+
+		String childParentPointer = scope String();
+		if (!hasId)
+		{
+			childParentPointer.Set(pointer);
+		}
+
+		for (var kvp in schema.Defs)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "$defs", childPointer);
+			AppendChildPointer(childPointer, kvp.key, childPointer);
+			RegisterUriTargets(kvp.value, nextBase, childPointer);
+		}
+
+		for (var kvp in schema.Definitions)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "definitions", childPointer);
+			AppendChildPointer(childPointer, kvp.key, childPointer);
+			RegisterUriTargets(kvp.value, nextBase, childPointer);
+		}
+
+		for (var kvp in schema.Properties)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "properties", childPointer);
+			AppendChildPointer(childPointer, kvp.key, childPointer);
+			RegisterUriTargets(kvp.value.Schema, nextBase, childPointer);
+		}
+
+		if (schema.Items != null)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "items", childPointer);
+			RegisterUriTargets(schema.Items, nextBase, childPointer);
+		}
+
+		for (int i = 0; i < schema.AllOf.Count; i++)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "allOf", childPointer);
+			String index = scope String();
+			index.Append(i);
+			AppendChildPointer(childPointer, index, childPointer);
+			RegisterUriTargets(schema.AllOf[i], nextBase, childPointer);
+		}
+	}
+
 	private void AddRefTarget(StringView pointer, SchemaModel schema)
 	{
 		SchemaModel existing;
@@ -386,28 +464,46 @@ class TypeResolver
 		StringView fragment;
 		SplitRef(schema.RefPath, out docPart, out fragment);
 
-		String docPath = scope String();
-		if (!docPart.IsEmpty)
+		String docUri = scope String();
+		if (docPart.IsEmpty)
 		{
-			ResolveLocalRefPath(docPart, schema.SourcePath, docPath);
-			if (LoadDocument(docPath) case .Err(let loadErr))
-			{
-				return .Err(loadErr);
-			}
+			docUri.Set(schema.BaseUri);
 		}
 		else
 		{
-			docPath.Set(schema.SourcePath);
+			ResolveSchemaUri(schema.BaseUri, docPart, docUri);
 		}
 
 		String targetKey = scope String();
-		BuildRefTargetKey(docPath, fragment, targetKey);
-
+		BuildRefTargetKey(docUri, fragment, targetKey);
 		SchemaModel target;
 		if (mRefTargets.TryGetValueAlt(targetKey, out target))
 		{
 			schema.ReferencedSchema = target;
 			return .Ok;
+		}
+
+		String docPath = scope String();
+		if (!docPart.IsEmpty && CanResolveAsLocalFile(docPart))
+		{
+			ResolveLocalRefPath(docPart, schema.SourcePath, docPath);
+			BuildRefTargetKey(docPath, fragment, targetKey);
+			if (mRefTargets.TryGetValueAlt(targetKey, out target))
+			{
+				schema.ReferencedSchema = target;
+				return .Ok;
+			}
+
+			if (LoadDocument(docPath) case .Err(let loadErr))
+			{
+				return .Err(loadErr);
+			}
+
+			if (mRefTargets.TryGetValueAlt(targetKey, out target))
+			{
+				schema.ReferencedSchema = target;
+				return .Ok;
+			}
 		}
 
 		if (docPart.IsEmpty)
@@ -528,6 +624,75 @@ class TypeResolver
 		}
 		combined.Append(localPath);
 		NormalizeFilePath(combined, output);
+	}
+
+	private void ResolveSchemaUri(StringView baseUri, StringView reference, String output)
+	{
+		output.Clear();
+		if (reference.IsEmpty)
+		{
+			output.Append(baseUri);
+			return;
+		}
+
+		if (reference.Length > 0 && reference[0] == '#')
+		{
+			output.Append(baseUri);
+			output.Append(reference);
+			return;
+		}
+
+		if (StartsWithIgnoreCase(reference, "file://"))
+		{
+			String filePath = scope String();
+			FileUriToPath(reference, filePath);
+			NormalizeFilePath(filePath, output);
+			return;
+		}
+
+		if (IsAbsolutePath(reference))
+		{
+			NormalizeFilePath(reference, output);
+			return;
+		}
+
+		if (IsAbsoluteUri(reference))
+		{
+			output.Append(reference);
+			return;
+		}
+
+		if (baseUri.IsEmpty)
+		{
+			NormalizeFilePath(reference, output);
+			return;
+		}
+
+		if (IsLocalBaseUri(baseUri))
+		{
+			String baseDir = scope String();
+			if (Path.GetDirectoryPath(baseUri, baseDir) case .Err)
+			{
+				GetContainingDirectory(baseUri, baseDir);
+			}
+
+			if (baseDir.IsEmpty)
+			{
+				NormalizeFilePath(reference, output);
+				return;
+			}
+
+			String combined = scope String(baseDir);
+			if (!combined.EndsWith("\\") && !combined.EndsWith("/"))
+			{
+				combined.Append(Path.DirectorySeparatorChar);
+			}
+			combined.Append(reference);
+			NormalizeFilePath(combined, output);
+			return;
+		}
+
+		AppendUriPath(baseUri, reference, output);
 	}
 
 	private void NormalizeFilePath(StringView filePath, String output)
@@ -738,6 +903,54 @@ class TypeResolver
 		return StartsWithIgnoreCase(refPath, "http://") || StartsWithIgnoreCase(refPath, "https://");
 	}
 
+	private bool CanResolveAsLocalFile(StringView docPart)
+	{
+		if (StartsWithIgnoreCase(docPart, "file://"))
+		{
+			return true;
+		}
+
+		if (IsAbsoluteUri(docPart))
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	private bool IsLocalBaseUri(StringView uri)
+	{
+		if (StartsWithIgnoreCase(uri, "file://"))
+		{
+			return true;
+		}
+
+		return !IsAbsoluteUri(uri);
+	}
+
+	private bool IsAbsoluteUri(StringView uri)
+	{
+		if (IsWindowsAbsolutePath(uri))
+		{
+			return false;
+		}
+
+		for (int i = 0; i < uri.Length; i++)
+		{
+			char8 c = uri[i];
+			if (c == ':')
+			{
+				return true;
+			}
+			if (IsPathSeparator(c))
+			{
+				return false;
+			}
+		}
+
+		return false;
+	}
+
 	private bool IsAbsolutePath(StringView path)
 	{
 		if (path.Length >= 1 && IsPathSeparator(path[0]))
@@ -746,6 +959,31 @@ class TypeResolver
 		}
 
 		return IsWindowsAbsolutePath(path);
+	}
+
+	private void AppendUriPath(StringView baseUri, StringView relative, String output)
+	{
+		output.Clear();
+		String baseNoFragment = scope String();
+		StringView baseDoc;
+		StringView baseFragment;
+		SplitRef(baseUri, out baseDoc, out baseFragment);
+		baseNoFragment.Append(baseDoc);
+
+		String baseDir = scope String();
+		GetContainingDirectory(baseNoFragment, baseDir);
+		if (baseDir.IsEmpty)
+		{
+			output.Append(relative);
+			return;
+		}
+
+		output.Append(baseDir);
+		if (!baseDir.EndsWith("/") && !baseDir.EndsWith("\\"))
+		{
+			output.Append("/");
+		}
+		output.Append(relative);
 	}
 
 	private bool IsWindowsAbsolutePath(StringView path)

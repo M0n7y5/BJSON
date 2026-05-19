@@ -90,6 +90,179 @@ class SchemaCodeGenTests
 		}
 	}
 
+	[Test(Name = "SchemaCodeGen resolves anchor refs")]
+	public static void T_ResolvesAnchorRef()
+	{
+		let schemaText = "{\"title\":\"Catalog\",\"type\":\"object\",\"properties\":{\"owner\":{\"$ref\":\"#person\"}},\"$defs\":{\"Person\":{\"$anchor\":\"person\",\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}}}}}";
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(schemaText, "Catalog");
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Ok, "Expected anchor ref to resolve");
+
+			if (resolveResult case .Ok(let schemas))
+			{
+				let catalog = FindSchema(schemas, "Catalog");
+				Test.Assert(catalog != null, "Expected Catalog type");
+				Test.Assert(FindSchema(schemas, "Person") != null, "Expected Person type");
+
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(catalog);
+				defer delete code;
+				Test.Assert(code.Contains("public Person Owner = new .() ~ delete _;"), scope $"Expected anchor ref field. Code:\n{code}");
+
+				delete schemas;
+			}
+
+			resolver.Cleanup();
+		}
+	}
+
+	[Test(Name = "SchemaCodeGen resolves external anchor refs")]
+	public static void T_ResolvesExternalAnchorRef()
+	{
+		String tempDir = scope String();
+		CreateTempDirectory(tempDir);
+		defer { CleanupDirectory(tempDir); }
+
+		String rootPath = scope String();
+		BuildOutputFilePath(tempDir, "customer.schema.json", rootPath);
+		String commonPath = scope String();
+		BuildOutputFilePath(tempDir, "common.schema.json", commonPath);
+
+		let rootText = "{\"title\":\"Customer\",\"type\":\"object\",\"properties\":{\"address\":{\"$ref\":\"common.schema.json#address\"}}}";
+		let commonText = "{\"$defs\":{\"Address\":{\"$anchor\":\"address\",\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}}";
+		Test.Assert(File.WriteAllText(rootPath, rootText) case .Ok, "Expected root fixture write");
+		Test.Assert(File.WriteAllText(commonPath, commonText) case .Ok, "Expected external fixture write");
+
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(rootText, "Customer", rootPath);
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Ok, "Expected external anchor ref to resolve");
+
+			if (resolveResult case .Ok(let schemas))
+			{
+				let customer = FindSchema(schemas, "Customer");
+				Test.Assert(customer != null, "Expected Customer type");
+				Test.Assert(FindSchema(schemas, "Address") != null, "Expected Address type");
+
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(customer);
+				defer delete code;
+				Test.Assert(code.Contains("public Address Address = new .() ~ delete _;"), scope $"Expected external anchor ref field. Code:\n{code}");
+
+				delete schemas;
+			}
+
+			resolver.Cleanup();
+		}
+	}
+
+	[Test(Name = "SchemaCodeGen resolves embedded id refs")]
+	public static void T_ResolvesEmbeddedIdRef()
+	{
+		String tempDir = scope String();
+		CreateTempDirectory(tempDir);
+		defer { CleanupDirectory(tempDir); }
+
+		String rootPath = scope String();
+		BuildOutputFilePath(tempDir, "catalog.schema.json", rootPath);
+
+		let schemaText = "{\"title\":\"Catalog\",\"type\":\"object\",\"properties\":{\"address\":{\"$ref\":\"schemas/address.schema.json\"}},\"$defs\":{\"Address\":{\"$id\":\"schemas/address.schema.json\",\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}}";
+		Test.Assert(File.WriteAllText(rootPath, schemaText) case .Ok, "Expected root fixture write");
+
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(schemaText, "Catalog", rootPath);
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Ok, "Expected embedded id ref to resolve without loading a file");
+
+			if (resolveResult case .Ok(let schemas))
+			{
+				let catalog = FindSchema(schemas, "Catalog");
+				Test.Assert(catalog != null, "Expected Catalog type");
+				Test.Assert(FindSchema(schemas, "Address") != null, "Expected Address type");
+
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(catalog);
+				defer delete code;
+				Test.Assert(code.Contains("public Address Address = new .() ~ delete _;"), scope $"Expected embedded id ref field. Code:\n{code}");
+
+				delete schemas;
+			}
+
+			resolver.Cleanup();
+		}
+	}
+
+	[Test(Name = "SchemaCodeGen uses id base for nested refs")]
+	public static void T_IdBaseAppliesToNestedRefs()
+	{
+		String tempDir = scope String();
+		CreateTempDirectory(tempDir);
+		defer { CleanupDirectory(tempDir); }
+
+		String rootPath = scope String();
+		BuildOutputFilePath(tempDir, "catalog.schema.json", rootPath);
+
+		let schemaText = "{\"title\":\"Catalog\",\"type\":\"object\",\"properties\":{\"container\":{\"$ref\":\"schemas/container.schema.json\"}},\"$defs\":{\"Container\":{\"$id\":\"schemas/container.schema.json\",\"type\":\"object\",\"properties\":{\"address\":{\"$ref\":\"#address\"}},\"$defs\":{\"Address\":{\"$anchor\":\"address\",\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}}}}";
+		Test.Assert(File.WriteAllText(rootPath, schemaText) case .Ok, "Expected root fixture write");
+
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(schemaText, "Catalog", rootPath);
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Ok, "Expected nested id-base anchor ref to resolve");
+
+			if (resolveResult case .Ok(let schemas))
+			{
+				let catalog = FindSchema(schemas, "Catalog");
+				let container = FindSchema(schemas, "Container");
+				Test.Assert(catalog != null, "Expected Catalog type");
+				Test.Assert(container != null, "Expected Container type");
+				Test.Assert(FindSchema(schemas, "Address") != null, "Expected Address type");
+
+				GeneratorConfig config = .();
+				config.Namespace = scope String("BJSON.SchemaCodeGen.Tests.Generated");
+
+				let generator = scope CodeGenerator(config);
+				let code = generator.Generate(container);
+				defer delete code;
+				Test.Assert(code.Contains("public Address Address = new .() ~ delete _;"), scope $"Expected nested id-base ref field. Code:\n{code}");
+
+				delete schemas;
+			}
+
+			resolver.Cleanup();
+		}
+	}
+
 	[Test(Name = "SchemaCodeGen resolves local file definition refs")]
 	public static void T_ResolvesLocalFileDefinitionRef()
 	{
@@ -694,6 +867,24 @@ class SchemaCodeGenTests
 			let resolver = scope TypeResolver();
 			let resolveResult = resolver.Resolve(rootSchema);
 			Test.Assert(resolveResult case .Err(.UnresolvedRef), "Expected unresolved internal ref to fail");
+			Test.Assert(resolver.Errors.Count == 1, scope $"Expected one resolver error, got {resolver.Errors.Count}");
+			resolver.Cleanup();
+		}
+	}
+
+	[Test(Name = "SchemaCodeGen unresolved anchor ref fails")]
+	public static void T_UnresolvedAnchorRefFails()
+	{
+		let schemaText = "{\"title\":\"BrokenAnchor\",\"type\":\"object\",\"properties\":{\"missing\":{\"$ref\":\"#missingAnchor\"}}}";
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(schemaText, "BrokenAnchor");
+		Test.Assert(parseResult case .Ok, "Expected schema to parse");
+
+		if (parseResult case .Ok(let rootSchema))
+		{
+			let resolver = scope TypeResolver();
+			let resolveResult = resolver.Resolve(rootSchema);
+			Test.Assert(resolveResult case .Err(.UnresolvedRef), "Expected unresolved anchor ref to fail");
 			Test.Assert(resolver.Errors.Count == 1, scope $"Expected one resolver error, got {resolver.Errors.Count}");
 			resolver.Cleanup();
 		}

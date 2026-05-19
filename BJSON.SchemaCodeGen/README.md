@@ -55,7 +55,7 @@ BJSON.SchemaCodeGen data.json -n Models --warnings-as-errors
 | `"type": "array"` | `List<T>` | `= new .() ~ delete _` for value items, `DeleteContainerAndItems!(_)` for reference items |
 | `"type": "object"` | Custom class | `= new .() ~ delete _` |
 | `enum: [...]` | Beef enum | None (value type) |
-| Internal or local file `$ref` | Referenced class/enum | Based on referenced type |
+| Internal, anchored, or local file `$ref` | Referenced class/enum | Based on referenced type |
 
 ## Architecture
 
@@ -85,6 +85,8 @@ BJSON.SchemaCodeGen/
 - Handle nullable types with `?` suffix
 - Resolve internal refs: `#`, `#/definitions/...`, and `#/$defs/...`
 - Resolve local file refs such as `common.schema.json`, `common.schema.json#`, and `common.schema.json#/$defs/Address`
+- Resolve `$anchor` refs such as `#Address` and `common.schema.json#Address`
+- Resolve local `$id` aliases and use `$id` as the base URI for nested refs
 - Parse `definitions` and `$defs`
 - Flatten object fields from `allOf` into the generated class
 - Emit warnings for unsupported validation keywords while still generating useful structural models

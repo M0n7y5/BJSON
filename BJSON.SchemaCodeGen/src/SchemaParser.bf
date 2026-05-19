@@ -99,6 +99,22 @@ class SchemaParser
 			}
 		}
 
+		if (obj.TryGet("$id") case .Ok(let idVal))
+		{
+			if (idVal.IsString())
+			{
+				model.Id.Set((StringView)idVal);
+			}
+		}
+
+		if (obj.TryGet("$anchor") case .Ok(let anchorVal))
+		{
+			if (anchorVal.IsString())
+			{
+				model.Anchor.Set((StringView)anchorVal);
+			}
+		}
+
 		AddUnsupportedWarnings(obj, model.Name);
 
 		if (ParseDefinitionMap(obj, "$defs", model.Defs, model.Name, sourcePath) case .Err(let defsErr))

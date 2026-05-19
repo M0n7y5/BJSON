@@ -32,6 +32,9 @@ class SchemaModel
 	public SchemaModel ReferencedSchema;
 	public String RefPath = new String() ~ delete _;
 	public String SourcePath = new String() ~ delete _;
+	public String BaseUri = new String() ~ delete _;
+	public String Id = new String() ~ delete _;
+	public String Anchor = new String() ~ delete _;
 	public bool Emit = true;
 
 	public ~this()
