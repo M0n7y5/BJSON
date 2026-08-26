@@ -6,6 +6,10 @@ using System.Text;
 using BJSON.Models;
 namespace BJSON
 {
+	/// Reads JSON text from a Stream and reports the parse events to an IHandler.
+	/// Input must be valid UTF-8: RFC 8259 section 8.1 requires it, so malformed sequences are
+	/// rejected with InvalidEncoding instead of reaching the handler.
+	/// Line and column travel in the error payloads; \n, \r\n, and a lone \r each end a line.
 	class JsonReader
 	{
 		IHandler _handler;
@@ -15,10 +19,17 @@ namespace BJSON
 		uint line = 1;
 		uint currentDepth = 0;
 
+		/// Deepest object and array nesting accepted. Parsing recurses once per level, so deeper
+		/// input reports MaximumDepthReached rather than overflowing the stack.
 		public const uint MaximumDepth = 200;
+		// A number token is buffered whole so double.Parse sees one contiguous view. 1024 chars
+		// bounds the ParsedNumber stack frame; a longer token reports NumberTooLong.
 		private const int MaxNumberBufferSize = 1024;
 		private const int DefaultStringBufferSize = 256;
 
+		/// Creates a reader that reports parse events to a handler.
+		/// @param handler The event sink. A Deserializer also supplies its DeserializerConfig, which
+		/// is copied here, so config changes after this point do not reach the parse.
 		public this(IHandler handler)
 		{
 			this._handler = handler;
@@ -29,6 +40,10 @@ namespace BJSON
 			}
 		}
 
+		/// Parses one JSON document and reports it to the handler.
+		/// @param stream The stream to read; null reports InputStreamIsNull.
+		/// @returns Ok once the whole document is consumed, or the first error encountered. Anything
+		/// but whitespace after the document reports UnexpectedToken expecting "end of document".
 		public Result<void, JsonParsingError> Parse(Stream stream)
 		{
 			if (stream == null)
@@ -57,6 +72,8 @@ namespace BJSON
 				return .Err(.UnableToRead(line, column));
 		}
 
+		// Returns a Result because comment scanning can fail on an unterminated block comment, and
+		// that error has to reach the caller instead of passing for end of input.
 		[Inline]
 		Result<void, JsonParsingError> SkipWhitespace(Stream stream)
 		{
@@ -304,7 +321,6 @@ namespace BJSON
 
 		Result<void, JsonParsingError> ParseString(Stream stream, bool isKey = false)
 		{
-			// Pre-allocate string capacity for typical strings
 			String str = scope .(DefaultStringBufferSize);
 
 			if (let c = stream.Peek<char8>())
@@ -338,7 +354,7 @@ namespace BJSON
 								var codepoint = Try!(ParseHex4(stream));
 								if (codepoint >= 0xD800 && codepoint <= 0xDFFF)
 								{
-									// high surrogate, check if followed by valid low surrogate
+									// D800 to DBFF is a high surrogate: a low surrogate escape must follow it.
 									if (codepoint <= 0xDBFF)
 									{
 										if (ConsumeChar(stream, '\\') case .Err)
@@ -594,7 +610,8 @@ namespace BJSON
 			}
 		}
 
-		/// Parsed number state containing the components of a JSON number.
+		/// Raw number token plus the integer fast path: ReportNumber hands intVal to the handler when
+		/// the token has no fraction, exponent, or overflow, and otherwise parses buffer as a double.
 		struct ParsedNumber
 		{
 			public char8[MaxNumberBufferSize] buffer;
@@ -691,7 +708,7 @@ namespace BJSON
 				}
 				else
 				{
-					break; // End of number
+					break; // Any other character ends the token; the caller validates what follows it.
 				}
 			}
 
@@ -864,7 +881,8 @@ namespace BJSON
 					}
 					else if (num.intVal == (uint64)int64.MaxValue + 1)
 					{
-						// Negating (int64)9223372036854775808 overflows int64.
+						// -(int64)9223372036854775808 overflows int64 and traps where arithmetic checks
+						// are enabled, so MinValue is reported directly.
 						if (!_handler.Number(int64.MinValue))
 							return .Err(.InvalidValue(line, num.startColumn));
 					}
@@ -893,8 +911,9 @@ namespace BJSON
 			return .Ok;
 		}
 
-		/// Maps an expected character to a static text, so the error payload outlives the reader.
-		/// A StringView over a scope allocation would dangle once the parse call returns.
+		/// Maps an expected character to static text, so the StringView in an UnexpectedToken payload
+		/// stays valid after the parse returns. A view of a scope allocation would dangle by the time
+		/// the caller formats the error.
 		[Inline]
 		static StringView ExpectedText(char8 expected)
 		{

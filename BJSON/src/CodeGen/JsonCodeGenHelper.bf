@@ -9,7 +9,11 @@ namespace BJSON.CodeGen;
 /// Shared helper methods for JSON code generation.
 public class JsonCodeGenHelper
 {
-	/// Checks if a field should be serialized based on attributes and visibility.
+	/// Checks if a field should be serialized: instance fields that are public or carry
+	/// [JsonInclude], minus fields marked [JsonIgnore(.Always)].
+	/// @param field The candidate field.
+	/// @param ownerType The type being emitted. The current rules do not consult it.
+	/// @returns True when both emitters must handle the field.
 	[Comptime]
 	public static bool ShouldSerializeField(FieldInfo field, Type ownerType)
 	{
@@ -32,6 +36,8 @@ public class JsonCodeGenHelper
 	}
 
 	/// Gets the JSON property name for a field (uses [JsonPropertyName] if present).
+	/// The name is raw: callers MUST pass it through GetSourceLiteralName or
+	/// GetJsonLiteralName before it reaches emitted source.
 	[Comptime]
 	public static void GetJsonPropertyName(FieldInfo field, String outName)
 	{
@@ -45,8 +51,10 @@ public class JsonCodeGenHelper
 		}
 	}
 
-	/// Appends a property name escaped for a Beef source string literal, so a name carrying
-	/// a quote or a backslash cannot break or alter the emitted code.
+	/// Appends a property name escaped once for the emitted Beef source literal, so a name
+	/// carrying a quote or a backslash cannot break or alter the emitted code.
+	/// Used by the deserializer emitter, whose generated code looks the key up at runtime
+	/// against the already decoded JSON key, so the name must NOT also be JSON escaped.
 	/// @param field The field whose name is emitted.
 	/// @param outName Receives the escaped name.
 	[Comptime]
@@ -57,8 +65,11 @@ public class JsonCodeGenHelper
 		AppendSourceEscaped(name, outName);
 	}
 
-	/// Appends a property name escaped for JSON output and then for a Beef source string
-	/// literal, so the emitted writer produces a valid JSON key without escaping at runtime.
+	/// Appends a property name escaped twice, in this order: once for JSON output, then once
+	/// for the emitted Beef source literal. Used by the serializer emitter, whose generated
+	/// code writes the key with WriteRaw and therefore performs no escaping at runtime.
+	/// The two layers stay separate on purpose: collapsing them either emits an unescapable
+	/// source literal or writes a raw quote into the JSON stream.
 	/// @param field The field whose name is emitted.
 	/// @param outName Receives the escaped name.
 	[Comptime]
@@ -90,6 +101,11 @@ public class JsonCodeGenHelper
 		AppendSourceEscaped(jsonEscaped, outName);
 	}
 
+	/// Escapes text for a Beef source string literal, the layer both public name getters end
+	/// with. Tab, newline and carriage return have literal escapes; any other control
+	/// character has no representation here and fails generation.
+	/// Names arriving from GetJsonLiteralName cannot trip that guard: the JSON layer has
+	/// already replaced every control character with \u00XX.
 	[Comptime]
 	private static void AppendSourceEscaped(StringView text, String outText)
 	{
@@ -103,6 +119,8 @@ public class JsonCodeGenHelper
 			case '\r': outText.Append("\\r");
 			case '\t': outText.Append("\\t");
 			default:
+				// A comptime method cannot return an error, so an unrepresentable name has to
+				// abort the build instead of emitting a literal the compiler would reject.
 				if ((uint8)c < 0x20)
 					Runtime.FatalError(scope $"BJSON cannot emit a property name containing the control character 0x{(int)(uint8)c:X2}.");
 
@@ -180,6 +198,8 @@ public class JsonCodeGenHelper
 	}
 
 	/// Gets the element type of a List<T> or sized array.
+	/// @returns The element type, or null when t is neither; callers treat null as
+	/// unsupported and emit nothing for the field.
 	[Comptime]
 	public static Type GetElementType(Type t)
 	{
@@ -194,6 +214,8 @@ public class JsonCodeGenHelper
 	}
 
 	/// Gets the key and value types of a Dictionary<K,V>.
+	/// Both out params come back null when t is not a Dictionary, which callers treat as
+	/// unsupported.
 	[Comptime]
 	public static void GetDictionaryTypes(Type t, out Type keyType, out Type valueType)
 	{

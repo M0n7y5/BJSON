@@ -2,9 +2,11 @@ using System;
 
 namespace BJSON.Attributes;
 
-/// Indicates that a field is optional during JSON deserialization.
-/// When present, the field can be missing from the JSON document.
-/// This is the default behavior, but can be used for explicit clarity.
+/// Lets the generated JsonDeserialize accept a document without this field: the field is skipped
+/// and keeps the value it already holds.
+/// This carries weight on a type whose [JsonObject] sets DefaultBehavior = .Required; when the
+/// type keeps the default .Optional every field is optional already and the attribute only states
+/// the intent.
 [AttributeUsage(.Field)]
 public struct JsonOptionalAttribute : Attribute
 {

@@ -1,31 +1,43 @@
 using System;
 namespace BJSON.Enums
 {
+	/// The eight characters JSON permits after a backslash, named for readability.
+	/// The lookup tables below are built from character literals and not from these cases,
+	/// so adding a case here teaches neither the reader nor the writer a new escape.
 	enum JsonEscapes : char8
 	{
+		/// Emitted as `\"`, decoded from `\"`.
 		case QUOTATION_MARK = '"';
+		/// Decoded from `\/` on input, never emitted: a bare solidus is valid JSON output.
 		case SOLIDUS = '/';
+		/// Emitted as `\\`, decoded from `\\`.
 		case REVERSE_SOLIDUS = '\\';
+		/// Emitted as `\b`, decoded from `\b`.
 		case BACKSPACE = '\b';
+		/// Emitted as `\f`, decoded from `\f`.
 		case FORM_FEED = '\f';
+		/// Emitted as `\n`, decoded from `\n`.
 		case LINE_FEED = '\n';
+		/// Emitted as `\r`, decoded from `\r`.
 		case CARRIAGE_RETURN = '\r';
+		/// Emitted as `\t`, decoded from `\t`.
 		case TABULATOR = '\t';
 
-		/// Lookup table for parsing: maps escape characters (after backslash) to their actual values.
-		/// Index is the ASCII value of the escape character (e.g., 'n' -> '\n').
-		/// Value of 0 means invalid escape sequence.
+		/// Comptime built table mapping the byte value of the character that follows a
+		/// backslash to the character it decodes to, so JsonReader unescapes in one indexed
+		/// load. A 0 entry means the byte is not a legal JSON escape.
 		private const char8[256] sEscapeLookup = InitEscapeLookup();
 
-		/// Lookup table for serialization: maps control characters to their escape sequences.
-		/// Index is the control character value. Value of 0 means no special escape needed.
+		/// Comptime built table mapping a character that must be escaped on output to the
+		/// letter written after the backslash ('\n' -> 'n'). A 0 entry means the character is
+		/// emitted verbatim, which also covers control characters below 0x20: they have no
+		/// escape letter and the caller must emit them as \u00XX.
 		private const char8[256] sSerializeLookup = InitSerializeLookup();
 
 		[Comptime]
 		private static char8[256] InitEscapeLookup()
 		{
 			char8[256] table = .();
-			// All values start as 0 (invalid)
 			table['"'] = '"';
 			table['/'] = '/';
 			table['\\'] = '\\';
@@ -41,7 +53,6 @@ namespace BJSON.Enums
 		private static char8[256] InitSerializeLookup()
 		{
 			char8[256] table = .();
-			// Map control characters to their escape letter
 			table['"'] = '"';
 			table['\\'] = '\\';
 			table['\b'] = 'b';
@@ -64,14 +75,16 @@ namespace BJSON.Enums
 
 		/// Fast O(1) lookup for serialization escape sequences.
 		/// @param c The character to check.
-		/// @returns The escape letter (e.g., 'n' for '\n'), or 0 if no escape needed.
+		/// @returns The escape letter (e.g. 'n' for '\n'), or 0 when no escape letter exists.
+		/// Control characters below 0x20 also return 0 and must be written as \u00XX.
 		[Inline]
 		public static char8 GetEscapeChar(char8 c)
 		{
 			return sSerializeLookup[(uint8)c];
 		}
 
-		/// Checks if a character needs escaping during serialization.
+		/// Checks if a character needs escaping during serialization, including the control
+		/// characters that GetEscapeChar has no letter for.
 		[Inline]
 		public static bool NeedsEscape(char8 c)
 		{

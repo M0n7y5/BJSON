@@ -12,7 +12,6 @@ class SSOTest
 	{
 		Debug.WriteLine("Small String Optimization tests ...");
 
-		// Test 1: Very short string (1 char) should use SSO
 		{
 			let json = JsonString("a");
 			defer json.Dispose();
@@ -23,9 +22,8 @@ class SSOTest
 			Debug.WriteLine("  Test 1 (1-char SSO): PASSED");
 		}
 
-		// Test 2: String exactly at SSO limit (14 chars) should use SSO
 		{
-			let json = JsonString("12345678901234"); // 14 chars
+			let json = JsonString("12345678901234");
 			defer json.Dispose();
 
 			Test.Assert(json.smallString == true, "14-char string should use SSO");
@@ -35,9 +33,8 @@ class SSOTest
 			Debug.WriteLine("  Test 2 (14-char SSO): PASSED");
 		}
 
-		// Test 3: String just over SSO limit (15 chars) should NOT use SSO
 		{
-			let json = JsonString("123456789012345"); // 15 chars
+			let json = JsonString("123456789012345");
 			defer json.Dispose();
 
 			Test.Assert(json.smallString == false, "15-char string should NOT use SSO");
@@ -47,7 +44,6 @@ class SSOTest
 			Debug.WriteLine("  Test 3 (15-char no SSO): PASSED");
 		}
 
-		// Test 4: Long string should NOT use SSO
 		{
 			let json = JsonString("This is a much longer string that definitely exceeds the SSO limit");
 			defer json.Dispose();
@@ -58,7 +54,6 @@ class SSOTest
 			Debug.WriteLine("  Test 4 (long string no SSO): PASSED");
 		}
 
-		// Test 5: Empty string should use SSO
 		{
 			let json = JsonString("");
 			defer json.Dispose();
@@ -70,7 +65,6 @@ class SSOTest
 			Debug.WriteLine("  Test 5 (empty string SSO): PASSED");
 		}
 
-		// Test 6: Parsing short strings should use SSO
 		{
 			var result = Json.Deserialize("{\"id\":\"abc\",\"name\":\"test\"}");
 			defer result.Dispose();
@@ -86,7 +80,6 @@ class SSOTest
 			Debug.WriteLine("  Test 6 (parsed short strings): PASSED");
 		}
 
-		// Test 7: Round-trip with SSO strings
 		{
 			let json = JsonObject()
 				{
@@ -116,7 +109,6 @@ class SSOTest
 			Debug.WriteLine("  Test 7 (round-trip SSO): PASSED");
 		}
 
-		// Test 8: SSO with special characters
 		{
 			let json = JsonString("hello\nworld");
 			defer json.Dispose();
@@ -128,13 +120,11 @@ class SSOTest
 			Debug.WriteLine("  Test 8 (SSO with special chars): PASSED");
 		}
 
-		// Test 9: SSO boundary - exactly MaxSmallStringLength
 		{
 			Test.Assert(JsonString.MaxSmallStringLength == 14, "MaxSmallStringLength should be 14");
 			Debug.WriteLine("  Test 9 (MaxSmallStringLength constant): PASSED");
 		}
 
-		// Test 10: Multiple SSO strings in array
 		{
 			let json = JsonArray()
 				{

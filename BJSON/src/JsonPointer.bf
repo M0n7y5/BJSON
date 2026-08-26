@@ -8,11 +8,18 @@ namespace BJSON
 	/// JSON Pointer error types per RFC 6901.
 	enum JsonPointerError
 	{
+		/// The pointer is neither empty nor starts with '/'.
 		case InvalidPointer;
+		/// A '~' in a token is not followed by '0' or '1'.
 		case InvalidEscapeSequence;
+		/// The named key is absent from the object the walk reached. Carries the escaped token.
 		case KeyNotFound(StringView key);
+		/// The index addresses past the end of the array, or the token was '-', which this
+		/// implementation does not support as an append position. Carries -1 for '-'.
 		case IndexOutOfBounds(int index);
+		/// An array token is not a decimal index without leading zeros.
 		case InvalidArrayIndex(StringView token);
+		/// A token had to index a container but the walk reached a scalar.
 		case TypeMismatch(StringView expected, JsonType actual);
 
 		public override void ToString(String str)
@@ -46,6 +53,11 @@ namespace BJSON
 	///   - "/m~0n" - references the "m~n" member (~ is escaped as ~0)
 	static class JsonPointer
 	{
+		/// Resolves a pointer against a document.
+		/// @param root The value to walk from.
+		/// @param pointer The RFC 6901 pointer.
+		/// @returns A copy of the resolved value, which the document still owns, or the reason
+		/// the walk failed. The copy shares the stored value's heap pointers, so do not dispose it.
 		public static Result<JsonValue, JsonPointerError> Resolve(JsonValue root, StringView pointer)
 		{
 			var root;
@@ -125,6 +137,11 @@ namespace BJSON
 			return .Ok(current);
 		}
 
+		/// Resolves a pointer, substituting a value when the walk fails.
+		/// @param root The value to walk from.
+		/// @param pointer The RFC 6901 pointer.
+		/// @param defaultValue The value to return if the pointer does not resolve.
+		/// @returns The resolved value, which the document still owns, or defaultValue.
 		public static JsonValue ResolveOrDefault(JsonValue root, StringView pointer, JsonValue defaultValue = default)
 		{
 			if (Resolve(root, pointer) case .Ok(let val))
@@ -182,6 +199,9 @@ namespace BJSON
 			return .Ok;
 		}
 
+		/// Escapes a single pointer token, writing '~' as "~0" and '/' as "~1".
+		/// @param input The raw key or index text.
+		/// @param output The buffer to append to.
 		public static void Escape(StringView input, String output)
 		{
 			for (let c in input)
@@ -220,6 +240,9 @@ namespace BJSON
 			return .Err;
 		}
 
+		/// Builds a pointer from already unescaped segments, escaping each one.
+		/// @param segments The path segments, outermost first.
+		/// @param output The buffer to append to.
 		public static void Build(Span<StringView> segments, String output)
 		{
 			for (let segment in segments)
@@ -229,6 +252,9 @@ namespace BJSON
 			}
 		}
 
+		/// Appends one escaped segment to a pointer.
+		/// @param segment The raw key or index text.
+		/// @param output The buffer to append to.
 		public static void Build(StringView segment, String output)
 		{
 			output.Append('/');

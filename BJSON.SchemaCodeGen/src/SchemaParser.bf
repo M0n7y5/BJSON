@@ -6,6 +6,21 @@ using BJSON.Enums;
 
 namespace BJSON.SchemaCodeGen;
 
+/// Reads a JSON Schema document into a flat list of SchemaModel nodes.
+/// Supported keywords: `title`, `description`, `type`, `enum`, `properties`, `required`, `items`,
+/// `allOf`, `definitions`, `$defs` and `$ref`. A `$ref` is only recorded here. TypeResolver matches
+/// it against the recorded pointers and rejects one that leaves the document.
+/// Rejected here, each as .UnsupportedKeyword: a `type` union of more than one non null type, a
+/// type name JSON Schema does not define, an `enum` that is not a non empty array of strings,
+/// `properties` that is not an object, a property name holding neither a letter nor a digit, a
+/// property schema that is neither an object nor `true`, `required` that is not an array of
+/// strings, `items` holding a tuple or a boolean, an `allOf` that is not an array of object
+/// schemas, and `definitions` or `$defs` that is not an object of object schemas.
+/// Ignored without an error, so they never reach the generated code: `anyOf`, `oneOf`, `not`,
+/// `if`, `then`, `else`, `const`, `default`, `additionalProperties`, `patternProperties` and every
+/// validation keyword such as `minimum`, `maxLength`, `pattern` and `format`.
+/// Ownership: every node this parser allocates is handed to the caller's node list, which owns it.
+/// The parser holds no memory of its own between calls.
 class SchemaParser
 {
 	/// Node list of the current Parse call, owned by the caller of Parse. Non owning.
@@ -18,7 +33,8 @@ class SchemaParser
 	/// @param rootName Type name for the root schema, already PascalCase.
 	/// @param preferTitle When true a `title` keyword replaces the derived name of a schema.
 	/// @param outNodes Caller owned list that receives every node this call allocates.
-	/// @returns .Ok when the document was parsed, otherwise the first construct that failed.
+	/// @returns .Ok when the document was parsed, .InvalidSchema when the document root is not a
+	///          JSON object, otherwise the first construct that failed.
 	public Result<void, SchemaError> Parse(StringView schemaJson, StringView rootName, bool preferTitle, List<SchemaModel> outNodes)
 	{
 		mNodes = outNodes;
@@ -223,7 +239,7 @@ class SchemaParser
 			}
 
 			// TypeResolver applies these names once `allOf` members have been merged in, so a name
-			// that only an inherited property carries still reaches the generated field.
+			// that only a base class declares marks the property on that base class.
 			for (var item in reqVal.As<JsonArray>())
 			{
 				if (!item.IsString())
@@ -300,7 +316,8 @@ class SchemaParser
 		return .Ok(model);
 	}
 
-	/// Parses the members of `definitions` or `$defs` so that `$ref` can reach them.
+	/// Parses the members of `definitions` or `$defs` so that `$ref` can reach them. Runs for every
+	/// schema, so definitions nested below the root are reachable as well.
 	/// @param json The schema that declares the keyword.
 	/// @param keyword The keyword to read. MUST be a string literal: it reaches SchemaError
 	///                payloads, which outlive this call.
@@ -486,6 +503,9 @@ class SchemaParser
 	}
 }
 
+/// Why a schema document could not be turned into a model graph. SchemaParser reports the keyword
+/// failures, TypeResolver reports UnresolvedRef, CircularRef, UnnamedType and the `required`
+/// failure.
 enum SchemaError
 {
 	/// The document is not valid JSON.
@@ -502,6 +522,7 @@ enum SchemaError
 	/// A generated type has no usable name.
 	case UnnamedType;
 
+	/// Appends the message for this error to a caller owned string.
 	public override void ToString(String string)
 	{
 		switch (this)

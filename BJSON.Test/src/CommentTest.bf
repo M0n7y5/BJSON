@@ -17,7 +17,6 @@ class CommentTest
 	{
 		Debug.WriteLine("JSON Comment Support tests ...");
 
-		// Test 1: Single-line comment before JSON
 		{
 			let jsonWithComments = "// comment at start\n{\"key\": \"value\"}";
 			
@@ -36,7 +35,6 @@ class CommentTest
 			Debug.WriteLine("  Test 1 (single-line before): PASSED");
 		}
 
-		// Test 2: Single-line comment after JSON
 		{
 			let jsonWithComments = "{\"key\": \"value\"} // comment at end";
 			
@@ -49,7 +47,6 @@ class CommentTest
 			Debug.WriteLine("  Test 2 (single-line after): PASSED");
 		}
 
-		// Test 3: Multi-line comment before JSON
 		{
 			let jsonWithComments = "/* multi\n   line */\n{\"key\": \"value\"}";
 			
@@ -62,7 +59,6 @@ class CommentTest
 			Debug.WriteLine("  Test 3 (multi-line before): PASSED");
 		}
 
-		// Test 4: Multi-line comment after JSON
 		{
 			let jsonWithComments = "{\"key\": \"value\"} /* comment */";
 			
@@ -75,7 +71,6 @@ class CommentTest
 			Debug.WriteLine("  Test 4 (multi-line after): PASSED");
 		}
 
-		// Test 5: Comments in arrays
 		{
 			let jsonWithComments = """
 [ 
@@ -99,7 +94,6 @@ class CommentTest
 			Debug.WriteLine("  Test 5 (comments in arrays): PASSED");
 		}
 
-		// Test 6: Comments in objects
 		{
 			let jsonWithComments = """
 {
@@ -126,7 +120,6 @@ class CommentTest
 			Debug.WriteLine("  Test 6 (comments in objects): PASSED");
 		}
 
-		// Test 7: Multiple comments
 		{
 			let jsonWithComments = """
 // Start comment
@@ -148,7 +141,6 @@ class CommentTest
 			Debug.WriteLine("  Test 7 (multiple comments): PASSED");
 		}
 
-		// Test 8: Comment with CRLF line endings
 		{
 			let jsonWithComments = "// comment\r\n{\"key\": \"value\"}";
 			
@@ -161,7 +153,6 @@ class CommentTest
 			Debug.WriteLine("  Test 8 (CRLF line ending): PASSED");
 		}
 
-		// Test 9: Comments disabled (standard JSON mode) - should fail
 		{
 			let jsonWithComments = "// comment\n{\"key\": \"value\"}";
 			
@@ -174,7 +165,6 @@ class CommentTest
 			Debug.WriteLine("  Test 9 (comments disabled): PASSED");
 		}
 
-		// Test 10: Unterminated multi-line comment - should fail
 		{
 			let jsonWithComments = "/* unterminated comment\n{\"key\": \"value\"}";
 			
@@ -187,7 +177,6 @@ class CommentTest
 			Debug.WriteLine("  Test 10 (unterminated comment): PASSED");
 		}
 
-		// Test 11: Only comment, no JSON - should fail
 		{
 			let jsonWithComments = "// just a comment";
 			
@@ -200,7 +189,6 @@ class CommentTest
 			Debug.WriteLine("  Test 11 (only comment): PASSED");
 		}
 
-		// Test 12: Comment between object key and colon
 		{
 			let jsonWithComments = """
 {
@@ -217,7 +205,6 @@ class CommentTest
 			Debug.WriteLine("  Test 12 (comment between key and colon): PASSED");
 		}
 
-		// Test 13: Comment between colon and value
 		{
 			let jsonWithComments = """
 {
@@ -243,12 +230,10 @@ class CommentTest
 			var result = deserializer.Deserialize(jsonWithComments);
 			defer result.Dispose();
 
-			// This should parse successfully since first */ closes the comment
 			Test.Assert(result case .Ok, "Non-nested comment handling should succeed");
 			Debug.WriteLine("  Test 14 (non-nested comments): PASSED");
 		}
 
-		// Test 15: Empty single-line comment
 		{
 			let jsonWithComments = "//\n{\"key\": \"value\"}";
 			
@@ -261,7 +246,6 @@ class CommentTest
 			Debug.WriteLine("  Test 15 (empty single-line): PASSED");
 		}
 
-		// Test 16: Empty multi-line comment
 		{
 			let jsonWithComments = "/**/{\"key\": \"value\"}";
 			
@@ -274,7 +258,6 @@ class CommentTest
 			Debug.WriteLine("  Test 16 (empty multi-line): PASSED");
 		}
 
-		// Test 17: Single / without second / (not a comment) - should fail
 		{
 			let jsonWithComments = "/ {\"key\": \"value\"}";
 			
@@ -287,7 +270,6 @@ class CommentTest
 			Debug.WriteLine("  Test 17 (single slash): PASSED");
 		}
 
-		// Test 18: Complex nested structure with comments everywhere
 		{
 			let jsonWithComments = """
 // Root comment
@@ -323,7 +305,6 @@ class CommentTest
 			Debug.WriteLine("  Test 18 (complex nested): PASSED");
 		}
 
-		// Test 19: Unterminated multi-line comment reports the missing terminator
 		{
 			let jsonWithComments = "/* x";
 

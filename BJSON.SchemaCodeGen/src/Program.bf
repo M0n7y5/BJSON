@@ -4,8 +4,30 @@ using System.Collections;
 
 namespace BJSON.SchemaCodeGen;
 
+/// Entry point of the standalone build time generator: schema.json in, one Beef file per generated
+/// type out.
+/// Usage: BJSON.SchemaCodeGen [options] <schema.json>
+/// The single positional argument names the schema document. Options: -o or --output <dir>
+/// (default ./generated), -n or --namespace <name> (required), -c or --class <name> (root type
+/// name, which beats the schema `title`), --integer-type <int32|int64>, --number-type
+/// <float|double>, --skip-docs, and -h or --help. Every option is rejected when it repeats, and
+/// every option that takes a value is rejected when the value is missing or empty.
+/// The exit code names the stage that failed:
+/// 0, the files were written, or --help was asked for.
+/// 1, the arguments are unusable, or the schema file is missing or unreadable.
+/// 2, the schema could not be parsed, or it declares no object and no enum, so there is nothing
+/// to generate.
+/// 3, type resolution failed: an external or unresolved `$ref`, a `$ref` or `allOf` cycle, an
+/// unnamed type, or a `required` entry that names no property.
+/// 4, the output directory or one of the generated files could not be written.
 class Program
 {
+	/// Runs the pipeline: read the schema file, SchemaParser.Parse, TypeResolver.Resolve,
+	/// FileWriter.WriteFiles.
+	/// Ownership: the node list scoped here owns every SchemaModel of the run and frees the whole
+	/// graph on every path, success or failure. The generation order list only aliases those nodes,
+	/// and the option strings outlive the generator that reads them.
+	/// @returns The exit code documented on Program.
 	public static int Main(String[] args)
 	{
 		var options = scope CommandLineOptions();
@@ -314,14 +336,27 @@ class Program
 	}
 }
 
+/// The command line of one run, filled by Program.ParseArguments.
+/// Ownership: every string here is allocated with the instance and freed with it. Main scopes the
+/// instance, and GeneratorConfig.Namespace plus the output directory view point into these strings,
+/// so the instance outlives the code generator and the file writer that read them.
 class CommandLineOptions
 {
+	/// Path of the schema document, from the one positional argument. Empty until it is given.
 	public String SchemaFile = new String() ~ delete _;
+	/// Directory that receives the generated files, from -o.
 	public String OutputDir = new String("./generated") ~ delete _;
+	/// Namespace of the generated types, from -n. Required.
 	public String Namespace = new String() ~ delete _;
+	/// Root type name, from -c. Empty leaves the name to the schema `title`, falling back to the
+	/// file name.
 	public String RootClassName = new String() ~ delete _;
+	/// Beef type for `type: integer`, from --integer-type.
 	public IntegerType IntegerType = .Int64;
+	/// Beef type for `type: number`, from --number-type.
 	public NumberType NumberType = .Double;
+	/// Whether --skip-docs was given, which keeps every `description` out of the output.
 	public bool SkipDocs;
+	/// Whether -h or --help was given, which prints the usage text and ends the run.
 	public bool ShowHelp;
 }

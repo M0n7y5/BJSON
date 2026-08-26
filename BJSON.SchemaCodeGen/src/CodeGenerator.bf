@@ -3,15 +3,25 @@ using System.Collections;
 
 namespace BJSON.SchemaCodeGen;
 
+/// Renders one SchemaModel as the source text of a Beef class or enum.
+/// Ownership: mConfig is a copy of the caller's GeneratorConfig, whose Namespace string is non
+/// owning, so that string MUST outlive the generator. Generate returns a heap allocated String the
+/// caller has to delete. Nothing else here allocates beyond the call.
 class CodeGenerator
 {
 	private GeneratorConfig mConfig;
 	
+	/// @param config Generator options, copied by value. Its Namespace string stays owned by the
+	///               caller and MUST outlive this generator.
 	public this(GeneratorConfig config)
 	{
 		mConfig = config;
 	}
 	
+	/// Renders schema as a whole Beef source file: an enum for .Enum, a class for anything else.
+	/// @param schema The type to render. Non owning: the node list owns it, together with the base,
+	///               element and property schemas this call reads through it.
+	/// @returns A new String the caller owns and MUST delete.
 	public String Generate(SchemaModel schema)
 	{
 		var sb = scope String();
@@ -138,8 +148,7 @@ class CodeGenerator
 			sb.AppendF($"/// {schema.Description}\n");
 		}
 		
-		// Note: [JsonObject] is not valid on enums in BJSON
-		// Enums are handled natively by the BJSON serializer
+		// BJSON serializes enums natively, and [JsonObject] is not valid on one.
 		sb.AppendF($"enum {schema.Name}\n");
 		sb.Append("{\n");
 		
@@ -159,7 +168,6 @@ class CodeGenerator
 	
 	private void GetBeefType(SchemaModel schema, String output)
 	{
-		// A `$ref` carries the type of its target.
 		var resolved = schema.Resolved;
 		
 		switch (resolved.Type)
@@ -209,9 +217,6 @@ class CodeGenerator
 		case .Enum:
 			output.Append(resolved.Name);
 		default:
-			// Fallback for unrecognized types
-			// If it's nullable, use nullable int64 as a sensible default
-			// Otherwise use JsonValue
 			if (resolved.IsNullable)
 			{
 				output.Append(mConfig.IntegerType == .Int32 ? "int32?" : "int64?");
@@ -310,22 +315,34 @@ class CodeGenerator
 	}
 }
 
+/// Options that shape the generated source, copied by value into CodeGenerator.
 struct GeneratorConfig
 {
+	/// Namespace of every generated file. Non owning: the caller owns this string and MUST keep it
+	/// alive while a CodeGenerator holds the config.
 	public String Namespace;
+	/// Beef type generated for `type: integer`.
 	public IntegerType IntegerType = .Int64;
+	/// Beef type generated for `type: number`.
 	public NumberType NumberType = .Double;
+	/// When true, no schema `description` reaches the generated code as a doc comment.
 	public bool SkipDocs;
 }
 
+/// Beef type generated for `type: integer`, and for a nullable schema with no usable type.
 enum IntegerType
 {
+	/// int32, or int32? when the schema also allows null.
 	Int32,
+	/// int64, or int64? when the schema also allows null.
 	Int64
 }
 
+/// Beef type generated for `type: number`.
 enum NumberType
 {
+	/// float, or float? when the schema also allows null.
 	Float,
+	/// double, or double? when the schema also allows null.
 	Double
 }

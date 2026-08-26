@@ -18,7 +18,6 @@ class SafeAccessTest
 	{
 		Debug.WriteLine("Safe Access Methods tests ...");
 
-		// Test 1: JsonObject.TryGet - existing key
 		{
 			let json = JsonObject() { ("name", "test"), ("value", 42) };
 			defer json.Dispose();
@@ -34,7 +33,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 1 (JsonObject.TryGet existing): PASSED");
 		}
 
-		// Test 2: JsonObject.TryGet - missing key
 		{
 			let json = JsonObject() { ("name", "test") };
 			defer json.Dispose();
@@ -45,7 +43,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 2 (JsonObject.TryGet missing): PASSED");
 		}
 
-		// Test 3: JsonObject.GetOrDefault - existing key
 		{
 			let json = JsonObject() { ("value", 42) };
 			defer json.Dispose();
@@ -57,7 +54,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 3 (JsonObject.GetOrDefault existing): PASSED");
 		}
 
-		// Test 4: JsonObject.GetOrDefault - missing key returns default
 		{
 			let json = JsonObject() { ("name", "test") };
 			defer json.Dispose();
@@ -74,7 +70,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 4 (JsonObject.GetOrDefault missing): PASSED");
 		}
 
-		// Test 5: JsonArray.TryGet - valid index
 		{
 			var json = JsonArray();
 			json.Add(JsonString("first"));
@@ -93,7 +88,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 5 (JsonArray.TryGet valid): PASSED");
 		}
 
-		// Test 6: JsonArray.TryGet - out of bounds
 		{
 			var json = JsonArray();
 			json.Add(JsonNumber((int64)1));
@@ -106,7 +100,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 6 (JsonArray.TryGet out of bounds): PASSED");
 		}
 
-		// Test 7: JsonArray.GetOrDefault - valid index
 		{
 			var json = JsonArray();
 			json.Add(JsonNumber((int64)10));
@@ -120,7 +113,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 7 (JsonArray.GetOrDefault valid): PASSED");
 		}
 
-		// Test 8: JsonArray.GetOrDefault - out of bounds returns default
 		{
 			var json = JsonArray();
 			json.Add(JsonNumber((int64)1));
@@ -138,7 +130,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 8 (JsonArray.GetOrDefault out of bounds): PASSED");
 		}
 
-		// Test 9: Base JsonValue.TryGet for objects
 		{
 			var result = Json.Deserialize("{\"key\":\"value\"}");
 			defer result.Dispose();
@@ -156,7 +147,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 9 (JsonValue.TryGet for objects): PASSED");
 		}
 
-		// Test 10: Base JsonValue.TryGet for arrays
 		{
 			var result = Json.Deserialize("[1, 2, 3]");
 			defer result.Dispose();
@@ -174,7 +164,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 10 (JsonValue.TryGet for arrays): PASSED");
 		}
 
-		// Test 11: Type mismatch - TryGet string key on array
 		{
 			var json = JsonArray();
 			json.Add(JsonNumber((int64)1));
@@ -188,7 +177,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 11 (type mismatch array): PASSED");
 		}
 
-		// Test 12: Type mismatch - TryGet int index on object
 		{
 			let json = JsonObject() { ("name", "test") };
 			defer json.Dispose();
@@ -201,7 +189,6 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 12 (type mismatch object): PASSED");
 		}
 
-		// Test 13: GetOrDefault with type mismatch returns default
 		{
 			var arr = JsonArray();
 			arr.Add(JsonNumber((int64)1));
@@ -212,13 +199,11 @@ class SafeAccessTest
 			defer defaultObj.Dispose();
 			let result = val.GetOrDefault("key", (JsonValue)defaultObj);
 			
-			// Should return the default because arr is not an object
 			Test.Assert(result.IsObject(), "Should return default object on type mismatch");
 
 			Debug.WriteLine("  Test 13 (GetOrDefault type mismatch): PASSED");
 		}
 
-		// Test 14: Nested safe access
 		{
 			var result = Json.Deserialize("{\"outer\":{\"inner\":{\"value\":42}}}");
 			defer result.Dispose();
@@ -226,7 +211,6 @@ class SafeAccessTest
 			Test.Assert(result case .Ok, "Parse should succeed");
 			if (result case .Ok(let json))
 			{
-				// Chain TryGet calls safely
 				if (json.TryGet("outer") case .Ok(let outer))
 				{
 					if (outer.TryGet("inner") case .Ok(let inner))
@@ -239,7 +223,6 @@ class SafeAccessTest
 					}
 				}
 
-				// Missing nested path should fail gracefully
 				let outerResult = json.TryGet("outer");
 				if (outerResult case .Ok(let outerVal))
 				{
@@ -256,29 +239,24 @@ class SafeAccessTest
 			let json = JsonObject() { ("name", "Alice"), ("age", 30), ("active", true) };
 			defer json.Dispose();
 
-			// String access without allocation
 			StringView name = json.GetOrDefault<StringView>("name", "Unknown");
 			Test.Assert(name == "Alice", scope $"Name mismatch. Got: {name}");
 
-			// Missing key returns primitive default (no allocation)
 			StringView missing = json.GetOrDefault<StringView>("nonexistent", "Default");
 			Test.Assert(missing == "Default", scope $"Should return default. Got: {missing}");
 
-			// Number access
 			int age = json.GetOrDefault<int>("age", 0);
 			Test.Assert(age == 30, scope $"Age mismatch. Got: {age}");
 
 			int missingAge = json.GetOrDefault<int>("unknown", 99);
 			Test.Assert(missingAge == 99, scope $"Should return default. Got: {missingAge}");
 
-			// Bool access
 			bool active = json.GetOrDefault<bool>("active", false);
 			Test.Assert(active == true, "Active should be true");
 
 			Debug.WriteLine("  Test 15 (Generic GetOrDefault<T>): PASSED");
 		}
 
-		// Test 16: Generic GetOrDefault<T> for arrays
 		{
 			var json = JsonArray();
 			json.Add(JsonString("first"));
@@ -291,14 +269,12 @@ class SafeAccessTest
 			int num = json.GetOrDefault<int>(1, 0);
 			Test.Assert(num == 42, scope $"Number mismatch. Got: {num}");
 
-			// Out of bounds returns default
 			StringView oob = json.GetOrDefault<StringView>(99, "default");
 			Test.Assert(oob == "default", scope $"Should return default. Got: {oob}");
 
 			Debug.WriteLine("  Test 16 (Generic GetOrDefault<T> for arrays): PASSED");
 		}
 
-		// Test 17: Generic GetByPointerOrDefault<T>
 		{
 			var result = Json.Deserialize("{\"user\":{\"name\":\"Bob\",\"score\":100}}");
 			defer result.Dispose();
@@ -306,14 +282,12 @@ class SafeAccessTest
 			Test.Assert(result case .Ok, "Parse should succeed");
 			if (result case .Ok(let json))
 			{
-				// Successful path access
 				StringView name = json.GetByPointerOrDefault<StringView>("/user/name", "Unknown");
 				Test.Assert(name == "Bob", scope $"Name mismatch. Got: {name}");
 
 				int score = json.GetByPointerOrDefault<int>("/user/score", 0);
 				Test.Assert(score == 100, scope $"Score mismatch. Got: {score}");
 
-				// Missing path returns default (no allocation!)
 				StringView missing = json.GetByPointerOrDefault<StringView>("/user/email", "N/A");
 				Test.Assert(missing == "N/A", scope $"Should return default. Got: {missing}");
 

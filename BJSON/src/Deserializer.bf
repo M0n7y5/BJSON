@@ -10,7 +10,8 @@ namespace BJSON
 	public enum DuplicateKeyBehavior
 	{
 		/// Return error if duplicate key is found.
-		/// NOTE: This option is not RFC 8259 compliant.
+		/// NOTE: RFC 8259 only says names SHOULD be unique, so this rejects documents that other
+		/// parsers accept.
 		ThrowError,
 		/// Skip the duplicate and keep the first occurrence.
 		Ignore,
@@ -21,27 +22,34 @@ namespace BJSON
 	/// Configuration options for JSON deserialization.
 	public struct DeserializerConfig
 	{
-		/// Enable support for comments in JSON string.
-		/// This enables support for trailing and inline comments.
+		/// Whether `//` line comments and `/* */` block comments are skipped like whitespace.
+		/// NOTE: Comments are not part of RFC 8259, so such documents are not portable.
 		public bool EnableComments = false;
 
-		/// Choose behavior if multiple objects with the same key
-		/// are found during parsing.
+		/// Behavior when an object repeats a key that is already present.
 		public DuplicateKeyBehavior DuplicateBehavior = .AlwaysRewrite;
 	}
 
-	/// Parses JSON text into a JsonValue tree structure.
-	/// Handles objects, arrays, strings, numbers, booleans, and null values.
+	/// Builds a JsonValue tree from JSON text: the IHandler that JsonReader drives while parsing.
+	/// A returned tree belongs to the caller, and the instance drops its parse state on every exit
+	/// path, so one Deserializer can parse any number of documents.
+	/// A handler callback returns false when the event cannot be applied to the tree, which makes
+	/// the reader abort with a parse error.
 	public class Deserializer : IHandler
 	{
 		Queue<JsonValue> treeStack = new .(32) ~ delete _;
 
 		String currentKey = null;
+		// Keys are copied into this arena because the reader passes a view of a scope buffer that
+		// dies before the matching value arrives. The arena is released with the deserializer, not
+		// per document, so keys from earlier parses stay resident until then.
 		BumpAllocator keyAlloc = new .() ~ delete _;
 
 		bool IsIgnoringDuplicate = false;
 		int IgnoredDepthCounter = 0;
 
+		/// Parsing options. JsonReader copies these when Deserialize constructs it, so a change
+		/// made during a parse does not affect the parse in flight.
 		public DeserializerConfig Config = .();
 
 		/// Creates a new Deserializer with default configuration.
@@ -56,7 +64,7 @@ namespace BJSON
 
 		/// Deserializes a JSON string into a JsonValue tree.
 		/// @param jsonText The JSON string to parse.
-		/// @returns The parsed JsonValue or a JsonParsingError on failure.
+		/// @returns The parsed JsonValue, owned by the caller and needing Dispose, or a JsonParsingError.
 		public Result<JsonValue, JsonParsingError> Deserialize(StringView jsonText)
 		{
 			let reader = scope JsonReader(this);
@@ -89,7 +97,7 @@ namespace BJSON
 
 		/// Deserializes JSON from a stream into a JsonValue tree.
 		/// @param stream The stream containing JSON data.
-		/// @returns The parsed JsonValue or a JsonParsingError on failure.
+		/// @returns The parsed JsonValue, owned by the caller and needing Dispose, or a JsonParsingError.
 		public Result<JsonValue, JsonParsingError> Deserialize(Stream stream)
 		{
 			let reader = scope JsonReader(this);
@@ -199,42 +207,54 @@ namespace BJSON
 			}
 		}
 
+		/// Adds a JSON null to the open container, or as the document root.
 		[Inline]
 		public bool Null()
 		{
 			return AddValue(JsonNull());
 		}
 
+		/// Adds a boolean to the open container, or as the document root.
 		[Inline]
 		public bool Bool(bool value)
 		{
 			return AddValue(JsonBool(value));
 		}
 
+		/// Adds a double. The reader picks this overload for numbers with a fraction or exponent,
+		/// for magnitudes past the 64-bit integer range, and for a bare -0, whose sign only a
+		/// double can carry.
 		[Inline]
 		public bool Number(double value)
 		{
 			return AddValue(JsonNumber(value));
 		}
 
+		/// Adds an unsigned integer. The reader picks this overload above int64.MaxValue.
 		[Inline]
 		public bool Number(uint64 value)
 		{
 			return AddValue(JsonNumber(value));
 		}
 		
+		/// Adds a signed integer. The reader picks this overload for values that fit int64,
+		/// int64.MinValue included.
 		[Inline]
 		public bool Number(int64 value)
 		{
 			return AddValue(JsonNumber(value));
 		}
 
+		/// Adds a string. `copy` is ignored: JsonString always copies the text, so the reader's
+		/// scratch buffer is never aliased.
 		[Inline]
 		public bool String(StringView value, bool copy)
 		{
 			return AddValue(JsonString(value));
 		}
 
+		/// Opens an object, either as the document root or under the pending key. A duplicate key
+		/// follows Config.DuplicateBehavior; `.Ignore` drops every event up to the matching end.
 		public bool StartObject()
 		{
 			if (IsIgnoringDuplicate)
@@ -303,6 +323,8 @@ namespace BJSON
 			}
 		}
 
+		/// Records the key that the next value is stored under. `copy` is ignored: the key is
+		/// always copied into the instance's arena, which outlives the reader's view of it.
 		[Inline]
 		public bool Key(StringView str, bool copy)
 		{
@@ -311,6 +333,7 @@ namespace BJSON
 			return true;
 		}
 
+		/// Closes the open object. The root container stays on the stack for Deserialize to return.
 		public bool EndObject()
 		{
 			if (IsIgnoringDuplicate)
@@ -340,6 +363,7 @@ namespace BJSON
 			return true;
 		}
 
+		/// Opens an array, with the same duplicate-key handling as StartObject.
 		public bool StartArray()
 		{
 			if (IsIgnoringDuplicate)
@@ -410,6 +434,7 @@ namespace BJSON
 			}
 		}
 
+		/// Closes the open array. The root container stays on the stack for Deserialize to return.
 		public bool EndArray()
 		{
 			if (IsIgnoringDuplicate)

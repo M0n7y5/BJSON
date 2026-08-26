@@ -14,7 +14,6 @@ class ErrorHandlingTest
 	{
 		Debug.WriteLine("Error Handling - Parsing Errors ...");
 
-		// Test 1: Empty document
 		{
 			var result = Json.Deserialize("");
 			defer result.Dispose();
@@ -30,7 +29,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 1 (empty document): PASSED");
 		}
 
-		// Test 2: Whitespace only
 		{
 			var result = Json.Deserialize("   \n\t  ");
 			defer result.Dispose();
@@ -46,7 +44,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 2 (whitespace only): PASSED");
 		}
 
-		// Test 3: Unclosed object
 		{
 			var result = Json.Deserialize("{\"key\": \"value\"");
 			defer result.Dispose();
@@ -55,7 +52,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 3 (unclosed object): PASSED");
 		}
 
-		// Test 4: Unclosed array
 		{
 			var result = Json.Deserialize("[1, 2, 3");
 			defer result.Dispose();
@@ -64,7 +60,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 4 (unclosed array): PASSED");
 		}
 
-		// Test 5: Missing colon in object
 		{
 			var result = Json.Deserialize("{\"key\" \"value\"}");
 			defer result.Dispose();
@@ -80,7 +75,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 5 (missing colon): PASSED");
 		}
 
-		// Test 6: Trailing comma in object
 		{
 			var result = Json.Deserialize("{\"key\": \"value\",}");
 			defer result.Dispose();
@@ -89,7 +83,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 6 (trailing comma object): PASSED");
 		}
 
-		// Test 7: Trailing comma in array
 		{
 			var result = Json.Deserialize("[1, 2, 3,]");
 			defer result.Dispose();
@@ -114,7 +107,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 8 (invalid value): PASSED");
 		}
 
-		// Test 9: Unquoted key
 		{
 			var result = Json.Deserialize("{key: \"value\"}");
 			defer result.Dispose();
@@ -123,7 +115,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 9 (unquoted key): PASSED");
 		}
 
-		// Test 10: Single quotes
 		{
 			var result = Json.Deserialize("{'key': 'value'}");
 			defer result.Dispose();
@@ -132,17 +123,14 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 10 (single quotes): PASSED");
 		}
 
-		// Test 11: Invalid escape sequence
 		{
 			var result = Json.Deserialize("\"hello\\xworld\"");
 			defer result.Dispose();
 
-			// \x is not a valid JSON escape - should fail
 			Test.Assert(result case .Err, "Invalid escape \\x should fail");
 			Debug.WriteLine("  Test 11 (invalid escape): PASSED");
 		}
 
-		// Test 12: Unterminated string
 		{
 			var result = Json.Deserialize("\"hello");
 			defer result.Dispose();
@@ -151,7 +139,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 12 (unterminated string): PASSED");
 		}
 
-		// Test 13: Invalid unicode escape - not enough digits
 		{
 			var result = Json.Deserialize("\"\\u00\"");
 			defer result.Dispose();
@@ -160,7 +147,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 13 (invalid unicode escape): PASSED");
 		}
 
-		// Test 14: Invalid unicode escape - non-hex chars
 		{
 			var result = Json.Deserialize("\"\\uGGGG\"");
 			defer result.Dispose();
@@ -169,7 +155,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 14 (non-hex unicode): PASSED");
 		}
 
-		// Test 15: Control character in string
 		{
 			let jsonWithControl = scope String();
 			jsonWithControl.Append("\"hello");
@@ -183,7 +168,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 15 (control character): PASSED");
 		}
 
-		// Test 16: Leading zeros in numbers
 		{
 			var result = Json.Deserialize("01234");
 			defer result.Dispose();
@@ -192,7 +176,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 16 (leading zeros): PASSED");
 		}
 
-		// Test 17: Plus sign prefix (not allowed in JSON)
 		{
 			var result = Json.Deserialize("+123");
 			defer result.Dispose();
@@ -225,7 +208,6 @@ class ErrorHandlingTest
 	{
 		Debug.WriteLine("Error Handling - Serialization Errors ...");
 
-		// Test 1: NaN value
 		{
 			let json = JsonNumber(Double.NaN);
 			defer json.Dispose();
@@ -237,7 +219,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 1 (NaN): PASSED");
 		}
 
-		// Test 2: Positive Infinity
 		{
 			let json = JsonNumber(Double.PositiveInfinity);
 			defer json.Dispose();
@@ -249,7 +230,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 2 (positive infinity): PASSED");
 		}
 
-		// Test 3: Negative Infinity
 		{
 			let json = JsonNumber(Double.NegativeInfinity);
 			defer json.Dispose();
@@ -269,7 +249,6 @@ class ErrorHandlingTest
 	{
 		Debug.WriteLine("Error Handling - Stream Errors ...");
 
-		// Test 1: Null stream
 		{
 			var deserializer = scope Deserializer();
 			var result = deserializer.Deserialize((Stream)null);
@@ -279,7 +258,6 @@ class ErrorHandlingTest
 			Debug.WriteLine("  Test 1 (null stream): PASSED");
 		}
 
-		// Test 2: Empty stream
 		{
 			let emptyStream = scope MemoryStream();
 			var result = Json.Deserialize(emptyStream);

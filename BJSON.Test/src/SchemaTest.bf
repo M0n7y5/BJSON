@@ -50,7 +50,6 @@ namespace BJSON.Test
 		[Test(Name = "JSON Schema type validation")]
 		public static void T_SchemaTypes()
 		{
-			// Test null type
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"null\"}");
 				Test.Assert(schema case .Ok);
@@ -73,7 +72,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test boolean type
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"boolean\"}");
 				Test.Assert(schema case .Ok);
@@ -96,7 +94,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test string type
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"string\"}");
 				Test.Assert(schema case .Ok);
@@ -119,7 +116,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test integer type
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"integer\"}");
 				Test.Assert(schema case .Ok);
@@ -142,7 +138,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test number type
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"number\"}");
 				Test.Assert(schema case .Ok);
@@ -173,7 +168,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test array type
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"array\"}");
 				Test.Assert(schema case .Ok);
@@ -196,7 +190,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test object type
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"object\"}");
 				Test.Assert(schema case .Ok);
@@ -299,7 +292,6 @@ namespace BJSON.Test
 		[Test(Name = "JSON Schema object validation")]
 		public static void T_SchemaObject()
 		{
-			// Test properties and required
 			{
 				let schema = JsonSchema.Parse("""
 					{
@@ -334,7 +326,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test minProperties and maxProperties
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"object\",\"minProperties\":2,\"maxProperties\":3}");
 				Test.Assert(schema case .Ok);
@@ -369,7 +360,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test additionalProperties
 			{
 				let schema = JsonSchema.Parse("""
 					{
@@ -407,7 +397,6 @@ namespace BJSON.Test
 		[Test(Name = "JSON Schema array validation")]
 		public static void T_SchemaArray()
 		{
-			// Test items
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}");
 				Test.Assert(schema case .Ok);
@@ -433,7 +422,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test minItems and maxItems
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"array\",\"minItems\":2,\"maxItems\":3}");
 				Test.Assert(schema case .Ok);
@@ -468,7 +456,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test uniqueItems
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"array\",\"uniqueItems\":true}");
 				Test.Assert(schema case .Ok);
@@ -494,7 +481,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test prefixItems
 			{
 				let schema = JsonSchema.Parse("""
 					{
@@ -532,7 +518,6 @@ namespace BJSON.Test
 		[Test(Name = "JSON Schema numeric validation")]
 		public static void T_SchemaNumeric()
 		{
-			// Test minimum and maximum
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"number\",\"minimum\":0,\"maximum\":100}");
 				Test.Assert(schema case .Ok);
@@ -585,7 +570,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test exclusiveMinimum and exclusiveMaximum
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"number\",\"exclusiveMinimum\":0,\"exclusiveMaximum\":100}");
 				Test.Assert(schema case .Ok);
@@ -624,7 +608,6 @@ namespace BJSON.Test
 		[Test(Name = "JSON Schema string validation")]
 		public static void T_SchemaString()
 		{
-			// Test minLength and maxLength
 			{
 				let schema = JsonSchema.Parse("{\"type\":\"string\",\"minLength\":2,\"maxLength\":10}");
 				Test.Assert(schema case .Ok);
@@ -663,7 +646,6 @@ namespace BJSON.Test
 		[Test(Name = "JSON Schema combining keywords")]
 		public static void T_SchemaCombining()
 		{
-			// Test allOf
 			{
 				let schema = JsonSchema.Parse("""
 					{
@@ -696,7 +678,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test anyOf
 			{
 				let schema = JsonSchema.Parse("""
 					{
@@ -738,7 +719,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test oneOf
 			{
 				let schema = JsonSchema.Parse("""
 					{
@@ -771,7 +751,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test not
 			{
 				let schema = JsonSchema.Parse("{\"not\":{\"type\":\"string\"}}");
 				Test.Assert(schema case .Ok);
@@ -820,7 +799,6 @@ namespace BJSON.Test
 				""");
 			Test.Assert(schema case .Ok);
 			
-			// Admin needs permissions
 			let json1 = Json.Deserialize("{\"role\":\"admin\",\"permissions\":[\"read\",\"write\"]}");
 			defer json1.Dispose();
 			if (json1 case .Ok(let val1))
@@ -839,7 +817,6 @@ namespace BJSON.Test
 				Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 			}
 			
-			// Non-admin needs department
 			let json3 = Json.Deserialize("{\"role\":\"user\",\"department\":\"IT\"}");
 			defer json3.Dispose();
 			if (json3 case .Ok(let val3))
@@ -864,7 +841,6 @@ namespace BJSON.Test
 		[Test(Name = "JSON Schema constants")]
 		public static void T_SchemaConstants()
 		{
-			// Test enum
 			{
 				let schema = JsonSchema.Parse("{\"enum\":[\"red\",\"green\",\"blue\"]}");
 				Test.Assert(schema case .Ok);
@@ -890,7 +866,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test const
 			{
 				let schema = JsonSchema.Parse("{\"const\":\"active\"}");
 				Test.Assert(schema case .Ok);
@@ -920,7 +895,6 @@ namespace BJSON.Test
 		[Test(Name = "JSON Schema boolean schemas")]
 		public static void T_SchemaBoolean()
 		{
-			// Test true schema (always valid)
 			{
 				let schema = JsonSchema.Parse("true");
 				Test.Assert(schema case .Ok);
@@ -955,7 +929,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test false schema (always invalid)
 			{
 				let schema = JsonSchema.Parse("false");
 				Test.Assert(schema case .Ok);
@@ -981,7 +954,6 @@ namespace BJSON.Test
 				delete schema.Value;
 			}
 
-			// Test boolean schema in properties
 			{
 				let schema = JsonSchema.Parse("""
 					{
@@ -1019,7 +991,6 @@ namespace BJSON.Test
 		[Test(Name = "JSON Schema $id and $anchor")]
 		public static void T_SchemaIdAnchor()
 		{
-			// Test $id for base URI
 			let schema = JsonSchema.Parse("""
 				{
 					"type": "object",
@@ -1041,7 +1012,6 @@ namespace BJSON.Test
 			
 			delete schema.Value;
 
-			// Test $anchor
 			let schemaWithAnchor = JsonSchema.Parse("""
 				{
 					"$defs": {

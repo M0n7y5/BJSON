@@ -92,11 +92,9 @@ class SerializationTest
 			let result = Json.Serialize(json, output);
 
 			Test.Assert(result case .Ok, "Serialization of float should succeed");
-			// Float representation may vary, just check it parses back correctly
 			Debug.WriteLine(scope $"  Test 7 (float 3.14): PASSED - output: {output}");
 		}
 
-		// Test 8: Exact deep indentation structure for all keys in all objects
 		{
 			let json = JsonObject()
 				{
@@ -126,7 +124,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Complex nested structure should serialize without error");
 			
-			// Verify proper indentation by checking that all keys are indented correctly
 			// In the broken version, only first key would be indented, others would be at column 0
 			Test.Assert(output.Contains("\n  \"firstName\""), "firstName should be indented");
 			Test.Assert(output.Contains("\n  \"lastName\""), "lastName should be indented");
@@ -148,7 +145,6 @@ class SerializationTest
 	{
 		Debug.WriteLine("Serialization - Pretty-print tests ...");
 
-		// Test 1: Simple object with default indentation (2 spaces)
 		{
 			var json = JsonObject();
 			json.Add("name", JsonString("test"));
@@ -166,7 +162,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
 
-		// Test 2: Array with default indentation
 		{
 			var json = JsonArray();
 			json.Add(JsonNumber((int64)1));
@@ -184,7 +179,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
 
-		// Test 3: Custom indent string (tabs)
 		{
 			var json = JsonObject();
 			json.Add("key", JsonString("value"));
@@ -200,7 +194,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
 
-		// Test 4: Custom indent string (4 spaces)
 		{
 			var json = JsonObject();
 			json.Add("key", JsonString("value"));
@@ -216,7 +209,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
 
-		// Test 5: Custom newline (CRLF)
 		{
 			var json = JsonObject();
 			json.Add("key", JsonString("value"));
@@ -231,7 +223,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 5 (CRLF newline): PASSED");
 		}
 
-		// Test 6: Nested structure with indentation
 		{
 			var innerObj = JsonObject();
 			innerObj.Add("nested", JsonString("data"));
@@ -250,12 +241,10 @@ class SerializationTest
 			let result = Json.Serialize(json, output, options);
 
 			Test.Assert(result case .Ok, "Nested pretty-print should succeed");
-			// Check that nesting increases indentation - depth 2 should have 2x indent string
 			Debug.WriteLine(scope $"  Test 6 (nested pretty): PASSED");
 			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
 
-		// Test 7: Non-indented should produce minified output
 		{
 			var json = JsonObject();
 			json.Add("key", JsonString("value"));
@@ -271,7 +260,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 7 (minified): PASSED - output: {output}");
 		}
 
-		// Test 8: Exact deep indentation structure for all keys in all objects
 		{
 			let json = JsonObject()
 				{
@@ -301,7 +289,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Complex nested structure should serialize without error");
 			
-			// Verify proper indentation by checking that all keys are indented correctly
 			// In the broken version, only first key would be indented, others would be at column 0
 			Test.Assert(output.Contains("\n  \"firstName\""), "firstName should be indented");
 			Test.Assert(output.Contains("\n  \"lastName\""), "lastName should be indented");
@@ -323,17 +310,14 @@ class SerializationTest
 	{
 		Debug.WriteLine("Serialization - Round-trip tests ...");
 
-		// Helper to test round-trip
 		static void TestRoundTrip(StringView originalJson, int testNum, StringView testName)
 		{
-			// Parse original
 			var result1 = Json.Deserialize(originalJson);
 			defer result1.Dispose();
 
 			switch (result1)
 			{
 			case .Ok(let json1):
-				// Serialize
 				let serialized = scope String();
 				let result2 = Json.Serialize(json1, serialized);
 
@@ -343,14 +327,12 @@ class SerializationTest
 					return;
 				}
 
-				// Parse again
 				let result3 = Json.Deserialize(serialized);
 				defer result3.Dispose();
 
 				switch (result3)
 				{
 				case .Ok(let json2):
-					// Serialize again to compare
 					let serialized2 = scope String();
 					Json.Serialize(json2, serialized2);
 
@@ -364,7 +346,6 @@ class SerializationTest
 			}
 		}
 
-		// Test various JSON structures
 		TestRoundTrip("null", 1, "null");
 		TestRoundTrip("true", 2, "true");
 		TestRoundTrip("false", 3, "false");
@@ -381,7 +362,6 @@ class SerializationTest
 		TestRoundTrip("[[1,2],[3,4]]", 14, "nested arrays");
 		TestRoundTrip("{\"arr\":[1,2],\"obj\":{\"x\":1}}", 15, "complex structure");
 
-		// Test with larger numbers
 		TestRoundTrip("9223372036854775807", 16, "max int64");
 		TestRoundTrip("-9223372036854775808", 17, "min int64");
 		TestRoundTrip("18446744073709551615", 18, "max uint64");
@@ -394,7 +374,6 @@ class SerializationTest
 	{
 		Debug.WriteLine("Serialization - Error handling tests ...");
 
-		// Test 1: NaN should fail
 		{
 			let json = JsonNumber(Double.NaN);
 			defer json.Dispose();
@@ -406,7 +385,6 @@ class SerializationTest
 			Debug.WriteLine("  Test 1 (NaN error): PASSED");
 		}
 
-		// Test 2: Positive Infinity should fail
 		{
 			let json = JsonNumber(Double.PositiveInfinity);
 			defer json.Dispose();
@@ -418,7 +396,6 @@ class SerializationTest
 			Debug.WriteLine("  Test 2 (Positive Infinity error): PASSED");
 		}
 
-		// Test 3: Negative Infinity should fail
 		{
 			let json = JsonNumber(Double.NegativeInfinity);
 			defer json.Dispose();
@@ -438,7 +415,6 @@ class SerializationTest
 	{
 		Debug.WriteLine("Serialization - Escape character tests ...");
 
-		// Test 1: Newline escape
 		{
 			var json = JsonString("hello\nworld");
 			defer json.Dispose();
@@ -451,7 +427,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 1 (newline): PASSED - output: {output}");
 		}
 
-		// Test 2: Tab escape
 		{
 			var json = JsonString("hello\tworld");
 			defer json.Dispose();
@@ -464,7 +439,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 2 (tab): PASSED - output: {output}");
 		}
 
-		// Test 3: Carriage return escape
 		{
 			var json = JsonString("hello\rworld");
 			defer json.Dispose();
@@ -477,7 +451,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 3 (carriage return): PASSED - output: {output}");
 		}
 
-		// Test 4: Quote escape
 		{
 			var json = JsonString("say \"hello\"");
 			defer json.Dispose();
@@ -490,7 +463,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 4 (quotes): PASSED - output: {output}");
 		}
 
-		// Test 5: Backslash escape
 		{
 			var json = JsonString("path\\to\\file");
 			defer json.Dispose();
@@ -503,7 +475,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 5 (backslash): PASSED - output: {output}");
 		}
 
-		// Test 6: Backspace escape
 		{
 			var json = JsonString("hello\bworld");
 			defer json.Dispose();
@@ -516,7 +487,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 6 (backspace): PASSED - output: {output}");
 		}
 
-		// Test 7: Form feed escape
 		{
 			var json = JsonString("hello\fworld");
 			defer json.Dispose();
@@ -529,7 +499,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 7 (form feed): PASSED - output: {output}");
 		}
 
-		// Test 8: Multiple escapes in one string
 		{
 			var json = JsonString("line1\nline2\ttab\r\n");
 			defer json.Dispose();
@@ -542,7 +511,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 8 (multiple escapes): PASSED - output: {output}");
 		}
 
-		// Test 9: Round-trip with escape characters - parse escaped JSON and serialize back
 		{
 			let inputJson = "\"hello\\nworld\\t!\"";
 			var result1 = Json.Deserialize(inputJson);
@@ -562,7 +530,6 @@ class SerializationTest
 			}
 		}
 
-		// Test 10: Round-trip with all common escapes
 		{
 			let inputJson = "\"\\\"\\\\\\b\\f\\n\\r\\t\"";
 			var result1 = Json.Deserialize(inputJson);
@@ -582,7 +549,6 @@ class SerializationTest
 			}
 		}
 
-		// Test 11: Control character (NUL - 0x00) uses \u0000 format
 		{
 			var json = JsonString(scope String()..Append('\0'));
 			defer json.Dispose();
@@ -595,7 +561,6 @@ class SerializationTest
 			Debug.WriteLine(scope $"  Test 11 (NUL control char): PASSED - output: {output}");
 		}
 
-		// Test 12: Control character (0x1F) uses \u001f format
 		{
 			var json = JsonString(scope String()..Append((char8)0x1F));
 			defer json.Dispose();

@@ -6,19 +6,30 @@ using BJSON.Attributes;
 namespace BJSON.CodeGen;
 
 /// Handles JSON serialization code generation at compile time.
+/// Every method here only appends Beef source text that JsonObjectAttribute.ApplyToType
+/// hands to the compiler; nothing in this class runs at runtime.
 public class JsonSerializerCodeGen
 {
+	/// Emits both JsonSerialize overloads into type: the stream only overload that delegates
+	/// to the JsonWriterOptions overload, and that overload, which writes the object braces
+	/// and one property per included field.
+	/// @param type The [JsonObject] type receiving the method bodies.
 	[Comptime]
 	public static void EmitSerializeMethod(Type type)
 	{
 		let code = scope String();
 
+		// A base type with [JsonObject] already had JsonSerialize emitted into it, so the
+		// derived emission has to say `new` to shadow the inherited method.
 		bool needsNewKeyword = type.BaseType != null && type.BaseType != typeof(Object)
 			&& type.BaseType.HasCustomAttribute<JsonObjectAttribute>();
 
 		let newKeyword = needsNewKeyword ? "new " : "";
 
-		// Generate the simple overload that delegates to the options version
+		// The emitted text is parsed in the target type's context, so every name is fully
+		// qualified; the target file is not required to have BJSON using directives.
+		// Braces of the emitted body are doubled: inside an interpolated template {{ and }}
+		// collapse to one literal brace, and a lone { would open an interpolation hole.
 		code.AppendF($"""
 			public {newKeyword}Result<void> JsonSerialize(System.IO.Stream stream)
 			{{
@@ -34,6 +45,7 @@ public class JsonSerializerCodeGen
 
 		EmitAllFieldsWithOptions(code, type);
 
+		// Append, not AppendF: this tail is not interpolated, so its braces stay single.
 		code.Append("""
 				if (_options.Indented && !_firstField)
 				{
@@ -59,6 +71,8 @@ public class JsonSerializerCodeGen
 
 		for (let field in type.GetFields())
 		{
+			// GetFields() also returns inherited fields, down to inaccessible System.Object
+			// internals. Base types are walked separately above, so only own fields pass.
 			if (field.DeclaringType != type)
 				continue;
 
@@ -79,6 +93,7 @@ public class JsonSerializerCodeGen
 
 		for (let field in type.GetFields())
 		{
+			// Own fields only, for the same reason as in EmitAllFieldsWithOptions.
 			if (field.DeclaringType != type)
 				continue;
 
@@ -145,6 +160,9 @@ public class JsonSerializerCodeGen
 			code.AppendF($"{indent}if (_options.Indented) {{ Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine)); for (int _i = 0; _i <= _depth; _i++) Try!(BJSON.JsonWriter.WriteRaw(stream, _options.IndentString)); }}\n");
 		}
 
+		// jsonName came from GetJsonLiteralName, already escaped for JSON output and then for
+		// this source literal, which is why the key goes out with WriteRaw and the emitted
+		// code never escapes it at runtime.
 		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
 		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteRaw(stream, \"{jsonName}\"));\n");
 		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteRaw(stream, _options.Indented ? \"\\\": \" : \"\\\":\"));\n");
@@ -244,6 +262,8 @@ public class JsonSerializerCodeGen
 	private static void EmitListSerializationWithOptions(String code, FieldInfo field, Type fieldType, StringView indent)
 	{
 		let elementType = JsonCodeGenHelper.GetElementType(fieldType);
+		// IsList already guarantees an element type; bailing here keeps a future caller from
+		// emitting a half written array.
 		if (elementType == null)
 			return;
 
@@ -269,6 +289,8 @@ public class JsonSerializerCodeGen
 	{
 		Type keyType, valueType;
 		JsonCodeGenHelper.GetDictionaryTypes(fieldType, out keyType, out valueType);
+		// IsDictionary already guarantees both types; bailing here keeps a future caller from
+		// emitting a half written object.
 		if (keyType == null || valueType == null)
 			return;
 
@@ -314,6 +336,13 @@ public class JsonSerializerCodeGen
 		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, ']'));\n");
 	}
 
+	/// Emits the write of one list element, dictionary value or sized array element into code.
+	/// A type outside the supported set fails generation and names the offending type, rather
+	/// than emitting nothing and leaving a value shaped hole in the JSON stream.
+	/// @param code Receives the emitted source.
+	/// @param valueType The element or value type being written.
+	/// @param valueExpr The emitted expression that yields the value.
+	/// @param indent Leading whitespace for the emitted lines.
 	[Comptime]
 	private static void EmitValueSerializationWithOptions(String code, Type valueType, StringView valueExpr, StringView indent)
 	{
@@ -383,6 +412,7 @@ public class JsonSerializerCodeGen
 		}
 		else
 		{
+			// FatalError is the only exit a comptime method has: it cannot return an error.
 			let typeName = scope String();
 			valueType.GetFullName(typeName);
 			Runtime.FatalError(scope $"BJSON cannot serialize '{typeName}' as a collection element or value. Supported: bool, integer, floating point, String, enum, and [JsonObject] types.");

@@ -1,17 +1,18 @@
 namespace BJSON.Enums;
 
-/// How to handle enum serialization and deserialization.
+/// How a generated serializer writes an enum field, set through [JsonNumberHandling] on the field
+/// or on the enum type. Deserialization ignores this enum: the generated readers take a case name
+/// or a number for any enum field, whatever the handling says.
 enum JsonNumberHandling
 {
-	/// Serialize enums as numbers (0, 1, 2...). This is the default.
-	/// When deserializing, accept both numbers and strings.
+	/// Write the underlying integer (0, 1, 2...). This is the only case that turns off name output.
 	AsNumber,
 	
-	/// Serialize enums as strings ("Active", "Inactive"...).
-	/// When deserializing, accept strings only.
+	/// Write the case name ("Active", "Inactive"...). This is what the generators emit when no
+	/// [JsonNumberHandling] is present, so it is the effective default.
 	AsString,
 	
-	/// When reading: accept either number or string.
-	/// When writing: use AsNumber.
+	/// Reading accepts both forms already, so this case changes writing only, where it produces
+	/// case names: the writer switches to integers for AsNumber alone.
 	AllowBoth
 }

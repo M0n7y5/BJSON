@@ -17,7 +17,6 @@ class Utf8Test
 	{
 		Debug.WriteLine("UTF-8 and Internationalization tests ...");
 
-		// Helper method for roundtrip testing
 		static void TestRoundtrip(StringView text, StringView description)
 		{
 			let json = JsonObject() { ("text", text) };
@@ -38,69 +37,57 @@ class Utf8Test
 			}
 		}
 
-		// Test 1-3: Chinese (Simplified & Traditional)
 		TestRoundtrip("你好世界", "Chinese Simplified - Hello World");
 		TestRoundtrip("北京", "Chinese - Beijing");
 		TestRoundtrip("繁體中文測試", "Chinese Traditional");
 		Debug.WriteLine("  Tests 1-3 (Chinese): PASSED");
 
-		// Test 4-6: Japanese
 		TestRoundtrip("こんにちは", "Japanese - Hello");
 		TestRoundtrip("東京", "Japanese - Tokyo");
 		TestRoundtrip("ありがとう", "Japanese - Thank you");
 		Debug.WriteLine("  Tests 4-6 (Japanese): PASSED");
 
-		// Test 7-8: Korean
 		TestRoundtrip("안녕하세요", "Korean - Hello");
 		TestRoundtrip("서울", "Korean - Seoul");
 		Debug.WriteLine("  Tests 7-8 (Korean): PASSED");
 
-		// Test 9: Thai
 		TestRoundtrip("สวัสดี", "Thai - Hello");
 		Debug.WriteLine("  Test 9 (Thai): PASSED");
 
-		// Test 10-11: Arabic (right-to-left)
 		TestRoundtrip("مرحبا", "Arabic - Hello");
 		TestRoundtrip("العربية", "Arabic - Arabic");
 		Debug.WriteLine("  Tests 10-11 (Arabic): PASSED");
 
-		// Test 12-14: Russian
 		TestRoundtrip("Привет мир", "Russian - Hello World");
 		TestRoundtrip("Москва", "Russian - Moscow");
 		TestRoundtrip("Спасибо", "Russian - Thank you");
 		Debug.WriteLine("  Tests 12-14 (Russian): PASSED");
 
-		// Test 15-17: French
 		TestRoundtrip("Bonjour", "French - Hello");
 		TestRoundtrip("Château", "French - Castle");
 		TestRoundtrip("café", "French - Coffee");
 		Debug.WriteLine("  Tests 15-17 (French): PASSED");
 
-		// Test 18-20: German
 		TestRoundtrip("Hühnerfüße", "German - Chicken feet");
 		TestRoundtrip("Größe", "German - Size");
 		TestRoundtrip("Straße", "German - Street");
 		Debug.WriteLine("  Tests 18-20 (German): PASSED");
 
-		// Test 21-23: Spanish
 		TestRoundtrip("España", "Spanish - Spain");
 		TestRoundtrip("año", "Spanish - Year");
 		TestRoundtrip("niño", "Spanish - Child");
 		Debug.WriteLine("  Tests 21-23 (Spanish): PASSED");
 
-		// Test 24-26: Polish
 		TestRoundtrip("Łódź", "Polish - City");
 		TestRoundtrip("Kraków", "Polish - Krakow");
 		TestRoundtrip("żółć", "Polish - Bile");
 		Debug.WriteLine("  Tests 24-26 (Polish): PASSED");
 
-		// Test 27-29: Czech
 		TestRoundtrip("Děkuji", "Czech - Thank you");
 		TestRoundtrip("Čeština", "Czech - Czech language");
 		TestRoundtrip("příliš", "Czech - Too much");
 		Debug.WriteLine("  Tests 27-29 (Czech): PASSED");
 
-		// Test 30-34: Emojis
 		TestRoundtrip("🎉", "Emoji - Party popper");
 		TestRoundtrip("😀", "Emoji - Grinning face");
 		TestRoundtrip("🌟", "Emoji - Star");
@@ -108,41 +95,34 @@ class Utf8Test
 		TestRoundtrip("🚀", "Emoji - Rocket");
 		Debug.WriteLine("  Tests 30-34 (Emojis): PASSED");
 
-		// Test 35-38: Math symbols
 		TestRoundtrip("∑", "Math - Summation");
 		TestRoundtrip("∏", "Math - Product");
 		TestRoundtrip("√", "Math - Square root");
 		TestRoundtrip("∞", "Math - Infinity");
 		Debug.WriteLine("  Tests 35-38 (Math symbols): PASSED");
 
-		// Test 39-42: Currency symbols
 		TestRoundtrip("€", "Currency - Euro");
 		TestRoundtrip("£", "Currency - Pound");
 		TestRoundtrip("¥", "Currency - Yen");
 		TestRoundtrip("₹", "Currency - Rupee");
 		Debug.WriteLine("  Tests 39-42 (Currency): PASSED");
 
-		// Test 43-45: Various brackets
 		TestRoundtrip("【】", "Brackets - Japanese");
 		TestRoundtrip("『』", "Brackets - Japanese quotes");
 		TestRoundtrip("〈〉", "Brackets - Angle");
 		Debug.WriteLine("  Tests 43-45 (Brackets): PASSED");
 
-		// Test 46-47: Mixed content - Emoji with text
 		TestRoundtrip("Hello 🌟 World", "Mixed - Emoji with English");
 		TestRoundtrip("こんにちは 😀 世界", "Mixed - Japanese with emoji");
 		Debug.WriteLine("  Tests 46-47 (Mixed emoji + text): PASSED");
 
-		// Test 48-49: Multi-language mix
 		TestRoundtrip("Hello мир 世界", "Mixed - English Russian Chinese");
 		TestRoundtrip("Café ☕ 咖啡", "Mixed - French emoji Chinese");
 		Debug.WriteLine("  Tests 48-49 (Multi-language): PASSED");
 
-		// Test 50: String with only emojis
 		TestRoundtrip("🎉🚀❤️🌟😀", "Only emojis");
 		Debug.WriteLine("  Test 50 (Only emojis): PASSED");
 
-		// Test 51-52: Complex multi-language objects
 		{
 			let json = JsonObject()
 			{
@@ -182,7 +162,6 @@ class Utf8Test
 			Debug.WriteLine("  Test 51 (Multi-language object): PASSED");
 		}
 
-		// Test 53: Array with various languages
 		{
 			let json = JsonArray()
 			{
@@ -226,7 +205,6 @@ class Utf8Test
 			Debug.WriteLine("  Test 53 (Multi-language array): PASSED");
 		}
 
-		// Test 54: Nested structure with UTF-8
 		{
 			let innerObj = JsonObject()
 			{
@@ -264,7 +242,6 @@ class Utf8Test
 			Debug.WriteLine("  Test 54 (Nested UTF-8): PASSED");
 		}
 
-		// Test 55: Pretty-print with UTF-8 content
 		{
 			let json = JsonObject()
 			{
@@ -278,12 +255,10 @@ class Utf8Test
 			let result = Json.Serialize(json, output, options);
 			Test.Assert(result case .Ok, "Failed to serialize pretty UTF-8");
 
-			// Verify it contains indentation and UTF-8
 			Test.Assert(output.Contains("\n"), "Pretty output should have newlines");
 			Test.Assert(output.Contains("世界"), "Should contain Chinese characters");
 			Test.Assert(output.Contains("🌍"), "Should contain emoji");
 
-			// Parse back
 			var result2 = Json.Deserialize(output);
 			defer result2.Dispose();
 
@@ -299,7 +274,6 @@ class Utf8Test
 			Debug.WriteLine("  Test 55 (Pretty-print UTF-8): PASSED");
 		}
 
-		// Test 56-57: Edge cases - very long multi-byte strings
 		{
 			let longChinese = "中文字符重复测试" + "中文字符重复测试" + "中文字符重复测试";
 			TestRoundtrip(longChinese, "Long Chinese string");
@@ -309,18 +283,15 @@ class Utf8Test
 			Debug.WriteLine("  Tests 56-57 (Long UTF-8 strings): PASSED");
 		}
 
-		// Test 58: Empty string (edge case)
 		TestRoundtrip("", "Empty string");
 		Debug.WriteLine("  Test 58 (Empty string): PASSED");
 
-		// Test 59: Single character from various scripts
 		TestRoundtrip("中", "Single Chinese character");
 		TestRoundtrip("あ", "Single Hiragana");
 		TestRoundtrip("Ж", "Single Cyrillic");
 		TestRoundtrip("€", "Single Euro symbol");
 		Debug.WriteLine("  Test 59 (Single characters): PASSED");
 
-		// Test 60: Combining characters and accents
 		TestRoundtrip("é", "e with acute accent");
 		TestRoundtrip("ñ", "n with tilde");
 		TestRoundtrip("ü", "u with umlaut");
@@ -350,7 +321,6 @@ class Utf8Test
 				Test.Assert(false, scope $"{description} should be rejected");
 		}
 
-		// Test 1: Lone continuation byte
 		{
 			let raw = scope String();
 			raw.Append((char8)0x80);
@@ -358,7 +328,6 @@ class Utf8Test
 			Debug.WriteLine("  Test 1 (lone continuation byte): PASSED");
 		}
 
-		// Test 2: Overlong encoding of U+0000
 		{
 			let raw = scope String();
 			raw.Append((char8)0xC0);

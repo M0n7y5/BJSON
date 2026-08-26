@@ -17,7 +17,6 @@ class StreamTest
 	{
 		Debug.WriteLine("Stream Serialization tests ...");
 
-		// Test 1: Basic stream serialization
 		{
 			let json = JsonObject() { ("name", "test"), ("value", 42) };
 			defer json.Dispose();
@@ -27,7 +26,6 @@ class StreamTest
 			
 			Test.Assert(result case .Ok, "Stream serialization should succeed");
 			
-			// Read back and verify
 			stream.Position = 0;
 			let reader = scope StreamReader(stream);
 			let output = reader.ReadToEnd(.. scope .());
@@ -38,7 +36,6 @@ class StreamTest
 			Debug.WriteLine("  Test 1 (basic stream): PASSED");
 		}
 
-		// Test 2: Stream serialization with options (pretty print)
 		{
 			let json = JsonObject() { ("key", "value") };
 			defer json.Dispose();
@@ -59,7 +56,6 @@ class StreamTest
 			Debug.WriteLine("  Test 2 (stream with options): PASSED");
 		}
 
-		// Test 3: Round-trip stream serialization/deserialization
 		{
 			let original = JsonObject() 
 			{ 
@@ -71,12 +67,10 @@ class StreamTest
 			};
 			defer original.Dispose();
 
-			// Serialize to stream
 			let stream = scope MemoryStream();
 			let serResult = Json.Serialize(original, stream);
 			Test.Assert(serResult case .Ok, "Serialization should succeed");
 
-			// Deserialize from stream
 			stream.Position = 0;
 			var deserResult = Json.Deserialize(stream);
 			defer deserResult.Dispose();
@@ -99,7 +93,6 @@ class StreamTest
 			Debug.WriteLine("  Test 3 (round-trip): PASSED");
 		}
 
-		// Test 4: Large JSON to stream
 		{
 			var json = JsonArray();
 			for (int i = 0; i < 100; i++)

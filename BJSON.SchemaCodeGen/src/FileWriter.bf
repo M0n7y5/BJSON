@@ -4,12 +4,17 @@ using System.Collections;
 
 namespace BJSON.SchemaCodeGen;
 
+/// Writes the generated source, one file per object or enum type.
+/// Ownership: the schema list and its nodes stay with the caller and are only read here. Every
+/// source string CodeGenerator.Generate hands back is deleted in this call once it is written.
 class FileWriter
 {
-	/// Writes one Beef file per generated type into outputDir, creating the directory when it is
-	/// missing.
-	/// @param schemas The types to generate.
-	/// @param config Generator options.
+	/// Writes one Beef file per object or enum type into outputDir, creating the directory when it
+	/// is missing. Any other node in the list is skipped.
+	/// @param schemas The types to generate, in the order TypeResolver produced. Non owning: the
+	///                caller owns the list and the nodes.
+	/// @param config Generator options. Its Namespace string stays owned by the caller and MUST
+	///               outlive this call.
 	/// @param outputDir Directory that receives the files.
 	/// @returns .Ok once every file is on disk, otherwise the failure and how far the run got.
 	public Result<void, GeneratedFileError> WriteFiles(List<SchemaModel> schemas, GeneratorConfig config, StringView outputDir)
@@ -39,7 +44,8 @@ class FileWriter
 				filePath.Append(Path.DirectorySeparatorChar);
 			}
 
-			// Sanitize filename - only allow the characters a type name can hold
+			// Only the characters a Beef identifier can hold reach the path, so a type name can
+			// never steer the write to another location.
 			for (int i = 0; i < schema.Name.Length; i++)
 			{
 				char8 c = schema.Name[i];
@@ -80,6 +86,7 @@ enum GeneratedFileError
 	/// owed, so the caller can report the output directory as incomplete.
 	case WriteFailed(int filesWritten, int fileCount);
 
+	/// Appends the message for this error to a caller owned string.
 	public override void ToString(String string)
 	{
 		switch (this)

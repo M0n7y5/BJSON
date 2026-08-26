@@ -29,39 +29,31 @@ class NestedInfo
 [JsonObject]
 class Player
 {
-	// Basic types
 	public String Name = new .() ~ delete _;
 	public int Health;
 	public float Speed;
 	public bool IsAlive;
 
-	// Custom property name
 	[JsonPropertyName("player_level")]
 	public int Level;
 
-	// Nullable field
 	public int? OptionalScore;
 
-	// Enum field
 	public PlayerStatus Status;
 
 	// Nested object (pre-allocated)
 	public NestedInfo Info = new .() ~ delete _;
 
-	// List of primitives
 	public List<int> Scores = new .() ~ delete _;
 
 	// List of strings (each item will be heap allocated)
 	public List<String> Tags = new .() ~ DeleteContainerAndItems!(_);
 
-	// Dictionary with string keys
 	public Dictionary<String, int> Stats = new .() ~ DeleteDictionaryAndKeys!(_);
 
-	// Ignored field
 	[JsonIgnore(Condition = .Always)]
 	public int InternalId;
 
-	// Sized array
 	public int[3] Position;
 }
 
@@ -134,35 +126,28 @@ class ReflectTest
 
 		Test.Assert(deserializeResult case .Ok, "Failed to deserialize Player");
 
-		// Verify basic fields
 		Test.Assert(player.Name == "TestPlayer", scope $"Expected 'TestPlayer', got '{player.Name}'");
 		Test.Assert(player.Health == 100, scope $"Expected Health=100, got {player.Health}");
 		Test.Assert(Math.Abs(player.Speed - 5.5f) < 0.01f, scope $"Expected Speed=5.5, got {player.Speed}");
 		Test.Assert(player.IsAlive == true, "Expected IsAlive=true");
 		Test.Assert(player.Level == 42, scope $"Expected Level=42, got {player.Level}");
 
-		// Verify enum
 		Test.Assert(player.Status == .Active, scope $"Expected Status=Active, got {player.Status}");
 
-		// Verify nested object
 		Test.Assert(player.Info.Description == "A test player", scope $"Expected Info.Description='A test player', got '{player.Info.Description}'");
 		Test.Assert(player.Info.Value == 999, scope $"Expected Info.Value=999, got {player.Info.Value}");
 
-		// Verify list of ints
 		Test.Assert(player.Scores.Count == 3, scope $"Expected 3 scores, got {player.Scores.Count}");
 		Test.Assert(player.Scores[0] == 10 && player.Scores[1] == 20 && player.Scores[2] == 30, "Scores mismatch");
 
-		// Verify list of strings
 		Test.Assert(player.Tags.Count == 2, scope $"Expected 2 tags, got {player.Tags.Count}");
 		Test.Assert(player.Tags[0] == "warrior", scope $"Expected first tag 'warrior', got '{player.Tags[0]}'");
 
-		// Verify dictionary
 		Test.Assert(player.Stats.Count == 2, scope $"Expected 2 stats, got {player.Stats.Count}");
 		Test.Assert(player.Stats.ContainsKeyAlt("strength"), "Missing 'strength' stat");
 		if (player.Stats.TryGetValueAlt("strength", let strengthVal))
 			Test.Assert(strengthVal == 10, "Wrong strength value");
 
-		// Verify sized array
 		Test.Assert(player.Position[0] == 1 && player.Position[1] == 2 && player.Position[2] == 3, "Position mismatch");
 
 		Debug.WriteLine("Reflection: Basic Deserialization - PASSED");
@@ -194,7 +179,6 @@ class ReflectTest
 		Test.Assert(result case .Ok, "Serialization failed");
 		Test.Assert(buffer.Length > 0, "Empty serialization output");
 
-		// Parse the result back and verify
 		var parseResult = Json.Deserialize(buffer);
 		defer parseResult.Dispose();
 
@@ -205,11 +189,9 @@ class ReflectTest
 		Test.Assert((int)root.GetValue("Health").Value == 75, "Health mismatch");
 		Test.Assert(root.GetValue("IsAlive").Value == false, "IsAlive mismatch");
 
-		// Check custom property name was used
 		Test.Assert(root.ContainsKey("player_level"), "Custom property name 'player_level' not found");
 		Test.Assert((int)root.GetValue("player_level").Value == 10, "Level mismatch");
 
-		// Check ignored field is not present
 		Test.Assert(!root.ContainsKey("InternalId"), "InternalId should be ignored");
 
 		Debug.WriteLine("Reflection: Basic Serialization - PASSED");
@@ -230,16 +212,13 @@ class ReflectTest
 		original.Scores.Add(100);
 		original.Scores.Add(200);
 
-		// Serialize
 		let buffer = scope String();
 		Test.Assert(Json.Serialize(original, buffer) case .Ok, "Serialization failed");
 
-		// Parse and deserialize into new object using the new stream API
 		let stream = scope StringStream(buffer, .Reference);
 		let restored = scope Player();
 		Test.Assert(Json.Deserialize<Player>(stream, restored) case .Ok, "Deserialization failed");
 
-		// Compare
 		Test.Assert(restored.Name == original.Name, "Name mismatch after round trip");
 		Test.Assert(restored.Health == original.Health, "Health mismatch after round trip");
 		Test.Assert(Math.Abs(restored.Speed - original.Speed) < 0.01f, "Speed mismatch after round trip");
@@ -254,7 +233,6 @@ class ReflectTest
 	[Test(Name = "Reflection: Optional/Nullable Fields")]
 	public static void T_NullableFields()
 	{
-		// Test with optional field present
 		let jsonWithOptional = """
 			{
 				"Name": "Test",
@@ -281,7 +259,6 @@ class ReflectTest
 		Test.Assert(player1.OptionalScore.HasValue, "OptionalScore should have value");
 		Test.Assert(player1.OptionalScore.Value == 42, "OptionalScore should be 42");
 
-		// Test without optional field
 		let jsonWithoutOptional = """
 			{
 				"Name": "Test",
@@ -303,9 +280,8 @@ class ReflectTest
 		Test.Assert(result2 case .Ok, "Parse failed");
 
 		let player2 = scope Player();
-		player2.OptionalScore = null; // Ensure it starts as null
+		player2.OptionalScore = null;
 		Test.Assert(player2.JsonDeserialize(result2.Value) case .Ok, "Deserialize failed");
-		// OptionalScore should remain null since it wasn't in JSON
 
 		Debug.WriteLine("Reflection: Optional/Nullable Fields - PASSED");
 	}
@@ -359,7 +335,6 @@ class ReflectTest
 		Test.Assert(obj.PublicName == "Test", "PublicName mismatch");
 		Test.Assert(obj.GetPrivateValue() == 42, scope $"Expected private value 42, got {obj.GetPrivateValue()}");
 
-		// Test serialization includes private field
 		let buffer = scope String();
 		Test.Assert(Json.Serialize(obj, buffer) case .Ok, "Serialize failed");
 		Test.Assert(buffer.Contains("_privateValue"), "Private field should be in serialized output");
@@ -456,7 +431,6 @@ class ReflectTest
 	[Test(Name = "Reflection: Error on Missing Required Field")]
 	public static void T_ErrorOnMissingRequired()
 	{
-		// Test that missing a field marked with [JsonRequired] causes an error
 		let json = """
 			{
 				"OptionalField": "Test"
@@ -477,7 +451,6 @@ class ReflectTest
 	[Test(Name = "Reflection: Error on Type Mismatch")]
 	public static void T_ErrorOnTypeMismatch()
 	{
-		// Health should be number, not string
 		let json = """
 			{
 				"Name": "Test",
@@ -521,12 +494,10 @@ class ReflectTest
 		let buffer = scope String();
 		Test.Assert(Json.Serialize(player, buffer) case .Ok, "Serialization failed");
 
-		// Verify the output is valid JSON by parsing it
 		var parseResult = Json.Deserialize(buffer);
 		defer parseResult.Dispose();
 		Test.Assert(parseResult case .Ok, scope $"Failed to parse serialized JSON with escapes: {buffer}");
 
-		// Verify the string was properly escaped and unescaped
 		let root = parseResult.Value.AsObject().Value;
 		let name = (StringView)root.GetValue("Name").Value;
 		Test.Assert(name == "Test\"With\\Escapes\nNewline", scope $"String escaping failed, got: {name}");
@@ -544,7 +515,6 @@ class ReflectTest
 			}
 			""";
 
-		// Use the allocating API - returns a new object
 		let stream = scope StringStream(json, .Reference);
 		var result = Json.Deserialize<NestedInfo>(stream);
 
@@ -566,11 +536,9 @@ class ReflectTest
 		info.Description.Set("Stream test");
 		info.Value = 42;
 
-		// Serialize directly to a MemoryStream
 		let memStream = scope MemoryStream();
 		Test.Assert(Json.Serialize(info, memStream) case .Ok, "Stream serialization failed");
 
-		// Read back the stream contents
 		memStream.Position = 0;
 		let buffer = scope String();
 		let len = (int)memStream.Length;
@@ -581,7 +549,6 @@ class ReflectTest
 				buffer.Append(c);
 		}
 
-		// Verify the JSON is correct
 		var parseResult = Json.Deserialize(buffer);
 		defer parseResult.Dispose();
 		Test.Assert(parseResult case .Ok, scope $"Failed to parse stream output: {buffer}");
@@ -596,7 +563,6 @@ class ReflectTest
 	[Test(Name = "Reflection: Inheritance")]
 	public static void T_Inheritance()
 	{
-		// Test that inherited fields are serialized/deserialized
 		let derived = scope DerivedClass();
 		derived.BaseField = 42;
 		derived.DerivedField.Set("test");
@@ -604,14 +570,11 @@ class ReflectTest
 		let buffer = scope String();
 		Test.Assert(Json.Serialize(derived, buffer) case .Ok, "Serialization failed");
 
-		// Debug output
 		Debug.WriteLine(scope $"Serialized JSON: {buffer}");
 
-		// Verify both base and derived fields are in JSON
 		Test.Assert(buffer.Contains("BaseField"), scope $"Base field not serialized. JSON: {buffer}");
 		Test.Assert(buffer.Contains("DerivedField"), scope $"Derived field not serialized. JSON: {buffer}");
 
-		// Deserialize
 		let json = """
 			{
 				"BaseField": 100,
@@ -623,7 +586,6 @@ class ReflectTest
 		let deserializeResult = Json.Deserialize<DerivedClass>(stream, restored);
 		Test.Assert(deserializeResult case .Ok, scope $"Deserialization failed");
 
-		// Verify both fields were restored
 		Test.Assert(restored.BaseField == 100, scope $"BaseField mismatch: {restored.BaseField}");
 		Test.Assert(restored.DerivedField == "restored", scope $"DerivedField mismatch: {restored.DerivedField}");
 
@@ -633,7 +595,6 @@ class ReflectTest
 	[Test(Name = "Reflection: JsonRequired Attribute")]
 	public static void T_JsonRequiredAttribute()
 	{
-		// Test that JsonRequired makes non-nullable field required
 		let jsonMissing = """
 			{
 				"OptionalField": "test"
@@ -648,7 +609,6 @@ class ReflectTest
 		let deserializeResult = obj1.JsonDeserialize(result.Value);
 		Test.Assert(deserializeResult case .Err, "Should fail on missing required field 'RequiredField'");
 
-		// Test with required field present
 		let jsonPresent = """
 			{
 				"RequiredField": "required",
@@ -672,7 +632,6 @@ class ReflectTest
 	[Test(Name = "Reflection: JsonOptional Attribute")]
 	public static void T_JsonOptionalAttribute()
 	{
-		// Test that JsonOptional makes field optional even without nullable
 		let jsonMissing = """
 			{
 				"RequiredField": "test"
@@ -689,7 +648,6 @@ class ReflectTest
 		Test.Assert(obj.RequiredField == "test", scope $"Expected RequiredField='test', got '{obj.RequiredField}'");
 		Test.Assert(obj.OptionalField == 0, "OptionalField should have default value 0 when missing");
 
-		// Test with optional field present
 		let jsonPresent = """
 			{
 				"RequiredField": "test",
@@ -712,7 +670,6 @@ class ReflectTest
 	[Test(Name = "Reflection: Class Fields Are Optional By Default")]
 	public static void T_ClassFieldsOptionalByDefault()
 	{
-		// Test that class/nested object fields are optional by default
 		let jsonWithoutNested = """
 			{
 				"Name": "Test",
@@ -729,10 +686,8 @@ class ReflectTest
 		Test.Assert(deserializeResult case .Ok, "Deserialization should succeed because NestedObject is optional by default");
 		Test.Assert(obj.Name == "Test", scope $"Expected Name='Test', got '{obj.Name}'");
 		Test.Assert(obj.Value == 42, scope $"Expected Value=42, got {obj.Value}");
-		// NestedObject should remain null since it wasn't in JSON
 		Test.Assert(obj.NestedObject == null, "NestedObject should be null when missing from JSON");
 
-		// Test with nested object present
 		let jsonWithNested = """
 			{
 				"Name": "Test",
@@ -761,7 +716,6 @@ class ReflectTest
 	[Test(Name = "Reflection: Both Attributes with Nested Objects")]
 	public static void T_RequiredWithNestedObjects()
 	{
-		// Test that JsonRequired works with nested object fields
 		let jsonMissingNested = """
 			{
 				"Name": "Test"
@@ -776,7 +730,6 @@ class ReflectTest
 		let deserializeResult1 = obj1.JsonDeserialize(result.Value);
 		Test.Assert(deserializeResult1 case .Err, "Should fail on missing required nested object");
 
-		// Test with required nested object present
 		let jsonWithNested = """
 			{
 				"Name": "Test",
@@ -803,8 +756,6 @@ class ReflectTest
 	[Test(Name = "Reflection: DefaultBehavior Required")]
 	public static void T_DefaultBehaviorRequired()
 	{
-		// Test class with DefaultBehavior = Required
-		// All fields should be required by default
 		let jsonMissingField = """
 			{
 				"Name": "Test",
@@ -820,7 +771,6 @@ class ReflectTest
 		let deserializeResult = obj1.JsonDeserialize(result.Value);
 		Test.Assert(deserializeResult case .Err, "Should fail on missing required field 'Level'");
 
-		// Test with all fields present
 		let jsonComplete = """
 			{
 				"Name": "Test",
@@ -846,7 +796,6 @@ class ReflectTest
 	[Test(Name = "Reflection: DefaultBehavior Required with JsonOptional")]
 	public static void T_DefaultBehaviorRequiredWithOptional()
 	{
-		// Test class with DefaultBehavior = Required but one field marked [JsonOptional]
 		let jsonWithOptionalMissing = """
 			{
 				"RequiredField": "test",

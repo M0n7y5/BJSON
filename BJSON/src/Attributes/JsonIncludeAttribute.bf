@@ -1,7 +1,9 @@
 using System;
 namespace BJSON.Attributes;
 
-/// Attribute that forces a non-public field to be included in JSON serialization.
+/// Opts a non-public instance field into the generated serializer and deserializer, which
+/// otherwise emit public fields only.
+/// Static fields are never emitted, whatever attributes they carry.
 [AttributeUsage(.Field)]
 public struct JsonIncludeAttribute : Attribute
 {

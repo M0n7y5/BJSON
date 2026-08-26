@@ -3,13 +3,25 @@ using System.Collections;
 
 namespace BJSON.SchemaCodeGen;
 
+/// Second pass over the node graph: makes generated type names unique, resolves `$ref`, applies
+/// `allOf` inheritance and lists the types to generate.
+/// Rejected here, after SchemaParser accepted the document: a `$ref` that leaves the document
+/// (.UnsupportedKeyword), a `$ref` that names a location the document does not define
+/// (.UnresolvedRef), a `$ref` chain or an `allOf` chain that forms a cycle (.CircularRef), a
+/// `required` entry naming a property that neither the schema nor any of its bases declares
+/// (.UnsupportedKeyword), and an object or enum whose name is empty (.UnnamedType).
+/// Ownership: the resolver never allocates or frees a SchemaModel. The only allocations that
+/// outlive a Resolve call are the PropertyModel copies and dictionary keys that `allOf`
+/// inheritance adds, and the SchemaModel that receives them owns them.
 class TypeResolver
 {
 	/// Every node of the schema graph, owned by the caller of Resolve. Non owning.
 	private List<SchemaModel> mAllSchemas;
 
-	/// Makes type names unique, resolves `$ref`, merges `allOf` inheritance and lists the types
-	/// to generate, each type after the types it depends on.
+	/// Makes type names unique, resolves `$ref`, applies `allOf` inheritance and lists the types to
+	/// generate. A type follows its `$ref` target, its `allOf` bases and its element schema in that
+	/// list, while a type a property declares keeps document order and so follows the type that
+	/// declares it. Beef needs no declaration order, so the list only decides reading order.
 	/// @param allSchemas Every node SchemaParser.Parse produced. Stays owned by the caller.
 	/// @param outGenerationOrder Caller owned list that receives the nodes to generate. The
 	///                          entries alias allSchemas and must not be deleted through it.
@@ -143,8 +155,9 @@ class TypeResolver
 		return .Ok;
 	}
 
-	/// Merges every `allOf` member of schema into it, bases first, then marks the properties that
-	/// the schema's own `required` list names.
+	/// Applies the `allOf` members of schema: the first member that resolves to an object becomes
+	/// the Beef base class and keeps its properties where they are, every later object member has
+	/// its properties copied in, then the schema's own `required` list is applied.
 	/// @param merged Nodes already merged.
 	/// @param inProgress Nodes on the current chain, so a cycle is reported instead of recursing.
 	private Result<void, SchemaError> MergeSchema(SchemaModel schema, HashSet<SchemaModel> merged, HashSet<SchemaModel> inProgress)
@@ -191,8 +204,11 @@ class TypeResolver
 		return .Ok;
 	}
 
-	/// Copies the base properties that schema does not declare itself. Each copy shares the base
-	/// property's schema node, which the node list owns, so neither copy frees it.
+	/// Copies the base properties that schema does not declare itself, for an `allOf` member that
+	/// did not become the base class.
+	/// Ownership: each copy is a new PropertyModel with its own strings, owned by the Properties
+	/// dictionary of schema. Its Schema pointer aliases the base property's node, which the node
+	/// list owns, so neither property frees it.
 	private void InheritProperties(SchemaModel schema, SchemaModel baseSchema)
 	{
 		for (var kvp in baseSchema.Properties)
@@ -272,7 +288,8 @@ class TypeResolver
 	}
 
 	/// Adds schema after the types it needs: its `$ref` target, its `allOf` bases and its element
-	/// schema. Only objects and enums become files.
+	/// schema. A property's schema is not followed here, because the caller's pass over every node
+	/// reaches it. Only objects and enums become files.
 	private void AddToOrder(SchemaModel schema, HashSet<SchemaModel> processed, List<SchemaModel> outGenerationOrder)
 	{
 		if (schema == null || !processed.Add(schema))

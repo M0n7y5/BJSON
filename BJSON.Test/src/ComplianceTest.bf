@@ -17,7 +17,6 @@ class ComplianceTest
 	[Test(Name = "Compliance tests from JSONTestSuite")]
 	public static void T_TestSuite1()
 	{
-		// test cases from https://github.com/nst/JSONTestSuite
 		// https://seriot.ch/projects/parsing_json.html
 
 		Console.WriteLine("Compliance tests from JSONTestSuite ...");
@@ -61,7 +60,6 @@ class ComplianceTest
 					}
 				}
 
-				//Console.WriteLine(scope $"{localIdx} Done testing file: {fileName} Result: {result case .Ok ? "Ok" : "Err"}");
 			}
 			else
 			{
@@ -77,7 +75,6 @@ class ComplianceTest
 	[Test(Name = "Compliance tests from json.org")]
 	public static void T_TestSuite2()
 	{
-		// test cases from https://json.org/JSON_checker/
 		
 		Debug.WriteLine("Compliance tests from json.org ...");
 		let currentPath = Directory.GetCurrentDirectory(.. scope .());
@@ -135,7 +132,6 @@ class ComplianceTest
 	[Test(Name = "Big List of Naughty Strings")]
 	public static void T_TestSuite3()
 	{
-		// test from https://github.com/minimaxir/big-list-of-naughty-strings
 
 		Debug.WriteLine("Big List of Naughty Strings ...");
 		let currentPath = Directory.GetCurrentDirectory(.. scope .());
@@ -180,7 +176,6 @@ class ComplianceTest
 	[Test(Name = "nativejson-benchmark round-trip tests")]
 	public static void T_TestSuite4()
 	{
-		// test from https://github.com/minimaxir/big-list-of-naughty-strings
 
 		Debug.WriteLine("nativejson-benchmark round-trip tests ...");
 		let currentPath = Directory.GetCurrentDirectory(.. scope .());

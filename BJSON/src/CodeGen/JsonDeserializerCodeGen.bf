@@ -7,18 +7,29 @@ using BJSON.Enums;
 namespace BJSON.CodeGen;
 
 /// Handles JSON deserialization code generation at compile time.
+/// Every method here only appends Beef source text that JsonObjectAttribute.ApplyToType
+/// hands to the compiler; nothing in this class runs at runtime.
 public class JsonDeserializerCodeGen
 {
+	/// Emits JsonDeserialize into type: it rejects a non object JsonValue, then reads one
+	/// property per included field, including the fields of every base type.
+	/// @param type The [JsonObject] type receiving the method body.
 	[Comptime]
 	public static void EmitDeserializeMethod(Type type)
 	{
 		let code = scope String();
 
+		// A base type with [JsonObject] already had JsonDeserialize emitted into it, so the
+		// derived emission has to say `new` to shadow the inherited method.
 		bool needsNewKeyword = type.BaseType != null && type.BaseType != typeof(Object)
 			&& type.BaseType.HasCustomAttribute<JsonObjectAttribute>();
 
 		let newKeyword = needsNewKeyword ? "new " : "";
 
+		// The emitted text is parsed in the target type's context, so every name is fully
+		// qualified; the target file is not required to have BJSON using directives.
+		// Braces of the emitted body are doubled: inside an interpolated template {{ and }}
+		// collapse to one literal brace, and a lone { would open an interpolation hole.
 		code.AppendF($"""
 			public {newKeyword}Result<void> JsonDeserialize(BJSON.Models.JsonValue value)
 			{{
@@ -29,9 +40,9 @@ public class JsonDeserializerCodeGen
 
 			""");
 
-		// Process all fields including inherited ones
 		EmitAllFields(code, type);
 
+		// Append, not AppendF: this tail is not interpolated, so its brace stays single.
 		code.Append("""
 				return .Ok;
 			}\n
@@ -40,6 +51,7 @@ public class JsonDeserializerCodeGen
 		Compiler.EmitTypeBody(type, code);
 	}
 
+	/// Emits the field reads for type and for every base type up to Object, base fields first.
 	[Comptime]
 	private static void EmitAllFields(String code, Type type)
 	{
@@ -50,6 +62,8 @@ public class JsonDeserializerCodeGen
 
 		for (let field in type.GetFields())
 		{
+			// GetFields() also returns inherited fields, down to inaccessible System.Object
+			// internals. Base types are walked separately above, so only own fields pass.
 			if (field.DeclaringType != type)
 				continue;
 
@@ -60,9 +74,15 @@ public class JsonDeserializerCodeGen
 		}
 	}
 
+	/// Emits the read of one field into code. A required field makes JsonDeserialize fail when
+	/// the property is absent; an optional one is skipped. Requiredness comes from the owner's
+	/// [JsonObject] DefaultBehavior, overridden per field by [JsonRequired] or [JsonOptional].
 	[Comptime]
 	private static void EmitFieldDeserialization(String code, FieldInfo field, Type ownerType)
 	{
+		// GetSourceLiteralName applies the source literal escape only. The emitted GetValue
+		// call matches against the key the parser already decoded, so JSON escaping the name
+		// here would look up a key that never arrives.
 		let jsonName = scope String();
 		JsonCodeGenHelper.GetSourceLiteralName(field, jsonName);
 
@@ -74,23 +94,19 @@ public class JsonDeserializerCodeGen
 		if (isNullable)
 			fieldType = JsonCodeGenHelper.UnwrapNullable(fieldType);
 
-		// Get the default behavior from the owner's JsonObjectAttribute
 		JsonFieldDefaultBehavior defaultBehavior = .Optional;
 		if (let objAttr = ownerType.GetCustomAttribute<JsonObjectAttribute>())
 		{
 			defaultBehavior = objAttr.DefaultBehavior;
 		}
 
-		// Determine if field is required based on default behavior and attributes
 		bool isFieldRequired;
 		if (defaultBehavior == .Required)
 		{
-			// Default is required, unless marked [JsonOptional]
 			isFieldRequired = !isOptional;
 		}
 		else
 		{
-			// Default is optional, unless marked [JsonRequired]
 			isFieldRequired = isRequired;
 		}
 
@@ -112,6 +128,8 @@ public class JsonDeserializerCodeGen
 	[Comptime]
 	private static void EmitFieldValueDeserialization(String code, FieldInfo field, Type fieldType, StringView jsonVar, StringView indent)
 	{
+		// field.FieldType, not fieldType: the null test has to see the declared Nullable<T>,
+		// which the caller unwrapped before getting here.
 		if (fieldType.IsObject || field.FieldType.IsNullable)
 		{
 			code.AppendF($"{indent}if (!{jsonVar}.IsNull())\n");
@@ -221,6 +239,10 @@ public class JsonDeserializerCodeGen
 		code.AppendF($"{indent}}}\n");
 	}
 
+	/// Emits the read of one list element into code, honouring a [JsonConverter] on the
+	/// element type.
+	/// An element type outside the supported set emits nothing here, and generation still
+	/// fails: the serializer emitter runs for the same type and rejects that element by name.
 	[Comptime]
 	private static void EmitListItemDeserialization(String code, FieldInfo field, Type elementType, StringView itemVar, StringView indent)
 	{
@@ -297,6 +319,8 @@ public class JsonDeserializerCodeGen
 		if (keyType == null || valueType == null)
 			return;
 
+		// JSON object keys are always strings, so a non String key cannot round trip. A
+		// comptime method cannot return an error, so this has to be fatal.
 		if (keyType != typeof(String))
 		{
 			Runtime.FatalError(scope $"Dictionary field '{field.Name}' must have String keys for JSON serialization.");
@@ -312,6 +336,10 @@ public class JsonDeserializerCodeGen
 		code.AppendF($"{indent}}}\n");
 	}
 
+	/// Emits the read of one dictionary entry into code, honouring a [JsonConverter] on the
+	/// value type. Keys are copied into new Strings that the dictionary owns.
+	/// Enum values are not handled: they are skipped silently here while the serializer writes
+	/// them, so such a dictionary comes back empty.
 	[Comptime]
 	private static void EmitDictionaryValueDeserialization(String code, FieldInfo field, Type valueType, StringView keyVar, StringView valueVar, StringView indent)
 	{
@@ -383,6 +411,9 @@ public class JsonDeserializerCodeGen
 		code.AppendF($"{indent}}}\n");
 	}
 
+	/// Emits the read of one sized array element into code.
+	/// Only bool and numeric elements are handled: String fails generation, and any other
+	/// element type is skipped silently, leaving those slots at their default value.
 	[Comptime]
 	private static void EmitSizedArrayItemDeserialization(String code, FieldInfo field, Type elementType, StringView itemVar, StringView indexVar, StringView indent)
 	{
@@ -400,6 +431,8 @@ public class JsonDeserializerCodeGen
 		}
 		else if (elementType == typeof(String))
 		{
+			// Emitting `new String` into a fixed slot would allocate with nothing to free it.
+			// A comptime method cannot return an error, so this has to be fatal.
 			Runtime.FatalError(scope $"Sized arrays of String are not supported. Use List<String> instead for field '{field.Name}'.");
 		}
 	}

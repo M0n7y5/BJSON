@@ -5,8 +5,14 @@ using BJSON.Constants;
 using BJSON.Enums;
 namespace BJSON
 {
+	/// Writes a JsonValue tree to a Stream as JSON text.
+	/// The static Write helpers are also the output layer of the serializers comptime emits, which
+	/// is why they are public: their signatures are part of the generated code contract, and
+	/// changing one silently breaks every already generated serializer until it is regenerated.
 	class JsonWriter
 	{
+		// WriteArray and WriteObject recurse once per level, so an unbounded tree would overflow the
+		// stack. Matches JsonReader.MaximumDepth, so any document this library parses can be written back.
 		private const int cMaximumDepth = 200;
 
 		private JsonWriterOptions options;
@@ -14,18 +20,21 @@ namespace BJSON
 		private int nesting = 0;
 		private Stream stream;
 
+		/// Creates a writer with default, unindented formatting.
 		public this()
 		{
 			this.options = .();
 		}
 
+		/// Creates a writer with the given formatting options.
+		/// @param options The formatting options used by writes that do not pass their own.
 		public this(JsonWriterOptions options)
 		{
 			this.options = options;
 		}
 
-		/// Appends a string to the buffer with proper JSON escaping.
-		/// Used by comptime-generated serialization code.
+		/// Appends a string to a String buffer with JSON escaping, without surrounding quotes.
+		/// For callers assembling JSON text in memory; the stream path is WriteEscaped.
 		/// @param buffer The string buffer to append to.
 		/// @param str The string to escape and append.
 		public static void AppendEscaped(String buffer, StringView str)
@@ -58,7 +67,7 @@ namespace BJSON
 		}
 
 		/// Writes text to a stream verbatim.
-		/// Used by comptime-generated serialization code for structural output.
+		/// Emitted serializers call this for structural output.
 		/// @param stream The stream to write to.
 		/// @param text The text to write.
 		/// @returns Ok, or Err if the stream rejected or truncated the write.
@@ -72,7 +81,7 @@ namespace BJSON
 		}
 
 		/// Writes a single character to a stream verbatim.
-		/// Used by comptime-generated serialization code for structural output.
+		/// Emitted serializers call this for punctuation and quotes.
 		/// @param stream The stream to write to.
 		/// @param c The character to write.
 		/// @returns Ok, or Err if the stream rejected or truncated the write.
@@ -86,7 +95,7 @@ namespace BJSON
 		}
 
 		/// Writes a string to a stream with proper JSON escaping (without quotes).
-		/// Used by comptime-generated serialization code.
+		/// Emitted serializers call this for object keys.
 		/// @param stream The stream to write to.
 		/// @param str The string to escape and write.
 		/// @returns Ok, or Err if the stream rejected or truncated the write.
@@ -137,7 +146,7 @@ namespace BJSON
 		}
 
 		/// Writes a JSON string value to a stream (with surrounding quotes).
-		/// Used by comptime-generated serialization code.
+		/// Emitted serializers call this for String and StringView fields.
 		/// @param stream The stream to write to.
 		/// @param str The string value to write.
 		/// @returns Ok, or Err if the stream rejected or truncated the write.
@@ -151,6 +160,7 @@ namespace BJSON
 		}
 
 		/// Writes a boolean value to a stream.
+		/// Emitted serializers call this for bool fields.
 		/// @param stream The stream to write to.
 		/// @param value The boolean value.
 		/// @returns Ok, or Err if the stream rejected or truncated the write.
@@ -160,6 +170,7 @@ namespace BJSON
 		}
 
 		/// Writes an integer value to a stream.
+		/// Emitted serializers call this for every integer field and for enums written as numbers.
 		/// @param stream The stream to write to.
 		/// @param value The integer value.
 		/// @returns Ok, or Err if the stream rejected or truncated the write.
@@ -169,6 +180,8 @@ namespace BJSON
 		}
 
 		/// Writes an unsigned integer value to a stream.
+		/// Emitted code routes integers through WriteInt; this overload covers values that exceed
+		/// int64.MaxValue.
 		/// @param stream The stream to write to.
 		/// @param value The unsigned integer value.
 		/// @returns Ok, or Err if the stream rejected or truncated the write.
@@ -178,6 +191,7 @@ namespace BJSON
 		}
 
 		/// Writes a floating-point value to a stream.
+		/// Emitted serializers call this for floating-point fields.
 		/// @param stream The stream to write to.
 		/// @param value The floating-point value.
 		/// @returns Ok, Err if value is NaN or Infinity, or Err if the write failed.
@@ -194,11 +208,21 @@ namespace BJSON
 			return WriteRaw(stream, StringView(&buff, end - &buff));
 		}
 
+		/// Writes a JsonValue tree to a stream using this writer's options.
+		/// @param json The value to write.
+		/// @param stream The stream to write to.
+		/// @returns Ok, Err(.MaximumDepthReached) past 200 levels of nesting, or Err if a write failed.
 		public Result<void, JsonSerializationError> Write(JsonValue json, Stream stream)
 		{
 			return Write(json, stream, this.options);
 		}
 
+		/// Writes a JsonValue tree to a stream using the given options, which replace the options
+		/// this writer holds. Depth state is reset per call, so one instance can write repeatedly.
+		/// @param json The value to write.
+		/// @param stream The stream to write to.
+		/// @param options The formatting options to apply and to keep on this writer.
+		/// @returns Ok, Err(.MaximumDepthReached) past 200 levels of nesting, or Err if a write failed.
 		public Result<void, JsonSerializationError> Write(JsonValue json, Stream stream, JsonWriterOptions options)
 		{
 			this.options = options;

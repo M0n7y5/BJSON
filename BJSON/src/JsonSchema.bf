@@ -9,17 +9,23 @@ namespace BJSON
 	/// Options for JSON Schema validation.
 	public struct SchemaValidationOptions
 	{
-		/// Maximum number of errors to collect. Set to 0 to disable error collection.
+		/// Maximum number of errors to collect. Set to 0 to disable collection; the result still
+		/// reports IsValid. Once this many errors exist, error-collecting validation stops early.
 		public int MaxErrors = 16;
 	}
 
 	/// Represents a single JSON Schema validation error.
+	/// Owned by the SchemaValidationResult that collected it, which deletes it on Dispose.
 	public class SchemaValidationError
 	{
+		/// Reason the instance failed, owned by this error.
 		public String Message = new .() ~ delete _;
+		/// JSON Pointer to the rejected instance location, owned by this error.
 		public String InstancePointer = new .() ~ delete _;
+		/// JSON Pointer to the schema keyword that rejected the instance, owned by this error.
 		public String SchemaPointer = new .() ~ delete _;
 
+		/// Copies each view into storage this error owns; the views need not outlive the call.
 		public this(StringView message, StringView instancePointer, StringView schemaPointer)
 		{
 			Message.Set(message);
@@ -33,7 +39,9 @@ namespace BJSON
 	/// Copies of this struct share one list, so only one copy may be disposed.
 	public struct SchemaValidationResult : IDisposable
 	{
+		/// False when any keyword rejected the instance, even when MaxErrors turned collection off.
 		public bool IsValid = true;
+		/// Errors collected during validation, owned by this result. Null when none was recorded.
 		public List<SchemaValidationError> Errors = null;
 
 		/// Frees the error list and the errors it holds.
@@ -44,16 +52,28 @@ namespace BJSON
 	}
 
 	/// Errors that can occur during schema parsing or reference resolution.
+	/// Payload views are not owned by the error and can alias temporaries built while resolving.
 	public enum JsonSchemaError
 	{
+		/// A schema is unusable: a node is neither an object nor a boolean, or the root document is
+		/// missing. `message` names the failed check.
 		case InvalidSchema(StringView message);
+		/// A $ref keyword holds a non-string value; the payload carries the reason, not a reference.
 		case InvalidRef(StringView reference);
+		/// The referenced document loaded, but no JSON Pointer, $anchor, or $id in it matched.
 		case RefNotFound(StringView reference);
+		/// The same reference was already applied at this instance location, so following it again
+		/// cannot terminate. Meeting it at a deeper instance location is recursion and is allowed.
 		case RefCycleDetected(StringView reference);
+		/// The document a $ref names could not be loaded: no resolver is set, the URI maps to no
+		/// path, or the file could not be opened.
 		case ExternalSchemaNotFound(StringView reference);
+		/// The referenced document was read but its JSON did not parse; `inner` is the parse error.
 		case ExternalSchemaParseError(StringView reference, JsonParsingError inner);
+		/// The schema text passed to Parse did not parse as JSON.
 		case ParseError(JsonParsingError inner);
 
+		/// Appends a human readable description of this error to `str`.
 		public override void ToString(String str)
 		{
 			switch (this)
@@ -81,12 +101,20 @@ namespace BJSON
 	/// Interface for resolving external JSON Schemas referenced by $ref.
 	public interface ISchemaResolver
 	{
+		/// Loads the schema document `uri` names.
+		/// @param uri Document URI with any fragment already stripped, valid only for the call.
+		/// @returns The parsed document. Ownership passes to the JsonSchema that asked for it,
+		/// which disposes it when the schema is deleted.
 		Result<JsonValue, JsonSchemaError> Resolve(StringView uri);
 	}
 
 	/// Default schema resolver that loads schemas from the file system.
 	public class FileSchemaResolver : ISchemaResolver
 	{
+		/// Reads and parses the file the URI maps to: a `file://` URI is converted to a path and
+		/// anything else is treated as a path already.
+		/// @returns The parsed document, owned by the caller. ExternalSchemaNotFound when the file
+		/// cannot be opened, ExternalSchemaParseError when its JSON is invalid.
 		public Result<JsonValue, JsonSchemaError> Resolve(StringView uri)
 		{
 			let path = scope String();
@@ -108,6 +136,8 @@ namespace BJSON
 	}
 
 	/// Represents a compiled JSON Schema document that can be used to validate JSON values.
+	/// Owns the schema tree it was built from and every external document loaded through $ref, and
+	/// disposes them all when deleted.
 	public class JsonSchema
 	{
 		private SchemaDocument mRootDocument;
@@ -115,6 +145,12 @@ namespace BJSON
 		private ISchemaResolver mResolver;
 		private bool mOwnsResolver = false;
 
+		/// Builds a schema from a parsed tree, indexing the $id and $anchor declarations it finds.
+		/// @param schemaRoot The schema tree. This JsonSchema takes ownership and disposes it.
+		/// @param baseUri Base URI that $refs resolve against; the fragment is stripped and the
+		/// text is copied.
+		/// @param resolver Loader for external documents, still owned by the caller. When null, a
+		/// FileSchemaResolver is created and owned by this JsonSchema.
 		public this(JsonValue schemaRoot, StringView baseUri = default, ISchemaResolver resolver = null)
 		{
 			if (resolver == null)
@@ -132,7 +168,12 @@ namespace BJSON
 			mRootDocument = new SchemaDocument(normalizedBase, schemaRoot);
 		}
 
-		/// Parses a JsonValue schema tree into a JsonSchema. Ownership is transferred on success.
+		/// Checks that the tree has a schema shape and wraps it in a JsonSchema. `baseUri` and
+		/// `resolver` behave as in the constructor.
+		/// @param schemaRoot The schema tree. On success ownership passes to the returned schema;
+		/// on failure the caller still owns it and must dispose it.
+		/// @returns A JsonSchema the caller must delete, or InvalidSchema when the root is neither
+		/// an object nor a boolean.
 		public static Result<JsonSchema, JsonSchemaError> FromRoot(JsonValue schemaRoot, StringView baseUri = default, ISchemaResolver resolver = null)
 		{
 			if (!schemaRoot.IsObject() && !schemaRoot.IsBool())
@@ -141,7 +182,10 @@ namespace BJSON
 			return .Ok(new JsonSchema(schemaRoot, baseUri, resolver));
 		}
 
-		/// Parses schema JSON text into a JsonSchema. Ownership is transferred on success.
+		/// Parses schema JSON text into a JsonSchema. `baseUri` and `resolver` behave as in the
+		/// constructor.
+		/// @returns A JsonSchema the caller must delete. On failure the tree parsed here is
+		/// disposed, and the error is ParseError or InvalidSchema.
 		public static Result<JsonSchema, JsonSchemaError> Parse(StringView schemaJson, StringView baseUri = default, ISchemaResolver resolver = null)
 		{
 			let parseResult = Json.Deserialize(schemaJson);
@@ -164,6 +208,8 @@ namespace BJSON
 			return validator.Validate(instance);
 		}
 
+		/// Disposes the schema tree, every external document loaded through $ref, and the resolver
+		/// when this JsonSchema created it.
 		public ~this()
 		{
 			if (mDocuments != null)
@@ -1328,6 +1374,8 @@ namespace BJSON
 		}
 	}
 
+	/// A parsed schema document plus the base URI, $anchor, and $id indexes built from it.
+	/// Owns Root and disposes it, which is how a JsonSchema owns the tree handed to it.
 	class SchemaDocument
 	{
 		public String BaseUri = new .() ~ delete _;
@@ -1353,6 +1401,8 @@ namespace BJSON
 			DeleteStringDictionary(IdIndex);
 		}
 
+		/// Base URI in effect at `pointer`, viewing this document's storage; falls back to BaseUri
+		/// for pointers that were not indexed.
 		public StringView GetBaseUri(StringView pointer)
 		{
 			if (BaseUriByPointer.TryGetValueAlt(pointer, let value))

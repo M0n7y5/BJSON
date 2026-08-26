@@ -35,6 +35,8 @@ namespace BJSON.Models
 
 	/// Represents any JSON value (null, boolean, number, string, object, or array).
 	/// This is the primary type returned by JSON parsing operations.
+	/// A JsonValue is bitwise copyable and every copy shares the same heap pointers, so exactly
+	/// one holder may Dispose it. Containers dispose their children.
 	public struct JsonValue : IDisposable
 	{
 		const int sizeCheck = sizeof(JsonValue);
@@ -47,6 +49,7 @@ namespace BJSON.Models
 		[Bitfield<bool>(.Public, .Bits(1), "smallString")]
 		private uint8 mBitfield;
 
+		/// The payload, which only the matching `type` tag makes meaningful.
 		public JsonData data = default;
 
 		public this()
@@ -54,12 +57,15 @@ namespace BJSON.Models
 			this = default;
 		}
 
+		/// Copies a value bitwise. The copy shares the original's heap pointers.
 		public this(JsonValue value)
 		{
 			this.data = value.data;
 			this.mBitfield = value.mBitfield;
 		}
 
+		/// Reinterprets this value as one of the JsonValue subtypes without copying the payload.
+		/// The result aliases the same heap pointers, so only one of the two may be disposed.
 		[Inline]
 		public T As<T>() where T : JsonValue
 		{
@@ -70,26 +76,22 @@ namespace BJSON.Models
 			return val;
 		}
 
-		/// Checks if this value is a JSON null.
 		[Inline]
 		public bool IsNull() => type == .NULL;
-		/// Checks if this value is a JSON boolean.
 		[Inline]
 		public bool IsBool() => type == .BOOL;
-		/// Checks if this value is a JSON number (integer or floating-point).
+		/// True for all three number tags: double, signed, and unsigned.
 		[Inline]
 		public bool IsNumber() => type == .NUMBER || type == .NUMBER_SIGNED || type == .NUMBER_UNSIGNED;
-		/// Checks if this value is a JSON string.
 		[Inline]
 		public bool IsString() => type == .STRING;
-		/// Checks if this value is a JSON object.
 		[Inline]
 		public bool IsObject() => type == .OBJECT;
-		/// Checks if this value is a JSON array.
 		[Inline]
 		public bool IsArray() => type == .ARRAY;
 
-		/// Disposes of any heap-allocated resources held by this JSON value.
+		/// Frees the heap memory this value owns, including every child of an object or array.
+		/// Disposing two copies of the same value is a double free.
 		public void Dispose()
 		{
 			switch (type)
@@ -104,6 +106,7 @@ namespace BJSON.Models
 			}
 		}
 
+		/// Disposes a value that a container holds. Objects and arrays call this for each child.
 		[Inline]
 		public static void DisposeChild(JsonValue item)
 		{
@@ -345,6 +348,8 @@ namespace BJSON.Models
 			return JsonPointer.ResolveOrDefault<T>(this, pointer, defaultValue);
 		}
 
+		/// Reads a number as an unsigned integer, or zero when this value is not a number.
+		/// Use AsNumber to tell a zero apart from a type mismatch.
 		[Inline]
 		public static implicit operator uint(Self self)
 		{
@@ -362,6 +367,8 @@ namespace BJSON.Models
 			}
 		}
 
+		/// Reads a number as a signed integer, or zero when this value is not a number.
+		/// Use AsNumber to tell a zero apart from a type mismatch.
 		[Inline]
 		public static implicit operator int(Self self)
 		{
@@ -379,6 +386,8 @@ namespace BJSON.Models
 			}
 		}
 
+		/// Reads a number as a float, or zero when this value is not a number.
+		/// Use AsNumber to tell a zero apart from a type mismatch.
 		[Inline]
 		public static implicit operator float(Self self)
 		{
@@ -396,6 +405,8 @@ namespace BJSON.Models
 			}
 		}
 
+		/// Reads a number as a double, or zero when this value is not a number.
+		/// Use AsNumber to tell a zero apart from a type mismatch.
 		[Inline]
 		public static implicit operator double(Self self)
 		{
@@ -413,6 +424,9 @@ namespace BJSON.Models
 			}
 		}
 
+		/// Reads a string, or an empty view when this value is not a string. Use AsString to tell
+		/// an empty string apart from a type mismatch. An SSO string lives inline in the value, so
+		/// the view stays valid only while this value does.
 		[Inline]
 		public static implicit operator StringView(ref Self self)
 		{
@@ -425,15 +439,8 @@ namespace BJSON.Models
 				return StringView(self.data.string);
 		}
 
-		/*[Inline]
-		public static implicit operator String(Self self)
-		{
-			if (self.type != .STRING)
-				return default;
-
-			return new .(self.data.string);
-		}*/
-
+		/// Reads a boolean, or false when this value is not a boolean. Use AsBool to tell a false
+		/// apart from a type mismatch.
 		[Inline]
 		public static implicit operator bool(Self self)
 		{
@@ -515,7 +522,8 @@ namespace BJSON.Models
 		}
 	}
 
-	/// Represents a JSON number value (supports signed, unsigned, and floating-point).
+	/// Represents a JSON number value. The constructor picks the double, signed, or unsigned tag,
+	/// and the reading conversions widen between them.
 	public struct JsonNumber : JsonValue
 	{
 		public this(double value)
@@ -538,11 +546,14 @@ namespace BJSON.Models
 	}
 
 	/// Represents a JSON string value. Owns its string memory.
-	/// Uses Small String Optimization (SSO) for strings up to 14 characters.
+	/// Strings of up to MaxSmallStringLength characters live inline in the value (SSO); longer ones
+	/// heap allocate, and only those need Dispose.
 	public struct JsonString : JsonValue, IDisposable
 	{
+		/// The longest string that still fits inline, with no heap allocation.
 		public const int MaxSmallStringLength = 14;
 
+		/// Copies the text into this value. The argument stays owned by the caller.
 		public this(String value)
 		{
 			type = .STRING;
@@ -559,6 +570,7 @@ namespace BJSON.Models
 			}
 		}
 
+		/// Copies the text into this value. The argument stays owned by the caller.
 		public this(StringView value)
 		{
 			type = .STRING;
@@ -575,7 +587,8 @@ namespace BJSON.Models
 			}
 		}
 
-		/// Gets the string value as a StringView.
+		/// Reads the text. An inline string lives in this value, so the view stays valid only while
+		/// this value does.
 		[Inline]
 		public StringView AsStringView() mut
 		{
@@ -585,6 +598,7 @@ namespace BJSON.Models
 				return StringView(data.string);
 		}
 
+		/// Frees the heap buffer of a long string. An inline string owns nothing.
 		public new void Dispose()
 		{
 			if (!smallString && data.string != null)
@@ -604,6 +618,7 @@ namespace BJSON.Models
 			data.object = new Dictionary<String, JsonValue>();
 		}
 
+		/// Frees every value and every key the object owns.
 		public new void Dispose()
 		{
 			if (data.object != null)
@@ -618,7 +633,8 @@ namespace BJSON.Models
 		}
 
 		/// Reads or writes a value by key. The object copies the key and owns the copy,
-		/// and a write disposes the value it replaces.
+		/// and a write disposes the value it replaces. Reading a key the object does not hold
+		/// is a fatal error, so use TryGet or GetOrDefault on untrusted input.
 		public JsonValue this[String key]
 		{
 			get
@@ -639,12 +655,15 @@ namespace BJSON.Models
 			}
 		}
 
+		/// The object's own values. They stay owned by the object.
 		public Dictionary<String, JsonValue>.ValueEnumerator Values
 			=> data.object.Values;
 
+		/// The object's own keys. They stay owned by the object.
 		public Dictionary<String, JsonValue>.KeyEnumerator Keys
 			=> data.object.Keys;
 
+		/// Enumerates the key and value pairs the object owns.
 		public Dictionary<String, JsonValue>.Enumerator GetEnumerator()
 			=> data.object.GetEnumerator();
 
@@ -659,6 +678,8 @@ namespace BJSON.Models
 			data.object.Add(new String(key), value);
 		}
 
+		/// Adds a key and value pair, copying the key. Fatal errors if the key is already present.
+		/// @param kv The pair to add. The object takes ownership of the value.
 		public void Add((StringView key, JsonValue value) kv)
 		{
 			data.object.Add(new String(kv.key), kv.value);
@@ -684,6 +705,8 @@ namespace BJSON.Models
 		}
 
 		/// Gets a value by key from the object.
+		/// The result is a copy that shares the stored value's heap pointers, so the object still
+		/// owns it. Use TryGetRef when the result feeds a StringView.
 		/// @param key The key to look up.
 		/// @returns The JsonValue if found, or an error if the key doesn't exist.
 		public Result<JsonValue> GetValue(StringView key)
@@ -696,8 +719,7 @@ namespace BJSON.Models
 			return .Err;
 		}
 
-		/// Tries to get a value by key from the object.
-		/// Alias for GetValue for API consistency.
+		/// Gets a value by key from the object, named for symmetry with the JsonValue accessors.
 		/// @param key The key to look up.
 		/// @returns The JsonValue if found, or an error if the key doesn't exist.
 		[Inline]
@@ -748,6 +770,7 @@ namespace BJSON.Models
 			data.array = new List<JsonValue>();
 		}
 
+		/// Frees every element the array owns.
 		public new void Dispose()
 		{
 			if (data.array != null)
@@ -762,7 +785,8 @@ namespace BJSON.Models
 		}
 
 		/// Reads or writes a value by index. A write past the end grows the array with nulls,
-		/// and a write over an existing element disposes it.
+		/// and a write over an existing element disposes it. Reading an index outside the array
+		/// is a fatal error, so use TryGet or GetOrDefault on untrusted input.
 		public JsonValue this[int index]
 		{
 			get
@@ -781,6 +805,7 @@ namespace BJSON.Models
 			}
 		}
 
+		/// Enumerates the values the array owns.
 		public List<JsonValue>.Enumerator GetEnumerator()
 		{
 			return data.array.GetEnumerator();
@@ -788,6 +813,7 @@ namespace BJSON.Models
 
 		public int Count => data.array.Count;
 
+		/// Appends a value. The array takes ownership.
 		public void Add(JsonValue value)
 		{
 			data.array.Add(value);
