@@ -129,7 +129,9 @@ namespace BJSON.Example
 		{
 			let str = scope String();
 			value.ToString(str);
-			BJSON.JsonWriter.WriteString(stream, str);
+			if (BJSON.JsonWriter.WriteString(stream, str) case .Err)
+				return .Err;
+
 			return .Ok;
 		}
 
@@ -204,7 +206,13 @@ namespace BJSON.Example
 				person.Tags.Add(new String("beef"));
 				person.InternalId = 12345;
 
-				let output = Json.Serialize(person, .. scope .());
+				let output = scope String();
+				if (Json.Serialize(person, output) case .Err)
+				{
+					Console.WriteLine("Failed to serialize person");
+					return 1;
+				}
+
 				Console.WriteLine("Serialized:");
 				Console.WriteLine(output);
 				Console.WriteLine();
@@ -255,7 +263,13 @@ namespace BJSON.Example
 				player.Score = 1000;
 
 				// Serialize - includes all fields from both base and derived classes
-				let json = Json.Serialize(player, .. scope .());
+				let json = scope String();
+				if (Json.Serialize(player, json) case .Err)
+				{
+					Console.WriteLine("Failed to serialize player");
+					return 1;
+				}
+
 				Console.WriteLine("Player with inheritance:");
 				Console.WriteLine(json);
 				Console.WriteLine();
@@ -286,13 +300,25 @@ namespace BJSON.Example
 			{
 				let defaultHolder = scope DefaultStatus();
 				defaultHolder.State = .Active;
-				let defaultJson = Json.Serialize(defaultHolder, .. scope .());
+				let defaultJson = scope String();
+				if (Json.Serialize(defaultHolder, defaultJson) case .Err)
+				{
+					Console.WriteLine("Failed to serialize DefaultStatus");
+					return 1;
+				}
+
 				Console.WriteLine("Default enum (as string):");
 				Console.WriteLine(defaultJson);
 
 				let numericHolder = scope NumericStatusHolder();
 				numericHolder.State = .Active;
-				let numericJson = Json.Serialize(numericHolder, .. scope .());
+				let numericJson = scope String();
+				if (Json.Serialize(numericHolder, numericJson) case .Err)
+				{
+					Console.WriteLine("Failed to serialize NumericStatusHolder");
+					return 1;
+				}
+
 				Console.WriteLine("\nWith [JsonNumberHandling(.AsNumber)]:");
 				Console.WriteLine(numericJson);
 
@@ -325,7 +351,13 @@ namespace BJSON.Example
 				eventObj.Title.Set("Meeting");
 				eventObj.Timestamp = CustomDateTime(2025, 1, 28, 14, 30, 0);
 
-				let json = Json.Serialize(eventObj, .. scope .());
+				let json = scope String();
+				if (Json.Serialize(eventObj, json) case .Err)
+				{
+					Console.WriteLine("Failed to serialize CalendarEvent");
+					return 1;
+				}
+
 				Console.WriteLine("Event with custom CustomDateTime converter:");
 				Console.WriteLine(json);
 
@@ -393,9 +425,9 @@ namespace BJSON.Example
 
 				let stream3 = scope StringStream(jsonMissingRequired, .Reference);
 				let config3 = scope GameConfig();
-				if (Json.Deserialize<GameConfig>(stream3, config3) case .Err)
+				if (Json.Deserialize<GameConfig>(stream3, config3) case .Err(let err))
 				{
-					Console.WriteLine("JSON missing required field 'MaxPlayers' - Deserialization failed as expected!");
+					Console.WriteLine(scope $"JSON missing required field 'MaxPlayers' - Deserialization failed as expected: {err}");
 				}
 			}
 
@@ -449,9 +481,9 @@ namespace BJSON.Example
 
 				let stream3 = scope StringStream(jsonMissingPort, .Reference);
 				let strict3 = scope StrictConfig();
-				if (Json.Deserialize<StrictConfig>(stream3, strict3) case .Err)
+				if (Json.Deserialize<StrictConfig>(stream3, strict3) case .Err(let err))
 				{
-					Console.WriteLine("JSON missing required field 'Port' - Deserialization failed as expected!");
+					Console.WriteLine(scope $"JSON missing required field 'Port' - Deserialization failed as expected: {err}");
 				}
 				Console.WriteLine();
 				Console.WriteLine("With DefaultBehavior = Required, you can make all fields required by default,");
@@ -488,7 +520,12 @@ namespace BJSON.Example
 				defer json.Dispose();
 
 				let output = scope String();
-				Json.Serialize(json, output);
+				if (Json.Serialize(json, output) case .Err(let err))
+				{
+					Console.WriteLine(scope $"Failed to serialize: {err}");
+					return 1;
+				}
+
 				Console.WriteLine(output);
 			}
 
@@ -518,7 +555,12 @@ namespace BJSON.Example
 				defer json.Dispose();
 				let output = scope String();
 				let options = JsonWriterOptions() { Indented = true };
-				Json.Serialize(json, output, options);
+				if (Json.Serialize(json, output, options) case .Err(let err))
+				{
+					Console.WriteLine(scope $"Failed to serialize: {err}");
+					return 1;
+				}
+
 				Console.WriteLine(output);
 			}
 
@@ -537,25 +579,33 @@ namespace BJSON.Example
 				}
 				""";
 
-				using (JsonValue json = Json.Deserialize(jsonString))
+				var result = Json.Deserialize(jsonString);
+				defer result.Dispose();
+
+				if (result case .Err(let parseError))
 				{
-					if (StringView storeName = json.GetByPointer("/store/name"))
-						Console.WriteLine(scope $"Store name: {storeName}");
+					Console.WriteLine(scope $"Failed to parse: {parseError}");
+					return 1;
+				}
 
-					if (StringView productName = json.GetByPointer("/store/products/0/name"))
-						Console.WriteLine(scope $"First product: {productName}");
+				var json = result.Value;
 
-					if (double price = json.GetByPointer("/store/products/1/price"))
-						Console.WriteLine(scope $"Second product price: {price}");
+				if (StringView storeName = json.GetByPointer("/store/name"))
+					Console.WriteLine(scope $"Store name: {storeName}");
 
-					// GetByPointerOrDefault<T> - returns primitive default on failure (no allocation!)
-					let addr = json.GetByPointerOrDefault<StringView>("/store/address", "N/A");
-					Console.WriteLine(scope $"Address: {addr}");
+				if (StringView productName = json.GetByPointer("/store/products/0/name"))
+					Console.WriteLine(scope $"First product: {productName}");
 
-					if (json.GetByPointer("/invalid/path") case .Err(let err))
-					{
-						Console.WriteLine(scope $"Expected error: {err}");
-					}
+				if (double price = json.GetByPointer("/store/products/1/price"))
+					Console.WriteLine(scope $"Second product price: {price}");
+
+				// GetByPointerOrDefault<T> - returns primitive default on failure (no allocation!)
+				let addr = json.GetByPointerOrDefault<StringView>("/store/address", "N/A");
+				Console.WriteLine(scope $"Address: {addr}");
+
+				if (json.GetByPointer("/invalid/path") case .Err(let err))
+				{
+					Console.WriteLine(scope $"Expected error: {err}");
 				}
 			}
 

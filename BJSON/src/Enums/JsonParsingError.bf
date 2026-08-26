@@ -8,8 +8,7 @@ namespace BJSON.Enums
 	{
 		/// Parse was handed a null stream.
 		case InputStreamIsNull;
-		/// The parse produced no root value for the handler to hand back, or a generated
-		/// JsonDeserialize rejected the tree that was parsed.
+		/// The parse produced no root value for the handler to hand back.
 		case InvalidDocument;
 		/// Object or array nesting passed JsonReader.MaximumDepth of 200. Carries no position, so
 		/// the offending brace or bracket has to be found from the document itself.

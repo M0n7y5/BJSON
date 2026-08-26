@@ -19,12 +19,7 @@ public class JsonSerializerCodeGen
 	{
 		let code = scope String();
 
-		// A base type with [JsonObject] already had JsonSerialize emitted into it, so the
-		// derived emission has to say `new` to shadow the inherited method.
-		bool needsNewKeyword = type.BaseType != null && type.BaseType != typeof(Object)
-			&& type.BaseType.HasCustomAttribute<JsonObjectAttribute>();
-
-		let newKeyword = needsNewKeyword ? "new " : "";
+		let newKeyword = JsonCodeGenHelper.GetNewKeyword(type);
 
 		// The emitted text is parsed in the target type's context, so every name is fully
 		// qualified; the target file is not required to have BJSON using directives.
@@ -39,6 +34,7 @@ public class JsonSerializerCodeGen
 			public {newKeyword}Result<void> JsonSerialize(System.IO.Stream stream, BJSON.JsonWriterOptions _options)
 			{{
 				int _depth = 0;
+				bool _firstField = true;
 				Try!(BJSON.JsonWriter.WriteChar(stream, '{{'));
 
 			""");
@@ -59,41 +55,19 @@ public class JsonSerializerCodeGen
 		Compiler.EmitTypeBody(type, code);
 	}
 
+	/// Emits the field writes for type and for every base type up to Object, base fields first.
 	[Comptime]
 	private static void EmitAllFieldsWithOptions(String code, Type type)
 	{
-		code.Append("\t\tbool _firstField = true;\n");
-
 		if (type.BaseType != null && type.BaseType != typeof(Object))
 		{
-			EmitAllFieldsWithOptionsRecursive(code, type.BaseType);
+			EmitAllFieldsWithOptions(code, type.BaseType);
 		}
 
 		for (let field in type.GetFields())
 		{
 			// GetFields() also returns inherited fields, down to inaccessible System.Object
 			// internals. Base types are walked separately above, so only own fields pass.
-			if (field.DeclaringType != type)
-				continue;
-
-			if (!JsonCodeGenHelper.ShouldSerializeField(field, type))
-				continue;
-
-			EmitFieldSerializationWithOptions(code, field, type);
-		}
-	}
-
-	[Comptime]
-	private static void EmitAllFieldsWithOptionsRecursive(String code, Type type)
-	{
-		if (type.BaseType != null && type.BaseType != typeof(Object))
-		{
-			EmitAllFieldsWithOptionsRecursive(code, type.BaseType);
-		}
-
-		for (let field in type.GetFields())
-		{
-			// Own fields only, for the same reason as in EmitAllFieldsWithOptions.
 			if (field.DeclaringType != type)
 				continue;
 
@@ -169,10 +143,14 @@ public class JsonSerializerCodeGen
 
 		let fieldExpr = isNullable ? scope $"{field.Name}.Value" : scope $"{field.Name}";
 
-		if (let converterAttr = field.GetCustomAttribute<JsonConverterAttribute>())
+		let kind = JsonCodeGenHelper.Classify(field, fieldType);
+
+		if (kind == .Converter)
 		{
+			// A converter owns the whole field, a collection field included, so it runs before
+			// the null handling the other kinds get.
 			String converterTypeName = scope .();
-			converterAttr.ConverterType.GetFullName(converterTypeName);
+			JsonCodeGenHelper.GetConverterType(field, fieldType).GetFullName(converterTypeName);
 			code.AppendF($"{indent}{{\n");
 			code.AppendF($"{indent}\tlet _converter = new {converterTypeName}();\n");
 			code.AppendF($"{indent}\tdefer delete _converter;\n");
@@ -195,61 +173,55 @@ public class JsonSerializerCodeGen
 			bodyIndent.Append('\t');
 		}
 
-		if (fieldType == typeof(bool))
+		switch (kind)
 		{
+		case .Bool:
 			code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteBool(stream, {fieldExpr}));\n");
-		}
-		else if (fieldType.IsInteger)
-		{
+		case .Integer:
 			code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteInt(stream, {fieldExpr}));\n");
-		}
-		else if (fieldType.IsFloatingPoint)
-		{
+		case .Float:
 			code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteFloat(stream, {fieldExpr}));\n");
-		}
-		else if (fieldType == typeof(String))
-		{
+		case .String:
 			code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteString(stream, {fieldExpr}));\n");
-		}
-		else if (fieldType.IsEnum)
-		{
-			bool useNumber = false;
+		case .Enum:
+			{
+				bool useNumber = false;
 
-			if (let attr = field.GetCustomAttribute<JsonNumberHandlingAttribute>())
-			{
-				useNumber = attr.Handling == .AsNumber;
-			}
-			else if (let typeAttr = fieldType.GetCustomAttribute<JsonNumberHandlingAttribute>())
-			{
-				useNumber = typeAttr.Handling == .AsNumber;
-			}
+				if (let attr = field.GetCustomAttribute<JsonNumberHandlingAttribute>())
+				{
+					useNumber = attr.Handling == .AsNumber;
+				}
+				else if (let typeAttr = fieldType.GetCustomAttribute<JsonNumberHandlingAttribute>())
+				{
+					useNumber = typeAttr.Handling == .AsNumber;
+				}
 
-			if (useNumber)
-			{
-				code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteInt(stream, (int){fieldExpr}));\n");
+				if (useNumber)
+				{
+					code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteInt(stream, (int){fieldExpr}));\n");
+				}
+				else
+				{
+					code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
+					code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteRaw(stream, {fieldExpr}.ToString(.. scope .())));\n");
+					code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
+				}
 			}
-			else
-			{
-				code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
-				code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteRaw(stream, {fieldExpr}.ToString(.. scope .())));\n");
-				code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
-			}
-		}
-		else if (JsonCodeGenHelper.IsList(fieldType))
-		{
+		case .List:
 			EmitListSerializationWithOptions(code, field, fieldType, bodyIndent);
-		}
-		else if (JsonCodeGenHelper.IsDictionary(fieldType))
-		{
+		case .Dictionary:
 			EmitDictionarySerializationWithOptions(code, field, fieldType, bodyIndent);
-		}
-		else if (fieldType.IsSizedArray)
-		{
+		case .SizedArray:
 			EmitSizedArraySerializationWithOptions(code, field, fieldType, bodyIndent);
-		}
-		else if (fieldType.IsObject || fieldType.IsStruct)
-		{
+		case .JsonObject:
 			code.AppendF($"{bodyIndent}Try!({fieldExpr}.JsonSerialize(stream, _options));\n");
+		case .Converter, .Unsupported:
+			// Converter left through the early return above, and ValidateFields already
+			// rejected Unsupported, so reaching here means Classify grew a kind this ladder
+			// does not write. FatalError is the only exit a comptime method has.
+			let typeName = scope String();
+			fieldType.GetFullName(typeName);
+			Runtime.FatalError(scope $"BJSON cannot serialize field '{field.Name}' of type '{typeName}'.");
 		}
 
 		if (isReference)
@@ -262,10 +234,10 @@ public class JsonSerializerCodeGen
 	private static void EmitListSerializationWithOptions(String code, FieldInfo field, Type fieldType, StringView indent)
 	{
 		let elementType = JsonCodeGenHelper.GetElementType(fieldType);
-		// IsList already guarantees an element type; bailing here keeps a future caller from
-		// emitting a half written array.
+		// Classify already said List, so a missing element type is a generator fault. Bailing
+		// would leave a key with no value in the JSON, so it has to be fatal.
 		if (elementType == null)
-			return;
+			Runtime.FatalError(scope $"BJSON found no element type for list field '{field.Name}'.");
 
 		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '['));\n");
 		code.AppendF($"{indent}_depth++;\n");
@@ -276,7 +248,7 @@ public class JsonSerializerCodeGen
 		code.AppendF($"{indent}\t_first{field.Name} = false;\n");
 		code.AppendF($"{indent}\tif (_options.Indented) {{ Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine)); for (int _i = 0; _i < _depth; _i++) Try!(BJSON.JsonWriter.WriteRaw(stream, _options.IndentString)); }}\n");
 
-		EmitValueSerializationWithOptions(code, elementType, "_item", scope $"{indent}\t");
+		EmitValueSerializationWithOptions(code, field, elementType, "_item", scope $"{indent}\t");
 
 		code.AppendF($"{indent}}}\n");
 		code.AppendF($"{indent}_depth--;\n");
@@ -289,10 +261,10 @@ public class JsonSerializerCodeGen
 	{
 		Type keyType, valueType;
 		JsonCodeGenHelper.GetDictionaryTypes(fieldType, out keyType, out valueType);
-		// IsDictionary already guarantees both types; bailing here keeps a future caller from
-		// emitting a half written object.
+		// Classify already said Dictionary, so missing key or value types are a generator fault.
+		// Bailing would leave a key with no value in the JSON, so it has to be fatal.
 		if (keyType == null || valueType == null)
-			return;
+			Runtime.FatalError(scope $"BJSON found no key and value types for dictionary field '{field.Name}'.");
 
 		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '{{'));\n");
 		code.AppendF($"{indent}_depth++;\n");
@@ -306,7 +278,7 @@ public class JsonSerializerCodeGen
 		code.AppendF($"{indent}\tTry!(BJSON.JsonWriter.WriteEscaped(stream, _kv.key));\n");
 		code.AppendF($"{indent}\tTry!(BJSON.JsonWriter.WriteRaw(stream, _options.Indented ? \"\\\": \" : \"\\\":\"));\n");
 
-		EmitValueSerializationWithOptions(code, valueType, "_kv.value", scope $"{indent}\t");
+		EmitValueSerializationWithOptions(code, field, valueType, "_kv.value", scope $"{indent}\t");
 
 		code.AppendF($"{indent}}}\n");
 		code.AppendF($"{indent}_depth--;\n");
@@ -321,6 +293,16 @@ public class JsonSerializerCodeGen
 		let sizedArrayType = fieldType as SizedArrayType;
 		let arraySize = sizedArrayType != null ? sizedArrayType.ElementCount : 0;
 
+		// A class element carrying [JsonObject] writes fine and can never be read back: a fixed
+		// slot has no owner for the object the reader would have to allocate. Both emitters
+		// reject it, so the two sides describe the same field.
+		if (elementType.IsObject && elementType.HasCustomAttribute<JsonObjectAttribute>())
+		{
+			let elementTypeName = scope String();
+			elementType.GetFullName(elementTypeName);
+			Runtime.FatalError(scope $"Sized array field '{field.Name}' has class elements of type '{elementTypeName}', which BJSON cannot read back into fixed slots. Use List<{elementTypeName}> instead.");
+		}
+
 		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '['));\n");
 		code.AppendF($"{indent}_depth++;\n");
 		code.AppendF($"{indent}for (int _i = 0; _i < {arraySize}; _i++)\n");
@@ -328,7 +310,7 @@ public class JsonSerializerCodeGen
 		code.AppendF($"{indent}\tif (_i > 0) Try!(BJSON.JsonWriter.WriteChar(stream, ','));\n");
 		code.AppendF($"{indent}\tif (_options.Indented) {{ Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine)); for (int _j = 0; _j < _depth; _j++) Try!(BJSON.JsonWriter.WriteRaw(stream, _options.IndentString)); }}\n");
 
-		EmitValueSerializationWithOptions(code, elementType, scope $"{field.Name}[_i]", scope $"{indent}\t");
+		EmitValueSerializationWithOptions(code, field, elementType, scope $"{field.Name}[_i]", scope $"{indent}\t");
 
 		code.AppendF($"{indent}}}\n");
 		code.AppendF($"{indent}_depth--;\n");
@@ -337,67 +319,62 @@ public class JsonSerializerCodeGen
 	}
 
 	/// Emits the write of one list element, dictionary value or sized array element into code.
-	/// A type outside the supported set fails generation and names the offending type, rather
-	/// than emitting nothing and leaving a value shaped hole in the JSON stream.
+	/// The kind comes from JsonCodeGenHelper.Classify, the same classification the field path and
+	/// the deserializer emitter use, so a type outside the supported set fails generation and
+	/// names itself instead of leaving a value shaped hole in the JSON stream.
 	/// @param code Receives the emitted source.
+	/// @param field The field being written. Only its [JsonConverter] lookup and its name in a
+	/// generation error come from it; a converter on the field itself took the whole collection
+	/// before this call.
 	/// @param valueType The element or value type being written.
 	/// @param valueExpr The emitted expression that yields the value.
 	/// @param indent Leading whitespace for the emitted lines.
 	[Comptime]
-	private static void EmitValueSerializationWithOptions(String code, Type valueType, StringView valueExpr, StringView indent)
+	private static void EmitValueSerializationWithOptions(String code, FieldInfo field, Type valueType, StringView valueExpr, StringView indent)
 	{
-		if (let converterAttr = valueType.GetCustomAttribute<JsonConverterAttribute>())
+		switch (JsonCodeGenHelper.Classify(field, valueType))
 		{
-			String converterTypeName = scope .();
-			converterAttr.ConverterType.GetFullName(converterTypeName);
-			code.AppendF($"{indent}{{\n");
-			code.AppendF($"{indent}\tlet _converter = new {converterTypeName}();\n");
-			code.AppendF($"{indent}\tdefer delete _converter;\n");
-			code.AppendF($"{indent}\tTry!(_converter.WriteJson(stream, {valueExpr}));\n");
-			code.AppendF($"{indent}}}\n");
-			return;
-		}
-
-		if (valueType == typeof(bool))
-		{
+		case .Converter:
+			{
+				String converterTypeName = scope .();
+				JsonCodeGenHelper.GetConverterType(field, valueType).GetFullName(converterTypeName);
+				code.AppendF($"{indent}{{\n");
+				code.AppendF($"{indent}\tlet _converter = new {converterTypeName}();\n");
+				code.AppendF($"{indent}\tdefer delete _converter;\n");
+				code.AppendF($"{indent}\tTry!(_converter.WriteJson(stream, {valueExpr}));\n");
+				code.AppendF($"{indent}}}\n");
+			}
+		case .Bool:
 			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteBool(stream, {valueExpr}));\n");
-		}
-		else if (valueType.IsInteger)
-		{
+		case .Integer:
 			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteInt(stream, {valueExpr}));\n");
-		}
-		else if (valueType.IsFloatingPoint)
-		{
+		case .Float:
 			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteFloat(stream, {valueExpr}));\n");
-		}
-		else if (valueType == typeof(String))
-		{
+		case .String:
 			code.AppendF($"{indent}if ({valueExpr} == null)\n");
 			code.AppendF($"{indent}\tTry!(BJSON.JsonWriter.WriteRaw(stream, \"null\"));\n");
 			code.AppendF($"{indent}else\n");
 			code.AppendF($"{indent}\tTry!(BJSON.JsonWriter.WriteString(stream, {valueExpr}));\n");
-		}
-		else if (valueType.IsEnum)
-		{
-			bool useNumber = false;
-			if (let attr = valueType.GetCustomAttribute<JsonNumberHandlingAttribute>())
+		case .Enum:
 			{
-				useNumber = attr.Handling == .AsNumber;
+				bool useNumber = false;
+				if (let attr = valueType.GetCustomAttribute<JsonNumberHandlingAttribute>())
+				{
+					useNumber = attr.Handling == .AsNumber;
+				}
+
+				if (useNumber)
+				{
+					code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteInt(stream, (int){valueExpr}));\n");
+				}
+				else
+				{
+					code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
+					code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteRaw(stream, {valueExpr}.ToString(.. scope .())));\n");
+					code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
+				}
 			}
-			
-			if (useNumber)
-			{
-				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteInt(stream, (int){valueExpr}));\n");
-			}
-			else
-			{
-				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
-				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteRaw(stream, {valueExpr}.ToString(.. scope .())));\n");
-				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
-			}
-		}
-		else if (valueType.HasCustomAttribute<JsonObjectAttribute>())
-		{
+		case .JsonObject:
 			if (valueType.IsObject)
 			{
 				code.AppendF($"{indent}if ({valueExpr} == null)\n");
@@ -409,13 +386,12 @@ public class JsonSerializerCodeGen
 			{
 				code.AppendF($"{indent}Try!({valueExpr}.JsonSerialize(stream, _options));\n");
 			}
-		}
-		else
-		{
+		case .List, .Dictionary, .SizedArray, .Unsupported:
+			// Nested collections land here too: JSON would take them, but no reader path exists.
 			// FatalError is the only exit a comptime method has: it cannot return an error.
 			let typeName = scope String();
 			valueType.GetFullName(typeName);
-			Runtime.FatalError(scope $"BJSON cannot serialize '{typeName}' as a collection element or value. Supported: bool, integer, floating point, String, enum, and [JsonObject] types.");
+			Runtime.FatalError(scope $"BJSON cannot serialize '{typeName}' as an element or value of field '{field.Name}'. Supported: bool, integer, floating point, String, enum, [JsonObject] types, and types with [JsonConverter].");
 		}
 	}
 }

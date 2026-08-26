@@ -39,9 +39,6 @@ namespace BJSON.Models
 	/// one holder may Dispose it. Containers dispose their children.
 	public struct JsonValue : IDisposable
 	{
-		const int sizeCheck = sizeof(JsonValue);
-		const int sizeCheckData = sizeof(JsonData);
-
 		/// An empty/default JSON value.
 		public const JsonValue Empty = .();
 
@@ -90,20 +87,33 @@ namespace BJSON.Models
 		[Inline]
 		public bool IsArray() => type == .ARRAY;
 
+		/// Names the JSON type this value holds, for the actual side of a type mismatch report.
+		/// @returns One of null, bool, number, string, object, array.
+		[Inline]
+		public StringView TypeName()
+		{
+			switch (type)
+			{
+			case .NULL:
+				return "null";
+			case .BOOL:
+				return "bool";
+			case .NUMBER, .NUMBER_SIGNED, .NUMBER_UNSIGNED:
+				return "number";
+			case .STRING:
+				return "string";
+			case .OBJECT:
+				return "object";
+			case .ARRAY:
+				return "array";
+			}
+		}
+
 		/// Frees the heap memory this value owns, including every child of an object or array.
 		/// Disposing two copies of the same value is a double free.
 		public void Dispose()
 		{
-			switch (type)
-			{
-			case .OBJECT:
-				this.As<JsonObject>().Dispose();
-			case .ARRAY:
-				this.As<JsonArray>().Dispose();
-			case .STRING:
-				this.As<JsonString>().Dispose();
-			default: return;
-			}
+			DisposeChild(this);
 		}
 
 		/// Disposes a value that a container holds. Objects and arrays call this for each child.
@@ -248,10 +258,7 @@ namespace BJSON.Models
 			if (type != .OBJECT)
 				return .Err;
 
-			if (data.object.TryGetRefAlt(key, ?, let valPtr))
-				return .Ok(valPtr);
-
-			return .Err;
+			return this.As<JsonObject>().TryGetRef(key);
 		}
 
 		/// Tries to get a pointer to the stored value at an index (for arrays).
@@ -728,13 +735,26 @@ namespace BJSON.Models
 			return GetValue(key);
 		}
 
+		/// Gets a pointer to the stored value for a key from the object.
+		/// Prefer this over GetValue when the result feeds a StringView: SSO strings live inline
+		/// in the stored JsonValue, so a copy would leave the view dangling.
+		/// @param key The key to look up.
+		/// @returns A pointer to the stored value, or .Err if the key is absent.
+		public new Result<JsonValue*> TryGetRef(StringView key)
+		{
+			if (data.object.TryGetRefAlt(key, ?, let valPtr))
+				return .Ok(valPtr);
+
+			return .Err;
+		}
+
 		/// Gets a value by key, or returns a default value if not found.
 		/// @param key The key to look up.
 		/// @param defaultValue The value to return if key doesn't exist.
 		/// @returns The JsonValue if found, or defaultValue otherwise.
 		public new JsonValue GetOrDefault(StringView key, JsonValue defaultValue = default)
 		{
-			if (data.object.TryGetValueAlt(key, let val))
+			if (GetValue(key) case .Ok(let val))
 			{
 				return val;
 			}

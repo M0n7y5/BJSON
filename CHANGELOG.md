@@ -1,5 +1,33 @@
 # Changelog
 
+## v2.0.0
+
+### Breaking Changes
+
+- `IJsonSerializable.JsonDeserialize` returns `Result<void, JsonDeserializationError>` instead of a bare `Result<void>`. Types carrying an emitted deserializer only need a rebuild; a hand written implementation has to widen its signature
+- The four typed `Json.Deserialize<T>` overloads (`Stream` and `StringView`, filling and allocating) return `Result<_, JsonDeserializationError>` instead of `Result<_, JsonParsingError>`. A parse failure arrives as `.ParseError(inner)`, and a binding failure carries the field that failed instead of collapsing into `.InvalidDocument`. The DOM `Json.Deserialize` overloads are unchanged
+- `JsonDeserializationError` is now the error the emitted code raises, and every payload is a literal baked in at emit time: `TypeMismatch(path, expected, actual)`, `MissingRequiredField(path, fieldName)`, `InvalidEnumValue(path, enumType)`, `ConverterFailed(path)`, and `ParseError(inner)`. `path` is `/jsonName` on the type that reported the error, so an error from a nested `[JsonObject]` field is relative to that type. `NullNotAllowed` and `UnknownField` are removed, since a JSON null leaves a field untouched by design and there is no strict unknown field mode, and `InvalidEnumValue` and `ConverterFailed` dropped the payloads that would have aliased the parsed document
+
+### New Features
+
+- Added `Json.Deserialize<T>(StringView)` and `Json.Deserialize<T>(StringView, T)`, so typed deserialization no longer requires wrapping the text in a `StringStream`
+- Added `JsonValue.TypeName()`, which names the JSON type a value holds and supplies the `actual` side of a type mismatch report
+- `Dictionary<String, TEnum>` fields and `String[N]` and `TEnum[N]` sized arrays now deserialize; an enum reads from either a string or a number, as an enum field already did
+- A `[JsonConverter]` on a type is now honoured on a plain field of that type. A field needs the attribute only to override the converter its own type declares
+- `BJSON.SchemaCodeGen` emits fields in the order the document declares them instead of in hash order, so a regenerated file is byte identical, and an inline `allOf` member whose properties the deriving type absorbed no longer gets a file of its own
+
+### Bug Fixes
+
+- Fixed the emitters skipping a field they could not handle: an unsupported field, element, dictionary value, or sized array element now fails generation naming the field and the type instead of emitting a read that silently does nothing
+- Fixed a `StringView` field reaching the emitters, which produced code that cannot own the text a read produces. Validation now rejects it at comptime and names `String` as the fix
+- Fixed schema error pointers for `not` and `if` subschemas omitting the keyword segment, so two different subschemas reported the same location
+- Fixed the schema CLI emitting enum member names and duplicate property names verbatim, which produced files that do not compile
+- Fixed a multi line schema `description` breaking the generated file it was written into
+- Removed the orphaned `EmployeeBase1.bf` from the checked in generated output
+- Fixed `BJSON.Example` discarding `Result` values, which traps at runtime in a Beef build with checks enabled
+
+---
+
 ## v1.3.1
 
 ### Bug Fixes

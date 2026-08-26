@@ -7,10 +7,10 @@ namespace BJSON.Attributes;
 /// emitters allocate one converter per value with new and delete it right after.
 /// On a field the converter handles that field on both sides, and on a collection field it takes
 /// the whole collection, before any element handling.
-/// On a class or struct the converter is only picked up for collection members of that type:
-/// writing uses it for List elements, sized array elements and Dictionary values, reading for List
-/// elements and Dictionary values. A field whose own type carries the attribute still goes down the
-/// [JsonObject] path, so converting a plain field takes the attribute on the field.
+/// On a class or struct the converter handles every value of that type either emitter meets: a
+/// plain field of that type, a List element, a sized array element and a Dictionary value, in both
+/// directions. It is what lets a type without [JsonObject] appear in a serialized type.
+/// The attribute on the field wins over the attribute on the field's type.
 [AttributeUsage(.Field | .Class | .Struct)]
 public struct JsonConverterAttribute : Attribute
 {

@@ -6,6 +6,36 @@ using BJSON.Attributes;
 
 namespace BJSON.CodeGen;
 
+/// How BJSON must handle one field, collection element or dictionary value. Both emitters and
+/// JsonObjectAttribute.ValidateFields branch on this, so what BJSON supports is decided in
+/// exactly one place, JsonCodeGenHelper.Classify.
+public enum JsonFieldKind
+{
+	/// A bool, written and read as a JSON boolean.
+	Bool,
+	/// Any integer type, written and read as a JSON number.
+	Integer,
+	/// Any floating point type, written and read as a JSON number.
+	Float,
+	/// System.String. Never StringView, which cannot own the text a read produces.
+	String,
+	/// An enum, written as a string unless [JsonNumberHandling(.AsNumber)] says otherwise, and
+	/// read from either a string or a number.
+	Enum,
+	/// List<T>, written and read as a JSON array.
+	List,
+	/// Dictionary<String, V>, written and read as a JSON object.
+	Dictionary,
+	/// A sized array T[N], written and read as a JSON array.
+	SizedArray,
+	/// A class or struct carrying [JsonObject], handled by the methods emitted into it.
+	JsonObject,
+	/// A [JsonConverter] on the field or on the type supplies both directions.
+	Converter,
+	/// No emitter can handle it, so the caller MUST fail generation.
+	Unsupported
+}
+
 /// Shared helper methods for JSON code generation.
 public class JsonCodeGenHelper
 {
@@ -143,36 +173,75 @@ public class JsonCodeGenHelper
 		return fieldType;
 	}
 
-	/// Checks if a type is a primitive or built-in type that doesn't need [JsonObject].
+	/// Gets the [JsonConverter] converter type for a field, a collection element or a dictionary
+	/// value. The attribute on the field wins over the attribute on the type, so a field can
+	/// override the conversion its own type declares.
+	/// @param field The field being emitted. Element and value sites pass the owning field, whose
+	/// own converter has already been applied to the whole collection by then.
+	/// @param fieldType The type being converted: the field type, or an element or value type.
+	/// @returns The converter type, or null when neither the field nor the type carries the
+	/// attribute.
 	[Comptime]
-	public static bool IsPrimitiveOrBuiltin(Type t)
+	public static Type GetConverterType(FieldInfo field, Type fieldType)
 	{
-		if (t.IsPrimitive)
-			return true;
-		if (t.IsInteger || t.IsFloatingPoint)
-			return true;
-		if (t == typeof(String) || t == typeof(StringView))
-			return true;
-		if (t == typeof(bool))
-			return true;
-		return false;
+		if (let fieldAttr = field.GetCustomAttribute<JsonConverterAttribute>())
+			return fieldAttr.ConverterType;
+
+		if (let typeAttr = fieldType.GetCustomAttribute<JsonConverterAttribute>())
+			return typeAttr.ConverterType;
+
+		return null;
 	}
 
-	/// Checks if a type is a supported collection type.
+	/// Decides how one field, element or value must be handled. The order of these tests is the
+	/// single definition of what BJSON supports: validation rejects what comes back Unsupported,
+	/// and both emitters switch on the result.
+	/// A converter wins over everything else, which is what lets it stand in for the [JsonObject]
+	/// a type does not carry.
+	/// @param field The field being emitted, consulted for a field level [JsonConverter].
+	/// @param fieldType The type to classify, with Nullable<T> already unwrapped.
+	/// @returns The kind, or Unsupported when nothing can handle the type.
 	[Comptime]
-	public static bool IsCollection(Type t)
+	public static JsonFieldKind Classify(FieldInfo field, Type fieldType)
 	{
-		if (let specialized = t as SpecializedGenericType)
-		{
-			let unspecialized = specialized.UnspecializedType;
-			if (unspecialized == typeof(List<>))
-				return true;
-			if (unspecialized == typeof(Dictionary<,>))
-				return true;
-		}
-		if (t.IsSizedArray)
-			return true;
-		return false;
+		if (GetConverterType(field, fieldType) != null)
+			return .Converter;
+		if (fieldType == typeof(bool))
+			return .Bool;
+		if (fieldType.IsInteger)
+			return .Integer;
+		if (fieldType.IsFloatingPoint)
+			return .Float;
+		if (fieldType == typeof(String))
+			return .String;
+		if (fieldType.IsEnum)
+			return .Enum;
+		if (IsList(fieldType))
+			return .List;
+		if (IsDictionary(fieldType))
+			return .Dictionary;
+		if (fieldType.IsSizedArray)
+			return .SizedArray;
+		if (fieldType.HasCustomAttribute<JsonObjectAttribute>())
+			return .JsonObject;
+
+		// StringView and char types land here on purpose: a view owns no text, and a character
+		// has no JSON form the reader could give back.
+		return .Unsupported;
+	}
+
+	/// Gets the keyword the emitted methods need in front of their signature. A base type with
+	/// [JsonObject] already had JsonSerialize and JsonDeserialize emitted into it, so the derived
+	/// emission has to shadow the inherited pair.
+	/// @param type The type receiving the emitted methods.
+	/// @returns "new " when a base type already carries the methods, otherwise the empty string.
+	[Comptime]
+	public static StringView GetNewKeyword(Type type)
+	{
+		if (type.BaseType == null || type.BaseType == typeof(Object))
+			return "";
+
+		return type.BaseType.HasCustomAttribute<JsonObjectAttribute>() ? "new " : "";
 	}
 
 	/// Checks if a type is List<T>.

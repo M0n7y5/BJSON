@@ -32,40 +32,79 @@ namespace BJSON
 		/// The intermediate tree is disposed before returning, so nothing aliases the document.
 		/// @param stream The stream to read.
 		/// @param obj The object to fill. Pre construct its nested class and container fields.
-		/// @returns Ok, the parse error, or InvalidDocument when the document does not fit T.
-		public static Result<void, JsonParsingError> Deserialize<T>(Stream stream, T obj) where T : IJsonSerializable
+		/// @returns Ok, the parse error wrapped in ParseError, or the binding error the emitted
+		/// deserializer reported.
+		public static Result<void, JsonDeserializationError> Deserialize<T>(Stream stream, T obj) where T : IJsonSerializable
 		{
 			var deserializer = scope Deserializer();
 			var result = deserializer.Deserialize(stream);
 			defer result.Dispose();
 
-			if (result case .Err(let err))
-				return .Err(err);
+			if (result case .Err(let parseErr))
+				return .Err(.ParseError(parseErr));
 
-			if (obj.JsonDeserialize(result.Value) case .Err)
-				return .Err(.InvalidDocument);
-
-			return .Ok;
+			return obj.JsonDeserialize(result.Value);
 		}
 
 		/// Parses a JSON stream into a newly allocated object.
 		/// @param stream The stream to read.
-		/// @returns The new object, which the caller owns and must delete, the parse error, or
-		/// InvalidDocument when the document does not fit T.
-		public static Result<T, JsonParsingError> Deserialize<T>(Stream stream) where T : IJsonSerializable, new, class, delete
+		/// @returns The new object, which the caller owns and must delete, the parse error wrapped
+		/// in ParseError, or the binding error the emitted deserializer reported.
+		public static Result<T, JsonDeserializationError> Deserialize<T>(Stream stream) where T : IJsonSerializable, new, class, delete
 		{
 			var deserializer = scope Deserializer();
 			var result = deserializer.Deserialize(stream);
 			defer result.Dispose();
 
-			if (result case .Err(let err))
-				return .Err(err);
+			if (result case .Err(let parseErr))
+				return .Err(.ParseError(parseErr));
 
 			let obj = new T();
-			if (obj.JsonDeserialize(result.Value) case .Err)
+			if (obj.JsonDeserialize(result.Value) case .Err(let bindErr))
 			{
 				delete obj;
-				return .Err(.InvalidDocument);
+				return .Err(bindErr);
+			}
+
+			return .Ok(obj);
+		}
+
+		/// Parses JSON text into an existing object through its emitted deserializer.
+		/// The intermediate tree is disposed before returning, so nothing aliases the document.
+		/// @param json The document text.
+		/// @param obj The object to fill. Pre construct its nested class and container fields.
+		/// @returns Ok, the parse error wrapped in ParseError, or the binding error the emitted
+		/// deserializer reported.
+		public static Result<void, JsonDeserializationError> Deserialize<T>(StringView json, T obj) where T : IJsonSerializable
+		{
+			var deserializer = scope Deserializer();
+			var result = deserializer.Deserialize(json);
+			defer result.Dispose();
+
+			if (result case .Err(let parseErr))
+				return .Err(.ParseError(parseErr));
+
+			return obj.JsonDeserialize(result.Value);
+		}
+
+		/// Parses JSON text into a newly allocated object.
+		/// @param json The document text.
+		/// @returns The new object, which the caller owns and must delete, the parse error wrapped
+		/// in ParseError, or the binding error the emitted deserializer reported.
+		public static Result<T, JsonDeserializationError> Deserialize<T>(StringView json) where T : IJsonSerializable, new, class, delete
+		{
+			var deserializer = scope Deserializer();
+			var result = deserializer.Deserialize(json);
+			defer result.Dispose();
+
+			if (result case .Err(let parseErr))
+				return .Err(.ParseError(parseErr));
+
+			let obj = new T();
+			if (obj.JsonDeserialize(result.Value) case .Err(let bindErr))
+			{
+				delete obj;
+				return .Err(bindErr);
 			}
 
 			return .Ok(obj);

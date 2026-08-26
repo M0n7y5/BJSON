@@ -41,11 +41,11 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 		JsonSerializerCodeGen.EmitSerializeMethod(type);
 	}
 
-	/// Rejects fields no emitter can handle. A class or struct field is only accepted when the
-	/// field or its type carries [JsonConverter], or when the type carries [JsonObject];
-	/// primitives, builtins, enums and supported collections always pass.
-	/// Collection element types are not checked here: the serializer emitter is what rejects
-	/// an unsupported element type.
+	/// Rejects fields no emitter can handle, by asking JsonCodeGenHelper.Classify the same
+	/// question both emitters ask: anything it calls Unsupported aborts the build here, before a
+	/// method body that would silently skip the field lands in type.
+	/// Collection element and value types are not checked here: the emitters reject those by name
+	/// when they emit the element handling.
 	/// @param type The type being emitted.
 	[Comptime]
 	private void ValidateFields(Type type)
@@ -55,34 +55,20 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 			if (!JsonCodeGenHelper.ShouldSerializeField(field, type))
 				continue;
 
-			var fieldType = JsonCodeGenHelper.UnwrapNullable(field.FieldType);
+			let fieldType = JsonCodeGenHelper.UnwrapNullable(field.FieldType);
 
-			if (JsonCodeGenHelper.IsPrimitiveOrBuiltin(fieldType))
-				continue;
-			if (JsonCodeGenHelper.IsCollection(fieldType))
-				continue;
-			if (fieldType.IsEnum)
+			if (JsonCodeGenHelper.Classify(field, fieldType) != .Unsupported)
 				continue;
 
-		if (fieldType.IsObject || fieldType.IsStruct)
-			{
-				// A converter supplies the serialization the missing [JsonObject] would have
-				// generated, on the field or on the type.
-				if (field.HasCustomAttribute<JsonConverterAttribute>())
-					continue;
+			String typeName = scope .();
+			fieldType.GetFullName(typeName);
 
-				if (fieldType.HasCustomAttribute<JsonConverterAttribute>())
-					continue;
-
-				if (!fieldType.HasCustomAttribute<JsonObjectAttribute>())
-				{
-					String typeName = scope .();
-					fieldType.GetFullName(typeName);
-					// Generation errors are raised with Runtime.FatalError because a comptime
-					// method cannot return an error to the compiler.
-					Runtime.FatalError(scope $"Field '{field.Name}' is of type '{typeName}' which does not have [JsonObject] attribute. Add [JsonObject] to the type or [JsonIgnore] to the field.");
-				}
-			}
+			// Generation errors are raised with Runtime.FatalError because a comptime method
+			// cannot return an error to the compiler.
+			if (fieldType == typeof(StringView))
+				Runtime.FatalError(scope $"Field '{field.Name}' is a StringView, which cannot own the text deserialization produces. Use String.");
+			else
+				Runtime.FatalError(scope $"Field '{field.Name}' is of type '{typeName}', which BJSON cannot handle. Add [JsonObject] to that type, [JsonConverter] to the field, or [JsonIgnore(Condition = .Always)] to the field.");
 		}
 	}
 }
