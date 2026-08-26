@@ -1,7 +1,6 @@
 using System;
 using BJSON;
 using BJSON.Models;
-using System.Diagnostics;
 
 namespace BJSON.Test;
 
@@ -10,8 +9,6 @@ class SSOTest
 	[Test(Name = "Small String Optimization")]
 	public static void T_SmallStringOptimization()
 	{
-		Debug.WriteLine("Small String Optimization tests ...");
-
 		{
 			let json = JsonString("a");
 			defer json.Dispose();
@@ -19,7 +16,6 @@ class SSOTest
 			Test.Assert(json.smallString == true, "1-char string should use SSO");
 			StringView str = json;
 			Test.Assert(str == "a", scope $"Expected 'a', got '{str}'");
-			Debug.WriteLine("  Test 1 (1-char SSO): PASSED");
 		}
 
 		{
@@ -30,7 +26,6 @@ class SSOTest
 			StringView str = json;
 			Test.Assert(str == "12345678901234", scope $"Expected '12345678901234', got '{str}'");
 			Test.Assert(str.Length == 14, scope $"Expected length 14, got {str.Length}");
-			Debug.WriteLine("  Test 2 (14-char SSO): PASSED");
 		}
 
 		{
@@ -41,7 +36,6 @@ class SSOTest
 			StringView str = json;
 			Test.Assert(str == "123456789012345", scope $"Expected '123456789012345', got '{str}'");
 			Test.Assert(str.Length == 15, scope $"Expected length 15, got {str.Length}");
-			Debug.WriteLine("  Test 3 (15-char no SSO): PASSED");
 		}
 
 		{
@@ -51,7 +45,6 @@ class SSOTest
 			Test.Assert(json.smallString == false, "Long string should NOT use SSO");
 			StringView str = json;
 			Test.Assert(str == "This is a much longer string that definitely exceeds the SSO limit");
-			Debug.WriteLine("  Test 4 (long string no SSO): PASSED");
 		}
 
 		{
@@ -62,7 +55,6 @@ class SSOTest
 			StringView str = json;
 			Test.Assert(str == "", "Empty string should be empty");
 			Test.Assert(str.Length == 0, "Empty string length should be 0");
-			Debug.WriteLine("  Test 5 (empty string SSO): PASSED");
 		}
 
 		{
@@ -77,7 +69,6 @@ class SSOTest
 				Test.Assert(id == "abc", scope $"Expected 'abc', got '{id}'");
 				Test.Assert(name == "test", scope $"Expected 'test', got '{name}'");
 			}
-			Debug.WriteLine("  Test 6 (parsed short strings): PASSED");
 		}
 
 		{
@@ -106,7 +97,6 @@ class SSOTest
 				Test.Assert(type == "user", scope $"Expected 'user', got '{type}'");
 				Test.Assert(status == "active", scope $"Expected 'active', got '{status}'");
 			}
-			Debug.WriteLine("  Test 7 (round-trip SSO): PASSED");
 		}
 
 		{
@@ -117,12 +107,10 @@ class SSOTest
 			StringView str = json;
 			Test.Assert(str == "hello\nworld", "String with newline should match");
 			Test.Assert(str.Length == 11, scope $"Expected length 11, got {str.Length}");
-			Debug.WriteLine("  Test 8 (SSO with special chars): PASSED");
 		}
 
 		{
 			Test.Assert(JsonString.MaxSmallStringLength == 14, "MaxSmallStringLength should be 14");
-			Debug.WriteLine("  Test 9 (MaxSmallStringLength constant): PASSED");
 		}
 
 		{
@@ -149,9 +137,32 @@ class SSOTest
 			Test.Assert(s2 == "ccc", scope $"s2: expected 'ccc', got '{s2}'");
 			Test.Assert(s3 == "dddd", scope $"s3: expected 'dddd', got '{s3}'");
 			Test.Assert(s4 == "12345678901234", scope $"s4: expected '12345678901234', got '{s4}'");
-			Debug.WriteLine("  Test 10 (SSO array): PASSED");
+		}
+	}
+
+	[Test(Name = "Small String Optimization: AsStringView")]
+	public static void T_AsStringView()
+	{
+		{
+			var json = JsonString("12345678901234");
+			defer json.Dispose();
+
+			let view = json.AsStringView();
+			Test.Assert(view == "12345678901234", scope $"Expected '12345678901234', got '{view}'");
+			Test.Assert(view.Length == 14, scope $"Expected length 14, got {view.Length}");
+			// An inline view has to address the value's own bytes; a view taken from a copy of
+			// the value dangles as soon as that copy dies.
+			Test.Assert(view.Ptr == &json.data.smallStr.data[0], "Inline view should point into the stored value");
 		}
 
-		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+		{
+			var json = JsonString("123456789012345");
+			defer json.Dispose();
+
+			let view = json.AsStringView();
+			Test.Assert(view == "123456789012345", scope $"Expected '123456789012345', got '{view}'");
+			Test.Assert(view.Length == 15, scope $"Expected length 15, got {view.Length}");
+			Test.Assert(view.Ptr == json.data.string.Ptr, "Heap view should point into the owned String");
+		}
 	}
 }

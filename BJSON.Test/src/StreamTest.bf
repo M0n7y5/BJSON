@@ -1,9 +1,17 @@
 using System;
 using BJSON.Models;
 using System.IO;
-using System.Diagnostics;
+using BJSON.Attributes;
 
 namespace BJSON.Test;
+
+/// Two-field fixture for the typed writer: one string field, one integer field.
+[JsonObject]
+class StreamPacket
+{
+	public String Label = new .() ~ delete _;
+	public int Size;
+}
 
 /// Tests for stream-based serialization and deserialization:
 /// - Basic stream serialization
@@ -15,8 +23,6 @@ class StreamTest
 	[Test(Name = "Stream Serialization")]
 	public static void T_StreamSerialization()
 	{
-		Debug.WriteLine("Stream Serialization tests ...");
-
 		{
 			let json = JsonObject() { ("name", "test"), ("value", 42) };
 			defer json.Dispose();
@@ -32,8 +38,6 @@ class StreamTest
 			
 			Test.Assert(output == "{\"name\":\"test\",\"value\":42}", 
 				scope $"Output mismatch. Got: {output}");
-			
-			Debug.WriteLine("  Test 1 (basic stream): PASSED");
 		}
 
 		{
@@ -52,8 +56,6 @@ class StreamTest
 			
 			Test.Assert(output.Contains("\n"), "Pretty output should contain newlines");
 			Test.Assert(output.Contains("  "), "Pretty output should contain indentation");
-			
-			Debug.WriteLine("  Test 2 (stream with options): PASSED");
 		}
 
 		{
@@ -89,8 +91,6 @@ class StreamTest
 				let arr = parsed["array"].AsArray().Value;
 				Test.Assert(arr.Count == 2, scope $"array count mismatch. Got: {arr.Count}");
 			}
-			
-			Debug.WriteLine("  Test 3 (round-trip): PASSED");
 		}
 
 		{
@@ -106,10 +106,29 @@ class StreamTest
 			
 			Test.Assert(result case .Ok, "Large JSON stream serialization should succeed");
 			Test.Assert(stream.Length > 0, "Stream should have content");
-			
-			Debug.WriteLine(scope $"  Test 4 (large JSON): PASSED - wrote {stream.Length} bytes");
 		}
+	}
 
-		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+	[Test(Name = "Stream Serialization: Typed Writer Options")]
+	public static void T_TypedSerializationWithOptions()
+	{
+		let packet = scope StreamPacket();
+		packet.Label.Set("packet");
+		packet.Size = 3;
+
+		let expected = "{\n  \"Label\": \"packet\",\n  \"Size\": 3\n}";
+		var options = JsonWriterOptions() { Indented = true };
+
+		let text = scope String();
+		Test.Assert(Json.Serialize(packet, text, options) case .Ok, "Indented serialization into a String should succeed");
+		Test.Assert(text == expected, scope $"String output mismatch. Got: {text}");
+
+		let stream = scope MemoryStream();
+		Test.Assert(Json.Serialize(packet, stream, options) case .Ok, "Indented serialization into a Stream should succeed");
+
+		stream.Position = 0;
+		let reader = scope StreamReader(stream);
+		let output = reader.ReadToEnd(.. scope .());
+		Test.Assert(output == expected, scope $"Stream output mismatch. Got: {output}");
 	}
 }
