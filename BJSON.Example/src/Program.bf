@@ -8,7 +8,6 @@ using BJSON.Enums;
 
 namespace BJSON.Example
 {
-	// Define a class with [JsonObject] for automatic serialization/deserialization
 	[JsonObject]
 	class Person
 	{
@@ -16,20 +15,15 @@ namespace BJSON.Example
 		public int Age;
 		public bool IsActive;
 
-		[JsonPropertyName("email_address")] // Custom JSON property name
+		[JsonPropertyName("email_address")]
 		public String Email = new .() ~ delete _;
 
 		public List<String> Tags = new .() ~ DeleteContainerAndItems!(_);
 
-		[JsonIgnore(Condition = .Always)] // This field won't be serialized
+		[JsonIgnore(Condition = .Always)] // .Always drops the field from the writer and the reader
 		public int InternalId;
 	}
 
-	// ============================================
-	// Examples of new features
-	// ============================================
-
-	// Base class for inheritance example
 	[JsonObject]
 	class Entity
 	{
@@ -37,7 +31,6 @@ namespace BJSON.Example
 		public bool Active;
 	}
 
-	// Derived class - inherits Id and Active from Entity
 	[JsonObject]
 	class Player : Entity
 	{
@@ -53,7 +46,7 @@ namespace BJSON.Example
 		public Status State;
 	}
 
-	// Enum with [JsonNumberHandling] to serialize as number
+	// On the enum type this covers every field of that type; a field level [JsonNumberHandling] overrides it.
 	[JsonNumberHandling(.AsNumber)]
 	public enum NumericStatus
 	{
@@ -65,7 +58,6 @@ namespace BJSON.Example
 		public NumericStatus State;
 	}
 
-	// Simple CustomDateTime struct for custom converter example
 	struct CustomDateTime
 	{
 		public int Year;
@@ -131,7 +123,6 @@ namespace BJSON.Example
 		}
 	}
 
-	// Custom converter that serializes CustomDateTime as ISO 8601 string
 	class DateTimeConverter : IJsonConverter<CustomDateTime>
 	{
 		public Result<void> WriteJson(Stream stream, CustomDateTime value)
@@ -163,11 +154,6 @@ namespace BJSON.Example
 		public CustomDateTime Timestamp;
 	}
 
-	// ============================================
-	// Example of JsonRequired and JsonOptional attributes
-	// ============================================
-
-	// Example class with required and optional fields
 	[JsonObject]
 	class GameConfig
 	{
@@ -180,18 +166,17 @@ namespace BJSON.Example
 		public int MaxPlayers;
 
 		// [JsonOptional] marks this field as optional (same as default, but explicit)
-		// The field can be missing from JSON
 		[JsonOptional]
 		public int Port;
 
 		// By default, all fields are optional - can be missing from JSON
 		public bool EnableChat;
 
-		// String fields are also optional by default (will be empty string if missing)
+		// An absent optional field is left untouched, so this keeps the empty String constructed here.
 		public String Description = new .() ~ delete _;
 	}
 
-	// Example of DefaultBehavior = Required - all fields required by default
+	// DefaultBehavior = .Required flips the default: every field must be present in the JSON.
 	[JsonObject(DefaultBehavior = .Required)]
 	class StrictConfig
 	{
@@ -208,14 +193,8 @@ namespace BJSON.Example
 	{
 		public static int Main(String[] args)
 		{
-			int lol = 46484;
-
-			// ============================================
-			// Attribute-based Serialization/Deserialization
-			// ============================================
 			Console.WriteLine("=== Attribute-based JSON ===\n");
 			{
-				// Create and populate a Person object
 				let person = scope Person();
 				person.Name.Set("John Doe");
 				person.Age = 30;
@@ -223,15 +202,15 @@ namespace BJSON.Example
 				person.Email.Set("john@example.com");
 				person.Tags.Add(new String("developer"));
 				person.Tags.Add(new String("beef"));
-				person.InternalId = 12345; // This won't be serialized
+				person.InternalId = 12345;
 
-				// Serialize to string using Json.Serialize<T>
 				let output = Json.Serialize(person, .. scope .());
 				Console.WriteLine("Serialized:");
 				Console.WriteLine(output);
 				Console.WriteLine();
 
-				// Deserialize back using Json.Deserialize<T> with pre-allocated object
+				// The in place overload fills the object you pass, so its List and nested class fields
+				// must already exist; a null String field is allocated, and list items are appended.
 				let jsonInput = """
 					{
 						"Name": "Jane Smith",
@@ -270,8 +249,8 @@ namespace BJSON.Example
 			Console.WriteLine("\n=== Inheritance Support ===\n");
 			{
 				let player = scope Player();
-				player.Id = 42; // Inherited field
-				player.Active = true; // Inherited field
+				player.Id = 42;
+				player.Active = true;
 				player.Name.Set("Alice");
 				player.Score = 1000;
 
@@ -281,7 +260,6 @@ namespace BJSON.Example
 				Console.WriteLine(json);
 				Console.WriteLine();
 
-				// Deserialize - works seamlessly with inherited fields
 				let inputJson = """
 					{
 						"Id": 99,
@@ -306,14 +284,12 @@ namespace BJSON.Example
 
 			Console.WriteLine("\n=== Enum Serialization as Number ===\n");
 			{
-				// Default behavior: serializes as string
 				let defaultHolder = scope DefaultStatus();
 				defaultHolder.State = .Active;
 				let defaultJson = Json.Serialize(defaultHolder, .. scope .());
 				Console.WriteLine("Default enum (as string):");
 				Console.WriteLine(defaultJson);
 
-				// With attribute: serializes as number
 				let numericHolder = scope NumericStatusHolder();
 				numericHolder.State = .Active;
 				let numericJson = Json.Serialize(numericHolder, .. scope .());
@@ -323,10 +299,10 @@ namespace BJSON.Example
 				// Deserialization accepts both formats by default
 				let input1 = """
 					{"State":"Suspended"}
-					"""; // String format
+					""";
 				let input2 = """
 					{"State":2}
-					"""; // Number format
+					""";
 
 				let stream1 = scope StringStream(input1, .Reference);
 				let result1 = scope NumericStatusHolder();
@@ -345,7 +321,6 @@ namespace BJSON.Example
 
 			Console.WriteLine("\n=== Custom Converters ===\n");
 			{
-				// Custom converter that serializes CustomDateTime as ISO 8601 string
 				let eventObj = scope CalendarEvent();
 				eventObj.Title.Set("Meeting");
 				eventObj.Timestamp = CustomDateTime(2025, 1, 28, 14, 30, 0);
@@ -354,7 +329,6 @@ namespace BJSON.Example
 				Console.WriteLine("Event with custom CustomDateTime converter:");
 				Console.WriteLine(json);
 
-				// Deserialize using the custom converter
 				let input = """
 					{"Title":"Conference","Timestamp":"2025-06-15T09:00:00"}
 					""";
@@ -371,7 +345,6 @@ namespace BJSON.Example
 
 			Console.WriteLine("\n=== JsonRequired and JsonOptional Attributes ===\n");
 			{
-				// Example 1: Successful deserialization with all required fields present
 				let validJson = """
 					{
 						"GameName": "Space Adventure",
@@ -393,7 +366,6 @@ namespace BJSON.Example
 				}
 				Console.WriteLine();
 
-				// Example 2: Optional fields can be missing
 				let jsonWithoutOptional = """
 					{
 						"GameName": "Puzzle Game",
@@ -413,7 +385,6 @@ namespace BJSON.Example
 				}
 				Console.WriteLine();
 
-				// Example 3: Missing required field causes failure
 				let jsonMissingRequired = """
 					{
 						"GameName": "Incomplete Config"
@@ -430,10 +401,6 @@ namespace BJSON.Example
 
 			Console.WriteLine("\n=== DefaultBehavior = Required ===\n");
 			{
-				// When DefaultBehavior = Required, ALL fields are required by default
-				// Use [JsonOptional] to mark specific fields as optional
-
-				// Example 1: All fields present - succeeds
 				let completeJson = """
 					{
 						"ServerName": "Production Server",
@@ -455,7 +422,6 @@ namespace BJSON.Example
 				}
 				Console.WriteLine();
 
-				// Example 2: Missing optional field Description - succeeds
 				let jsonWithoutDescription = """
 					{
 						"ServerName": "Test Server",
@@ -474,7 +440,6 @@ namespace BJSON.Example
 				}
 				Console.WriteLine();
 
-				// Example 3: Missing required field Port - fails
 				let jsonMissingPort = """
 					{
 						"ServerName": "Bad Config",
@@ -501,7 +466,6 @@ namespace BJSON.Example
 
 				if (result case .Ok(let jsonValue))
 				{
-					// we expect object
 					if (let root = jsonValue.AsObject())
 					{
 						if (StringView name = root.GetValue("name"))
@@ -512,10 +476,8 @@ namespace BJSON.Example
 				{
 					Console.WriteLine("Error: {}", error);
 				}
-				//Note: You can also use switch case statement as well
 			}
 			{
-				// Basic serialization
 				let json = JsonObject()
 					{
 						("firstName", "John"),
@@ -532,7 +494,6 @@ namespace BJSON.Example
 
 			Console.WriteLine();
 			{
-				// More complex JSON object with pretty print enabled
 				let json = JsonObject()
 					{
 						("firstName", "John"),
@@ -578,11 +539,9 @@ namespace BJSON.Example
 
 				using (JsonValue json = Json.Deserialize(jsonString))
 				{
-					// Direct path access with GetByPointer
 					if (StringView storeName = json.GetByPointer("/store/name"))
 						Console.WriteLine(scope $"Store name: {storeName}");
 
-					// Access array elements
 					if (StringView productName = json.GetByPointer("/store/products/0/name"))
 						Console.WriteLine(scope $"First product: {productName}");
 
@@ -593,7 +552,6 @@ namespace BJSON.Example
 					let addr = json.GetByPointerOrDefault<StringView>("/store/address", "N/A");
 					Console.WriteLine(scope $"Address: {addr}");
 
-					// Error handling
 					if (json.GetByPointer("/invalid/path") case .Err(let err))
 					{
 						Console.WriteLine(scope $"Expected error: {err}");
@@ -603,7 +561,6 @@ namespace BJSON.Example
 
 			Console.WriteLine();
 			{
-				// JSONC (JSON with Comments)
 				var config = DeserializerConfig() { EnableComments = true };
 				var deserializer = scope Deserializer(config);
 
@@ -643,7 +600,6 @@ namespace BJSON.Example
 
 			Console.WriteLine("\n=== JSON Schema Validation ===\n");
 			{
-				// Define a JSON Schema for a User object
 				let schemaJson = """
 					{
 						"$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -658,7 +614,6 @@ namespace BJSON.Example
 					}
 					""";
 
-				// Parse the schema - Result<JsonSchema, JsonSchemaError>
 				let schemaResult = JsonSchema.Parse(schemaJson);
 				if (schemaResult case .Err(let err))
 				{
@@ -668,10 +623,6 @@ namespace BJSON.Example
 					return 1;
 				}
 				
-				// Get a reference to the schema from the Result
-				// We'll use it through the Result to avoid ownership issues
-
-				// Valid JSON that matches the schema
 				let validJson = """
 					{
 						"name": "Alice",
@@ -689,7 +640,6 @@ namespace BJSON.Example
 					}
 					""";
 
-				// Invalid JSON - wrong type for age
 				let wrongTypeJson = """
 					{
 						"name": "Charlie",
@@ -697,7 +647,6 @@ namespace BJSON.Example
 					}
 					""";
 
-				// Validate the valid JSON
 				Console.WriteLine("Validating valid JSON:");
 				{
 					let instanceResult = Json.Deserialize(validJson);
@@ -718,7 +667,6 @@ namespace BJSON.Example
 					}
 				}
 
-				// Validate the invalid JSON (missing required field)
 				Console.WriteLine("\nValidating JSON with missing required field:");
 				{
 					let instanceResult = Json.Deserialize(invalidJson);
@@ -739,7 +687,6 @@ namespace BJSON.Example
 					}
 				}
 
-				// Validate the wrong type JSON
 				Console.WriteLine("\nValidating JSON with wrong type:");
 				{
 					let instanceResult = Json.Deserialize(wrongTypeJson);
