@@ -7,8 +7,11 @@ namespace BJSON
 {
 	class JsonWriter
 	{
+		private const int cMaximumDepth = 200;
+
 		private JsonWriterOptions options;
 		private int depth = 0;
+		private int nesting = 0;
 		private Stream stream;
 
 		public this()
@@ -200,6 +203,7 @@ namespace BJSON
 		{
 			this.options = options;
 			this.depth = 0;
+			this.nesting = 0;
 			this.stream = stream;
 			defer { this.stream = null; }
 
@@ -292,6 +296,12 @@ namespace BJSON
 
 		Result<void, JsonSerializationError> WriteArray(JsonValue value)
 		{
+			nesting++;
+			defer { nesting--; }
+
+			if (nesting > cMaximumDepth)
+				return .Err(.MaximumDepthReached);
+
 			let array = value.AsArray().Value;
 
 			Try!(WriteChar(stream, (char8)JsonToken.LEFT_SQUARE_BRACKET));
@@ -328,6 +338,12 @@ namespace BJSON
 
 		Result<void, JsonSerializationError> WriteObject(JsonValue value)
 		{
+			nesting++;
+			defer { nesting--; }
+
+			if (nesting > cMaximumDepth)
+				return .Err(.MaximumDepthReached);
+
 			let obj = value.AsObject().Value;
 
 			Try!(WriteChar(stream, (char8)JsonToken.LEFT_CURLY_BRACKET));

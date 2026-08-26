@@ -64,7 +64,7 @@ public class JsonDeserializerCodeGen
 	private static void EmitFieldDeserialization(String code, FieldInfo field, Type ownerType)
 	{
 		let jsonName = scope String();
-		JsonCodeGenHelper.GetJsonPropertyName(field, jsonName);
+		JsonCodeGenHelper.GetSourceLiteralName(field, jsonName);
 
 		var fieldType = field.FieldType;
 		let isNullable = fieldType.IsNullable;

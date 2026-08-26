@@ -93,7 +93,7 @@ public class JsonSerializerCodeGen
 	private static void EmitFieldSerializationWithOptions(String code, FieldInfo field, Type ownerType)
 	{
 		let jsonName = scope String();
-		JsonCodeGenHelper.GetJsonPropertyName(field, jsonName);
+		JsonCodeGenHelper.GetJsonLiteralName(field, jsonName);
 
 		var fieldType = field.FieldType;
 		let isNullable = fieldType.IsNullable;

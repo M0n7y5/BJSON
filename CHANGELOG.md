@@ -17,12 +17,16 @@
 - Fixed null reference fields crashing the emitted serializer: a null `String`, `List`, `Dictionary`, or nested `[JsonObject]` field now writes `null`, and `[JsonIgnore(Condition = .WhenWritingNull)]` skips it, which the condition previously did only for `Nullable<T>`
 - Fixed a JSON null failing typed deserialization for reference and `Nullable<T>` fields: null now leaves the field at its current value instead of returning an error, so a document written by this library reads back
 - Fixed unsupported collection element types emitting invalid JSON such as `[,,]` or `{"key":}` while reporting success. The generator now fails the build with the offending type name
+- Fixed `[JsonPropertyName]` values being spliced into emitted code unescaped: a name holding a quote broke compilation, and a backslash corrupted the key and produced invalid JSON. Names are now escaped for both the emitted source and the JSON output, and a name holding a control character other than tab, newline, or carriage return fails generation
+- Fixed `JsonPointer` rejecting array indexes above 2147483647 as malformed, and reduced the per token stack growth of pointer resolution to a single buffer
 
 ### API Changes
 
 - `Json.Serialize(json, String)` and `Json.Serialize<T>(obj, String)` now append to the buffer instead of overwriting it from position zero, which used to leave stale trailing characters when the buffer was not empty
 - `JsonWriter.WriteBool`, `WriteInt`, `WriteUInt`, `WriteString`, and `WriteEscaped` return `Result<void, JsonSerializationError>` instead of `void`, and `WriteRaw` and `WriteChar` are new. Regenerate types that carry an emitted serializer
-- Added `JsonSerializationError.StreamWriteFailed`
+- Added `JsonValue.AsString`, `AsBool`, and `AsNumber`, which report a type mismatch instead of the silent default the implicit conversions return
+- Added `JsonSerializationError.StreamWriteFailed` and `JsonSerializationError.MaximumDepthReached`. Serializing a tree nested deeper than 200 levels now returns an error instead of overflowing the stack
+- `JsonObject` and `JsonArray` no longer preallocate 32 dictionary slots and 16 list slots per container, which cut the cost of a small document by roughly an order of magnitude
 - Trailing data now reports the real line number and names `end of document` as the expected token
 
 ### Known Limitations

@@ -140,6 +140,47 @@ namespace BJSON.Models
 			return this.As<JsonArray>();
 		}
 
+		/// Attempts to read this value as a string.
+		/// The view aliases this value, so an SSO string requires the value to outlive the view.
+		/// @returns The string contents, or an error if not a string type.
+		public Result<StringView> AsString() mut
+		{
+			if (type != .STRING)
+				return .Err;
+
+			if (smallString)
+				return StringView(&data.smallStr.data, data.smallStr.length);
+
+			return StringView(data.string);
+		}
+
+		/// Attempts to read this value as a boolean.
+		/// @returns The boolean, or an error if not a boolean type.
+		public Result<bool> AsBool()
+		{
+			if (type != .BOOL)
+				return .Err;
+
+			return data.boolean;
+		}
+
+		/// Attempts to read this value as a number.
+		/// @returns The number as a double, or an error if not a number type.
+		public Result<double> AsNumber()
+		{
+			switch (type)
+			{
+			case .NUMBER:
+				return data.number;
+			case .NUMBER_SIGNED:
+				return (double)data.signedNumber;
+			case .NUMBER_UNSIGNED:
+				return (double)data.unsignedNumber;
+			default:
+				return .Err;
+			}
+		}
+
 		public JsonValue this[String key]
 		{
 			get
@@ -560,7 +601,7 @@ namespace BJSON.Models
 		public this()
 		{
 			type = .OBJECT;
-			data.object = new Dictionary<String, JsonValue>(32);
+			data.object = new Dictionary<String, JsonValue>();
 		}
 
 		public new void Dispose()
@@ -609,6 +650,10 @@ namespace BJSON.Models
 
 		public int Count => data.object.Count;
 
+		/// Adds a key and value, copying the key. Fatal errors if the key is already present:
+		/// assign through the indexer to overwrite.
+		/// @param key The key to add.
+		/// @param value The value to add. The object takes ownership.
 		public void Add(StringView key, JsonValue value)
 		{
 			data.object.Add(new String(key), value);
@@ -700,7 +745,7 @@ namespace BJSON.Models
 		public this()
 		{
 			type = .ARRAY;
-			data.array = new List<JsonValue>(16);
+			data.array = new List<JsonValue>();
 		}
 
 		public new void Dispose()

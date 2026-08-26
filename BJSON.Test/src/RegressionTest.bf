@@ -71,6 +71,16 @@ class NullableHolder
 	public String Skipped = null;
 }
 
+[JsonObject]
+class AwkwardNames
+{
+	[JsonPropertyName("quote\"inside")]
+	public int First = 1;
+
+	[JsonPropertyName("back\\slash")]
+	public int Second = 2;
+}
+
 class RegressionTest
 {
 	[Test(Name = "Regression: shortest round-trip for a 17 digit negative double")]
@@ -191,5 +201,69 @@ class RegressionTest
 		let restored = scope NullableHolder();
 		var stream = scope StringStream(output, .Reference);
 		Test.Assert(Json.Deserialize<NullableHolder>(stream, restored) case .Ok, "a null valued document must deserialize");
+	}
+
+	[Test(Name = "Regression: property names with quotes and backslashes round-trip")]
+	public static void T_AwkwardPropertyNames()
+	{
+		let names = scope AwkwardNames();
+
+		let output = scope String();
+		Test.Assert(Json.Serialize(names, output) case .Ok, "serialize must succeed");
+		Test.Assert(output == "{\"quote\\\"inside\":1,\"back\\\\slash\":2}", scope $"got '{output}'");
+
+		var parsed = Json.Deserialize(output);
+		defer parsed.Dispose();
+		Test.Assert(parsed case .Ok(let doc), "the emitted keys must be valid JSON");
+
+		var root = doc;
+		Test.Assert(root.TryGet("quote\"inside") case .Ok, "the quoted key must survive escaping");
+
+		let restored = scope AwkwardNames();
+		restored.First = 0;
+		var stream = scope StringStream(output, .Reference);
+		Test.Assert(Json.Deserialize<AwkwardNames>(stream, restored) case .Ok, "the emitted keys must read back");
+		Test.Assert(restored.First == 1, scope $"expected 1 got {restored.First}");
+	}
+
+	[Test(Name = "Regression: writing a deeply nested tree reports the depth cap")]
+	public static void T_WriterDepthCap()
+	{
+		var root = JsonArray();
+		defer root.Dispose();
+
+		var current = root;
+		for (int i < 250)
+		{
+			var child = JsonArray();
+			current.Add(child);
+			current = child;
+		}
+
+		let output = scope String();
+		Test.Assert(Json.Serialize(root, output) case .Err, "a tree deeper than the cap must not overflow the stack");
+	}
+
+	[Test(Name = "Regression: typed accessors reject the wrong type")]
+	public static void T_TypedAccessors()
+	{
+		var result = Json.Deserialize("{\"text\":\"hello\",\"flag\":true,\"count\":7}");
+		defer result.Dispose();
+
+		Test.Assert(result case .Ok(let doc), "parse must succeed");
+
+		var root = doc;
+		var text = root.TryGetRef("text").Value;
+		Test.Assert(text.AsString() case .Ok(let str), "text must read as a string");
+		Test.Assert(str == "hello", scope $"got '{str}'");
+		Test.Assert(text.AsNumber() case .Err, "a string must not read as a number");
+
+		var flag = root.TryGetRef("flag").Value;
+		Test.Assert(flag.AsBool() case .Ok(let boolean) && boolean, "flag must read as true");
+		Test.Assert(flag.AsString() case .Err, "a bool must not read as a string");
+
+		var count = root.TryGetRef("count").Value;
+		Test.Assert(count.AsNumber() case .Ok(let number) && (number == 7), "count must read as 7");
+		Test.Assert(count.AsBool() case .Err, "a number must not read as a bool");
 	}
 }

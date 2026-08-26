@@ -73,6 +73,7 @@ namespace BJSON
 
 			var current = root;
 			var remaining = pointer.Substring(1);
+			let unescaped = scope String();
 
 			while (!remaining.IsEmpty)
 			{
@@ -90,7 +91,7 @@ namespace BJSON
 					remaining = remaining.Substring(nextSlash + 1);
 				}
 
-				let unescaped = scope String();
+				unescaped.Clear();
 				if (Unescape(token, unescaped) case .Err)
 					return .Err(.InvalidEscapeSequence);
 
@@ -194,6 +195,8 @@ namespace BJSON
 			}
 		}
 
+		/// Parses a decimal array index. An index too large for any array is clamped, so the
+		/// walk reports it as out of bounds rather than as a syntax error.
 		private static Result<int> ParseArrayIndex(StringView token)
 		{
 			if (token.IsEmpty)
@@ -208,8 +211,11 @@ namespace BJSON
 					return .Err;
 			}
 
-			if (Int32.Parse(token) case .Ok(let val))
-				return .Ok(val);
+			if (token.Length > 19)
+				return .Ok(int.MaxValue);
+
+			if (Int64.Parse(token) case .Ok(let val))
+				return .Ok((int)val);
 
 			return .Err;
 		}

@@ -9,6 +9,7 @@ namespace BJSON.Enums
 		case InfinityNotAllowed;
 		case UnknownType;
 		case StreamWriteFailed;
+		case MaximumDepthReached;
 
 		public override void ToString(String string)
 		{
@@ -24,6 +25,8 @@ namespace BJSON.Enums
 				string.Append("Unknown JSON type encountered!");
 			case StreamWriteFailed:
 				string.Append("Writing to the stream failed!");
+			case MaximumDepthReached:
+				string.Append("Maximum nesting depth reached!");
 			}
 		}
 	}

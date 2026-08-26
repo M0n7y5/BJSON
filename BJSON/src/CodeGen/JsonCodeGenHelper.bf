@@ -45,6 +45,72 @@ public class JsonCodeGenHelper
 		}
 	}
 
+	/// Appends a property name escaped for a Beef source string literal, so a name carrying
+	/// a quote or a backslash cannot break or alter the emitted code.
+	/// @param field The field whose name is emitted.
+	/// @param outName Receives the escaped name.
+	[Comptime]
+	public static void GetSourceLiteralName(FieldInfo field, String outName)
+	{
+		let name = scope String();
+		GetJsonPropertyName(field, name);
+		AppendSourceEscaped(name, outName);
+	}
+
+	/// Appends a property name escaped for JSON output and then for a Beef source string
+	/// literal, so the emitted writer produces a valid JSON key without escaping at runtime.
+	/// @param field The field whose name is emitted.
+	/// @param outName Receives the escaped name.
+	[Comptime]
+	public static void GetJsonLiteralName(FieldInfo field, String outName)
+	{
+		let name = scope String();
+		GetJsonPropertyName(field, name);
+
+		let jsonEscaped = scope String();
+		for (let c in StringView(name))
+		{
+			switch (c)
+			{
+			case '"': jsonEscaped.Append("\\\"");
+			case '\\': jsonEscaped.Append("\\\\");
+			case '\b': jsonEscaped.Append("\\b");
+			case '\f': jsonEscaped.Append("\\f");
+			case '\n': jsonEscaped.Append("\\n");
+			case '\r': jsonEscaped.Append("\\r");
+			case '\t': jsonEscaped.Append("\\t");
+			default:
+				if ((uint8)c < 0x20)
+					jsonEscaped.AppendF("\\u{:X4}", (int)(uint8)c);
+				else
+					jsonEscaped.Append(c);
+			}
+		}
+
+		AppendSourceEscaped(jsonEscaped, outName);
+	}
+
+	[Comptime]
+	private static void AppendSourceEscaped(StringView text, String outText)
+	{
+		for (let c in text)
+		{
+			switch (c)
+			{
+			case '"': outText.Append("\\\"");
+			case '\\': outText.Append("\\\\");
+			case '\n': outText.Append("\\n");
+			case '\r': outText.Append("\\r");
+			case '\t': outText.Append("\\t");
+			default:
+				if ((uint8)c < 0x20)
+					Runtime.FatalError(scope $"BJSON cannot emit a property name containing the control character 0x{(int)(uint8)c:X2}.");
+
+				outText.Append(c);
+			}
+		}
+	}
+
 	/// Unwraps Nullable<T> to get the underlying type T.
 	[Comptime]
 	public static Type UnwrapNullable(Type fieldType)
