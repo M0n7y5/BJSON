@@ -6,30 +6,6 @@ using System.Diagnostics;
 using System.Collections;
 namespace BJSON
 {
-	/// Specifies how duplicate keys in JSON objects should be handled during parsing.
-	public enum DuplicateKeyBehavior
-	{
-		/// Return error if duplicate key is found.
-		/// NOTE: RFC 8259 only says names SHOULD be unique, so this rejects documents that other
-		/// parsers accept.
-		ThrowError,
-		/// Skip the duplicate and keep the first occurrence.
-		Ignore,
-		/// Overwrite the previous value with the duplicate key's value.
-		AlwaysRewrite
-	}
-
-	/// Configuration options for JSON deserialization.
-	public struct DeserializerConfig
-	{
-		/// Whether `//` line comments and `/* */` block comments are skipped like whitespace.
-		/// NOTE: Comments are not part of RFC 8259, so such documents are not portable.
-		public bool EnableComments = false;
-
-		/// Behavior when an object repeats a key that is already present.
-		public DuplicateKeyBehavior DuplicateBehavior = .AlwaysRewrite;
-	}
-
 	/// Builds a JsonValue tree from JSON text: the IHandler that JsonReader drives while parsing.
 	/// A returned tree belongs to the caller, and the instance drops its parse state on every exit
 	/// path, so one Deserializer can parse any number of documents.
@@ -37,16 +13,16 @@ namespace BJSON
 	/// the reader abort with a parse error.
 	public class Deserializer : IHandler
 	{
-		Queue<JsonValue> treeStack = new .(32) ~ delete _;
+		Queue<JsonValue> mTreeStack = new .(32) ~ delete _;
 
-		String currentKey = null;
+		String mCurrentKey = null;
 		// Keys are copied into this arena because the reader passes a view of a scope buffer that
 		// dies before the matching value arrives. The arena is released with the deserializer, not
 		// per document, so keys from earlier parses stay resident until then.
 		BumpAllocator keyAlloc = new .() ~ delete _;
 
-		bool IsIgnoringDuplicate = false;
-		int IgnoredDepthCounter = 0;
+		bool mIsIgnoringDuplicate = false;
+		int mIgnoredDepthCounter = 0;
 
 		/// Parsing options. JsonReader copies these when Deserialize constructs it, so a change
 		/// made during a parse does not affect the parse in flight.
@@ -67,32 +43,11 @@ namespace BJSON
 		/// @returns The parsed JsonValue, owned by the caller and needing Dispose, or a JsonParsingError.
 		public Result<JsonValue, JsonParsingError> Deserialize(StringView jsonText)
 		{
-			let reader = scope JsonReader(this);
+			let reader = scope JsonReader(this, Config);
 
 			let result = reader.Parse(scope StringStream(jsonText, .Reference));
 
-			switch (result)
-			{
-				case .Ok:
-					{
-						if (this.treeStack.Count == 0)
-						{
-							return .Err(.InvalidDocument);
-						}
-
-						let root = this.treeStack.Front;
-						ResetParseState();
-
-						return root;
-					}
-				case .Err(let err):
-					if (this.treeStack.Count != 0)
-						this.treeStack.Front.Dispose();
-
-					ResetParseState();
-
-					return .Err(err);
-			}
+			return FinishParse(result);
 		}
 
 		/// Deserializes JSON from a stream into a JsonValue tree.
@@ -100,27 +55,36 @@ namespace BJSON
 		/// @returns The parsed JsonValue, owned by the caller and needing Dispose, or a JsonParsingError.
 		public Result<JsonValue, JsonParsingError> Deserialize(Stream stream)
 		{
-			let reader = scope JsonReader(this);
+			let reader = scope JsonReader(this, Config);
 
 			let result = reader.Parse(stream);
 
-			switch (result)
+			return FinishParse(result);
+		}
+
+		/// Turns a finished parse into the document root and drops the parse state either way.
+		/// A successful root leaves with the caller; a failed parse disposes the partial tree here.
+		/// @param parseResult The result JsonReader.Parse reported for this document.
+		/// @returns The document root, InvalidDocument when the parse built nothing, or the parse error.
+		private Result<JsonValue, JsonParsingError> FinishParse(Result<void, JsonParsingError> parseResult)
+		{
+			switch (parseResult)
 			{
 				case .Ok:
 					{
-						if (this.treeStack.Count == 0)
+						if (mTreeStack.Count == 0)
 						{
 							return .Err(.InvalidDocument);
 						}
 
-						let root = this.treeStack.Front;
+						let root = mTreeStack.Front;
 						ResetParseState();
 
 						return root;
 					}
 				case .Err(let err):
-					if (this.treeStack.Count != 0)
-						this.treeStack.Front.Dispose();
+					if (mTreeStack.Count != 0)
+						mTreeStack.Front.Dispose();
 
 					ResetParseState();
 
@@ -132,24 +96,24 @@ namespace BJSON
 		/// The returned tree is owned by the caller, so the queue is cleared without disposing.
 		private void ResetParseState()
 		{
-			treeStack.Clear();
-			currentKey = null;
-			IsIgnoringDuplicate = false;
-			IgnoredDepthCounter = 0;
+			mTreeStack.Clear();
+			mCurrentKey = null;
+			mIsIgnoringDuplicate = false;
+			mIgnoredDepthCounter = 0;
 		}
 
 		[Inline]
 		private bool AddValue(JsonValue value)
 		{
-			if (treeStack.Count == 0)
+			if (mTreeStack.Count == 0)
 			{
-				treeStack.Add(value);
+				mTreeStack.Add(value);
 				return true;
 			}
 
-			var document = ref treeStack.Back;
+			var document = ref mTreeStack.Back;
 
-			if (IsIgnoringDuplicate)
+			if (mIsIgnoringDuplicate)
 			{
 				value.Dispose();
 				return true;
@@ -158,7 +122,7 @@ namespace BJSON
 			switch (document.type)
 			{
 				case .OBJECT:
-					if (currentKey == null)
+					if (mCurrentKey == null)
 					{
 						value.Dispose();
 						return false;
@@ -179,32 +143,144 @@ namespace BJSON
 		[Inline]
 		private bool AddToObject(JsonObject jObj, JsonValue value)
 		{
-			if (jObj.data.object.ContainsKeyAlt(currentKey))
+			if (jObj.data.object.ContainsKeyAlt(mCurrentKey))
 			{
 				switch (Config.DuplicateBehavior)
 				{
 					case .ThrowError:
 						value.Dispose();
-						currentKey = null;
+						mCurrentKey = null;
 						return false;
 
 					case .Ignore:
 						value.Dispose();
-						currentKey = null;
+						mCurrentKey = null;
 						return true;
 
 					case .AlwaysRewrite:
-						jObj[currentKey] = value;
-						currentKey = null;
+						jObj[mCurrentKey] = value;
+						mCurrentKey = null;
 						return true;
 				}
 			}
 			else
 			{
-				jObj.Add(currentKey, value);
-				currentKey = null;
+				jObj.Add(mCurrentKey, value);
+				mCurrentKey = null;
 				return true;
 			}
+		}
+
+		/// Opens a container, either as the document root or under the pending key. A duplicate key
+		/// follows Config.DuplicateBehavior; `.Ignore` drops every event up to the matching end.
+		/// @param container A fresh JsonObject or JsonArray. Like AddValue, this disposes it on
+		/// every path that does not hand it to the tree.
+		/// @returns False when the container cannot be opened, which aborts the parse.
+		private bool StartContainer(JsonValue container)
+		{
+			if (mIsIgnoringDuplicate)
+			{
+				container.Dispose();
+				mIgnoredDepthCounter++;
+				return true;
+			}
+
+			if (mTreeStack.Count == 0)
+			{
+				if (mCurrentKey != null)
+				{
+					container.Dispose();
+					return false;
+				}
+
+				mTreeStack.Add(container);
+				return true;
+			}
+
+			var document = ref mTreeStack.Back;
+
+			switch (document.type)
+			{
+				case .OBJECT:
+					if (mCurrentKey == null)
+					{
+						container.Dispose();
+						return false;
+					}
+
+					let jObj = document.As<JsonObject>();
+
+					if (jObj.data.object.ContainsKeyAlt(mCurrentKey))
+					{
+						switch (Config.DuplicateBehavior)
+						{
+							case .ThrowError:
+								container.Dispose();
+								return false;
+
+							case .Ignore:
+								container.Dispose();
+								mIsIgnoringDuplicate = true;
+								mCurrentKey = null;
+								return true;
+
+							// The indexer disposes the value it replaces, so the old one is not
+							// disposed here.
+							case .AlwaysRewrite:
+								jObj[mCurrentKey] = container;
+								mTreeStack.Add(container);
+								mCurrentKey = null;
+								return true;
+						}
+					}
+
+					jObj.Add(mCurrentKey, container);
+					mTreeStack.Add(container);
+					mCurrentKey = null;
+					return true;
+
+				case .ARRAY:
+					document.As<JsonArray>().Add(container);
+					mTreeStack.Add(container);
+					return true;
+
+				default:
+					container.Dispose();
+					return false;
+			}
+		}
+
+		/// Closes the open container, leaving the root on the stack for Deserialize to return.
+		/// While a duplicate is being ignored this only unwinds the ignored nesting.
+		/// @param expected The type of the container the closing token belongs to.
+		/// @returns False when no container is open, or when the closed one is of another type.
+		private bool EndContainer(JsonType expected)
+		{
+			if (mIsIgnoringDuplicate)
+			{
+				if (mIgnoredDepthCounter == 0)
+				{
+					mIsIgnoringDuplicate = false;
+					return true;
+				}
+
+				mIgnoredDepthCounter--;
+				return true;
+			}
+
+			if (mTreeStack.Count == 0)
+				return false;
+
+			if (mTreeStack.Count == 1)
+				return true;
+
+			if (mTreeStack.TryPopBack() case .Ok(let val))
+			{
+				if (val.type != expected)
+					return false;
+			}
+
+			return true;
 		}
 
 		/// Adds a JSON null to the open container, or as the document root.
@@ -253,74 +329,10 @@ namespace BJSON
 			return AddValue(JsonString(value));
 		}
 
-		/// Opens an object, either as the document root or under the pending key. A duplicate key
-		/// follows Config.DuplicateBehavior; `.Ignore` drops every event up to the matching end.
+		/// Opens an object, either as the document root or under the pending key.
 		public bool StartObject()
 		{
-			if (IsIgnoringDuplicate)
-			{
-				IgnoredDepthCounter++;
-				return true;
-			}
-
-			if (treeStack.Count == 0)
-			{
-				if (currentKey != null)
-					return false;
-
-				treeStack.Add(JsonObject());
-				return true;
-			}
-			else
-			{
-				var document = ref treeStack.Back;
-
-				switch (document.type)
-				{
-					case .OBJECT:
-						if (currentKey == null)
-							return false;
-
-						let jObj = document.As<JsonObject>();
-
-						if (jObj.data.object.ContainsKeyAlt(currentKey))
-						{
-							switch (Config.DuplicateBehavior)
-							{
-								case .ThrowError:
-									return false;
-
-								case .Ignore:
-									IsIgnoringDuplicate = true;
-									currentKey = null;
-									return true;
-
-								case .AlwaysRewrite:
-									let jVal = JsonObject();
-									jObj[currentKey] = jVal;
-									treeStack.Add(jVal);
-									currentKey = null;
-									return true;
-							}
-						}
-						else
-						{
-							let jVal = JsonObject();
-							jObj.Add(currentKey, jVal);
-							treeStack.Add(jVal);
-							currentKey = null;
-							return true;
-						}
-
-					case .ARRAY:
-						let jVal = JsonObject();
-						document.As<JsonArray>().Add(jVal);
-						treeStack.Add(jVal);
-						return true;
-					default:
-						return false;
-				}
-			}
+			return StartContainer(JsonObject());
 		}
 
 		/// Records the key that the next value is stored under. `copy` is ignored: the key is
@@ -328,7 +340,7 @@ namespace BJSON
 		[Inline]
 		public bool Key(StringView str, bool copy)
 		{
-			currentKey = new:keyAlloc String(str);
+			mCurrentKey = new:keyAlloc String(str);
 
 			return true;
 		}
@@ -336,132 +348,19 @@ namespace BJSON
 		/// Closes the open object. The root container stays on the stack for Deserialize to return.
 		public bool EndObject()
 		{
-			if (IsIgnoringDuplicate)
-			{
-				if (IgnoredDepthCounter == 0)
-				{
-					IsIgnoringDuplicate = false;
-					return true;
-				}
-
-				IgnoredDepthCounter--;
-				return true;
-			}
-
-			if (treeStack.Count == 0)
-				return false;
-
-			if (treeStack.Count == 1)
-				return true;
-
-			if (treeStack.TryPopBack() case .Ok(let val))
-			{
-				if (val.type != .OBJECT)
-					return false;
-			}
-
-			return true;
+			return EndContainer(.OBJECT);
 		}
 
 		/// Opens an array, with the same duplicate-key handling as StartObject.
 		public bool StartArray()
 		{
-			if (IsIgnoringDuplicate)
-			{
-				IgnoredDepthCounter++;
-				return true;
-			}
-
-			if (treeStack.Count == 0)
-			{
-				if (currentKey != null)
-					return false;
-
-				treeStack.Add(JsonArray());
-				return true;
-			}
-			else
-			{
-				var document = ref treeStack.Back;
-
-				switch (document.type)
-				{
-					case .OBJECT:
-						if (currentKey == null)
-							return false;
-
-						let jObj = document.As<JsonObject>();
-
-						if (jObj.data.object.ContainsKeyAlt(currentKey))
-						{
-							switch (Config.DuplicateBehavior)
-							{
-								case .ThrowError:
-									return false;
-
-								case .Ignore:
-									IsIgnoringDuplicate = true;
-									currentKey = null;
-									return true;
-
-								case .AlwaysRewrite:
-									let jVal = JsonArray();
-									jObj[currentKey] = jVal;
-									treeStack.Add(jVal);
-									currentKey = null;
-									return true;
-							}
-						}
-						else
-						{
-							let jVal = JsonArray();
-							jObj.Add(currentKey, jVal);
-							treeStack.Add(jVal);
-							currentKey = null;
-							return true;
-						}
-
-					case .ARRAY:
-						let jVal = JsonArray();
-						document.As<JsonArray>().Add(jVal);
-
-						treeStack.Add(jVal);
-
-						return true;
-					default:
-						return false;
-				}
-			}
+			return StartContainer(JsonArray());
 		}
 
 		/// Closes the open array. The root container stays on the stack for Deserialize to return.
 		public bool EndArray()
 		{
-			if (IsIgnoringDuplicate)
-			{
-				if (IgnoredDepthCounter == 0)
-				{
-					IsIgnoringDuplicate = false;
-					return true;
-				}
-
-				IgnoredDepthCounter--;
-				return true;
-			}
-
-			if (treeStack.Count == 0)
-				return false;
-
-			if (treeStack.Count == 1)
-				return true;
-
-			if (treeStack.TryPopBack() case .Ok(let val))
-			{
-				if (val.type != .ARRAY)
-					return false;
-			}
-
-			return true;
+			return EndContainer(.ARRAY);
 		}
 	}
 }

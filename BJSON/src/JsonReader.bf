@@ -12,8 +12,8 @@ namespace BJSON
 	/// Line and column travel in the error payloads; \n, \r\n, and a lone \r each end a line.
 	class JsonReader
 	{
-		IHandler _handler;
-		DeserializerConfig _config;
+		IHandler mHandler;
+		DeserializerConfig mConfig;
 
 		uint column = 1;
 		uint line = 1;
@@ -27,17 +27,20 @@ namespace BJSON
 		private const int MaxNumberBufferSize = 1024;
 		private const int DefaultStringBufferSize = 256;
 
-		/// Creates a reader that reports parse events to a handler.
-		/// @param handler The event sink. A Deserializer also supplies its DeserializerConfig, which
-		/// is copied here, so config changes after this point do not reach the parse.
-		public this(IHandler handler)
+		/// Creates a reader that reports parse events to a handler, with default parse options.
+		/// @param handler The event sink.
+		public this(IHandler handler) : this(handler, DeserializerConfig())
 		{
-			this._handler = handler;
-			
-			if (handler is Deserializer)
-			{
-				this._config = ((Deserializer)handler).Config;
-			}
+		}
+
+		/// Creates a reader that reports parse events to a handler.
+		/// @param handler The event sink.
+		/// @param config The parse options. They are copied here, so config changes after this
+		/// point do not reach the parse.
+		public this(IHandler handler, DeserializerConfig config)
+		{
+			this.mHandler = handler;
+			this.mConfig = config;
 		}
 
 		/// Parses one JSON document and reports it to the handler.
@@ -95,7 +98,7 @@ namespace BJSON
 					stream.Skip(1);
 					column++;
 				case '/':
-					if (_config.EnableComments)
+					if (mConfig.EnableComments)
 					{
 						Try!(SkipComment(stream));
 						continue SKIP;
@@ -255,7 +258,7 @@ namespace BJSON
 		{
 			Try!(ConsumeLiteral(stream, "null"));
 
-			if (!_handler.Null())
+			if (!mHandler.Null())
 				return .Err(.UnexpectedToken(line, column, "null"));
 
 			return .Ok;
@@ -270,14 +273,14 @@ namespace BJSON
 				case 't':
 					Try!(ConsumeLiteral(stream, "true"));
 
-					if (!_handler.Bool(true))
+					if (!mHandler.Bool(true))
 						return .Err(.InvalidValue(line, column));
 					return .Ok;
 
 				case 'f':
 					Try!(ConsumeLiteral(stream, "false"));
 
-					if (!_handler.Bool(false))
+					if (!mHandler.Bool(false))
 						return .Err(.InvalidValue(line, column));
 
 					return .Ok;
@@ -395,9 +398,9 @@ namespace BJSON
 						bool res = false;
 
 						if (isKey)
-							res = _handler.Key(str, true);
+							res = mHandler.Key(str, true);
 						else
-							res = _handler.String(str, true);
+							res = mHandler.String(str, true);
 
 						stream.Skip(1);
 						column++;
@@ -490,7 +493,7 @@ namespace BJSON
 			stream.Skip(1);
 			column++;
 
-			if (!_handler.StartObject())
+			if (!mHandler.StartObject())
 			{
 				return .Err(.UnexpectedToken(line, column, ""));
 			}
@@ -506,7 +509,7 @@ namespace BJSON
 
 			if (ConsumeChar(stream, '}') case .Ok)
 			{
-				if (!_handler.EndObject())
+				if (!mHandler.EndObject())
 					return .Err(.UnexpectedToken(line, column, ""));
 
 				currentDepth--;
@@ -541,7 +544,7 @@ namespace BJSON
 						case '}':
 							stream.Skip(1);
 							column++;
-						if (!_handler.EndObject())
+						if (!mHandler.EndObject())
 							return .Err(.UnexpectedToken(line, column, ""));
 
 							currentDepth--;
@@ -563,7 +566,7 @@ namespace BJSON
 			stream.Skip(1);
 			column++;
 
-			if (!_handler.StartArray())
+			if (!mHandler.StartArray())
 			{
 				return .Err(.UnexpectedToken(line, column, ""));
 			}
@@ -579,7 +582,7 @@ namespace BJSON
 
 			if (ConsumeChar(stream, ']') case .Ok)
 			{
-				if (!_handler.EndArray())
+				if (!mHandler.EndArray())
 					return .Err(.UnexpectedToken(line, column, ""));
 
 				currentDepth--;
@@ -599,7 +602,7 @@ namespace BJSON
 				}
 				else if (ConsumeChar(stream, ']') case .Ok)
 				{
-					if (!_handler.EndArray())
+					if (!mHandler.EndArray())
 						return .Err(.UnexpectedToken(line, column, ""));
 
 					currentDepth--;
@@ -848,7 +851,7 @@ namespace BJSON
 				StringView strNum = StringView(&num.buffer, num.bufIdx);
 				if (let value = double.Parse(strNum))
 				{
-					if (!_handler.Number(value))
+					if (!mHandler.Number(value))
 					{
 						return .Err(.InvalidValue(line, num.startColumn));
 					}
@@ -867,7 +870,7 @@ namespace BJSON
 						StringView strNum = StringView(&num.buffer, num.bufIdx);
 						if (let value = double.Parse(strNum))
 						{
-							if (!_handler.Number(value))
+							if (!mHandler.Number(value))
 								return .Err(.InvalidValue(line, num.startColumn));
 						}
 						else
@@ -876,20 +879,20 @@ namespace BJSON
 					else if (num.intVal == 0)
 					{
 						// A bare -0 has no integer form, only the double keeps the sign.
-						if (!_handler.Number(-0.0))
+						if (!mHandler.Number(-0.0))
 							return .Err(.InvalidValue(line, num.startColumn));
 					}
 					else if (num.intVal == (uint64)int64.MaxValue + 1)
 					{
 						// -(int64)9223372036854775808 overflows int64 and traps where arithmetic checks
 						// are enabled, so MinValue is reported directly.
-						if (!_handler.Number(int64.MinValue))
+						if (!mHandler.Number(int64.MinValue))
 							return .Err(.InvalidValue(line, num.startColumn));
 					}
 					else
 					{
 						int64 val = -(int64)num.intVal;
-						if (!_handler.Number(val))
+						if (!mHandler.Number(val))
 							return .Err(.InvalidValue(line, num.startColumn));
 					}
 				}
@@ -897,12 +900,12 @@ namespace BJSON
 				{
 					if (num.intVal > (uint64)int64.MaxValue)
 					{
-						if (!_handler.Number(num.intVal))
+						if (!mHandler.Number(num.intVal))
 							return .Err(.InvalidValue(line, num.startColumn));
 					}
 					else
 					{
-						if (!_handler.Number((int64)num.intVal))
+						if (!mHandler.Number((int64)num.intVal))
 							return .Err(.InvalidValue(line, num.startColumn));
 					}
 				}
