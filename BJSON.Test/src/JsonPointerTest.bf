@@ -233,5 +233,52 @@ namespace BJSON.Test
 				Test.Assert(output == "/a~1b/m~0n", "Build with special chars should escape properly");
 			}
 		}
+
+		[Test(Name = "JSON Pointer typed defaults resolve values and fall back when absent")]
+		public static void T_JsonPointerOrDefaultTyped()
+		{
+			{
+				var result = Json.Deserialize("{\"user\":{\"name\":\"Bob\",\"score\":100}}");
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Parse should succeed");
+				if (result case .Ok(let json))
+				{
+					StringView name = json.GetByPointerOrDefault<StringView>("/user/name", "Unknown");
+					Test.Assert(name == "Bob", scope $"Name mismatch. Got: {name}");
+
+					int score = json.GetByPointerOrDefault<int>("/user/score", 0);
+					Test.Assert(score == 100, scope $"Score mismatch. Got: {score}");
+
+					StringView missing = json.GetByPointerOrDefault<StringView>("/user/email", "N/A");
+					Test.Assert(missing == "N/A", scope $"Should return default. Got: {missing}");
+
+					int missingScore = json.GetByPointerOrDefault<int>("/invalid/path", -1);
+					Test.Assert(missingScore == -1, scope $"Should return default. Got: {missingScore}");
+				}
+			}
+		}
+
+		[Test(Name = "JSON Pointer string views stay valid across a later resolution")]
+		public static void T_JsonPointerViewSurvivesFrameReuse()
+		{
+			// SSO views survive a later call that reuses the same stack frame.
+			// Catches the regression where pointer resolution returned the target by value, so the
+			// StringView aliased the callee frame and the next call overwrote it.
+			{
+				var result = Json.Deserialize("{\"a\":{\"s\":\"Alpha\"},\"b\":{\"s\":\"Bravo\"}}");
+				defer result.Dispose();
+
+				Test.Assert(result case .Ok, "Parse should succeed");
+				if (result case .Ok(let json))
+				{
+					StringView first = json.GetByPointerOrDefault<StringView>("/a/s", "Unknown");
+					StringView second = json.GetByPointerOrDefault<StringView>("/b/s", "Unknown");
+
+					Test.Assert(first == "Alpha", scope $"First view clobbered. Got: {first}");
+					Test.Assert(second == "Bravo", scope $"Second view wrong. Got: {second}");
+				}
+			}
+		}
 	}
 }

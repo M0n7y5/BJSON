@@ -1,149 +1,19 @@
 using System;
 using BJSON.Models;
 using System.IO;
-using System.Diagnostics;
 
 namespace BJSON.Test;
 
 /// Tests for JSON object and array operations:
-/// - Object key escaping
 /// - Duplicate key handling behaviors
 /// - Remove methods for objects and arrays
+/// - Key and value enumeration
+/// - Typed accessors and the key a container stores
 class ObjectOperationsTest
 {
-	[Test(Name = "Object Key Escaping")]
-	public static void T_ObjectKeyEscaping()
-	{
-		Debug.WriteLine("Object Key Escaping tests ...");
-
-		{
-			var json = JsonObject();
-			json.Add("key\"with\"quotes", JsonString("value"));
-			defer json.Dispose();
-
-			let output = scope String();
-			let result = Json.Serialize(json, output);
-
-			Test.Assert(result case .Ok, "Serialization of key with quotes should succeed");
-			// The key should be escaped: "key\"with\"quotes"
-			Test.Assert(output.Contains("\"key\\\"with\\\"quotes\""), 
-				scope $"Key with quotes should be escaped. Got: {output}");
-			Debug.WriteLine(scope $"  Test 1 (key with quotes): output: {output}");
-
-			var parseResult = Json.Deserialize(output);
-			defer parseResult.Dispose();
-			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
-		}
-
-		{
-			var json = JsonObject();
-			json.Add("path\\to\\file", JsonString("value"));
-			defer json.Dispose();
-
-			let output = scope String();
-			let result = Json.Serialize(json, output);
-
-			Test.Assert(result case .Ok, "Serialization of key with backslash should succeed");
-			// The key should be escaped: "path\\to\\file"
-			Test.Assert(output.Contains("\"path\\\\to\\\\file\""), 
-				scope $"Key with backslash should be escaped. Got: {output}");
-			Debug.WriteLine(scope $"  Test 2 (key with backslash): output: {output}");
-
-			var parseResult = Json.Deserialize(output);
-			defer parseResult.Dispose();
-			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
-		}
-
-		{
-			var json = JsonObject();
-			json.Add("line1\nline2", JsonString("value"));
-			defer json.Dispose();
-
-			let output = scope String();
-			let result = Json.Serialize(json, output);
-
-			Test.Assert(result case .Ok, "Serialization of key with newline should succeed");
-			// The key should be escaped: "line1\nline2"
-			Test.Assert(output.Contains("\"line1\\nline2\""), 
-				scope $"Key with newline should be escaped. Got: {output}");
-			Debug.WriteLine(scope $"  Test 3 (key with newline): output: {output}");
-
-			var parseResult = Json.Deserialize(output);
-			defer parseResult.Dispose();
-			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
-		}
-
-		{
-			var json = JsonObject();
-			json.Add("col1\tcol2", JsonString("value"));
-			defer json.Dispose();
-
-			let output = scope String();
-			let result = Json.Serialize(json, output);
-
-			Test.Assert(result case .Ok, "Serialization of key with tab should succeed");
-			Test.Assert(output.Contains("\"col1\\tcol2\""), 
-				scope $"Key with tab should be escaped. Got: {output}");
-			Debug.WriteLine(scope $"  Test 4 (key with tab): output: {output}");
-
-			var parseResult = Json.Deserialize(output);
-			defer parseResult.Dispose();
-			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
-		}
-
-		{
-			var json = JsonObject();
-			json.Add(scope String()..Append("key")..Append('\0')..Append("end"), JsonString("value"));
-			defer json.Dispose();
-
-			let output = scope String();
-			let result = Json.Serialize(json, output);
-
-			Test.Assert(result case .Ok, "Serialization of key with NUL should succeed");
-			Test.Assert(output.Contains("\\u0000"), 
-				scope $"Key with NUL should be escaped as \\u0000. Got: {output}");
-			Debug.WriteLine(scope $"  Test 5 (key with NUL): output: {output}");
-
-			var parseResult = Json.Deserialize(output);
-			defer parseResult.Dispose();
-			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
-		}
-
-		{
-			var json = JsonObject();
-			json.Add("\"quoted\"\nand\\slashed", JsonString("value"));
-			defer json.Dispose();
-
-			let output = scope String();
-			let result = Json.Serialize(json, output);
-
-			Test.Assert(result case .Ok, "Serialization of key with multiple escapes should succeed");
-			Debug.WriteLine(scope $"  Test 6 (key with multiple escapes): output: {output}");
-
-			var parseResult = Json.Deserialize(output);
-			defer parseResult.Dispose();
-			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
-			
-			if (parseResult case .Ok(let parsed))
-			{
-				let obj = parsed.AsObject().Value;
-				Test.Assert(obj.Count == 1, "Should have exactly one key");
-				for (let item in obj)
-				{
-					Test.Assert(item.key == "\"quoted\"\nand\\slashed", 
-						scope $"Key should round-trip correctly. Got: {item.key}");
-				}
-			}
-		}
-
-		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
-	}
-
 	[Test(Name = "Duplicate Key Ignore Behavior")]
 	public static void T_DuplicateKeyIgnoreBehavior()
 	{
-		Debug.WriteLine("Duplicate Key Ignore Behavior tests ...");
-
 		{
 			let jsonWithDuplicates = "{\"key\":{\"original\":true},\"key\":{\"duplicate\":true}}";
 
@@ -165,7 +35,6 @@ class ObjectOperationsTest
 				Test.Assert(!innerObj.ContainsKey("duplicate"), 
 					"Should NOT have duplicate value");
 			}
-			Debug.WriteLine("  Test 1 (duplicate object value - ignore): PASSED");
 		}
 
 		{
@@ -190,7 +59,6 @@ class ObjectOperationsTest
 				Test.Assert(firstItem == 1, 
 					scope $"First item should be 1 (from original), got: {firstItem}");
 			}
-			Debug.WriteLine("  Test 2 (duplicate array value - ignore): PASSED");
 		}
 
 		{
@@ -211,7 +79,6 @@ class ObjectOperationsTest
 				Test.Assert(arr.Count == 2, 
 					scope $"Should have 2 items from original array. Got: {arr.Count}");
 			}
-			Debug.WriteLine("  Test 3 (nested array with objects - ignore): PASSED");
 		}
 
 		{
@@ -228,7 +95,6 @@ class ObjectOperationsTest
 				int64 val = json["value"];
 				Test.Assert(val == 100, scope $"Should keep original value 100, got: {val}");
 			}
-			Debug.WriteLine("  Test 4 (duplicate primitive - ignore): PASSED");
 		}
 
 		{
@@ -240,7 +106,6 @@ class ObjectOperationsTest
 			defer result.Dispose();
 
 			Test.Assert(result case .Err, "Parsing with duplicate should fail with ThrowError behavior");
-			Debug.WriteLine("  Test 5 (duplicate array - throw error): PASSED");
 		}
 
 		{
@@ -261,17 +126,12 @@ class ObjectOperationsTest
 				Test.Assert(firstItem == 7, 
 					scope $"First item should be 7 (from rewrite), got: {firstItem}");
 			}
-			Debug.WriteLine("  Test 6 (duplicate array - always rewrite): PASSED");
 		}
-
-		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
 	}
 
 	[Test(Name = "Remove Methods")]
 	public static void T_RemoveMethods()
 	{
-		Debug.WriteLine("Remove Methods tests ...");
-
 		{
 			var json = JsonObject();
 			json.Add("key1", JsonString("value1"));
@@ -287,8 +147,6 @@ class ObjectOperationsTest
 			Test.Assert(!json.ContainsKey("key2"), "key2 should no longer exist");
 			Test.Assert(json.ContainsKey("key1"), "key1 should still exist");
 			Test.Assert(json.ContainsKey("key3"), "key3 should still exist");
-			
-			Debug.WriteLine("  Test 1 (JsonObject.Remove existing): PASSED");
 		}
 
 		{
@@ -299,8 +157,6 @@ class ObjectOperationsTest
 			let removed = json.Remove("nonexistent");
 			Test.Assert(!removed, "Remove should return false for non-existing key");
 			Test.Assert(json.Count == 1, "Count should remain unchanged");
-			
-			Debug.WriteLine("  Test 2 (JsonObject.Remove non-existing): PASSED");
 		}
 
 		// Test 3: JsonObject.Remove - nested object (ensure proper disposal)
@@ -316,8 +172,6 @@ class ObjectOperationsTest
 			Test.Assert(removed, "Remove should return true");
 			Test.Assert(json.Count == 1, "Should have 1 key after removal");
 			Test.Assert(!json.ContainsKey("nested"), "nested should be removed");
-			
-			Debug.WriteLine("  Test 3 (JsonObject.Remove nested): PASSED");
 		}
 
 		{
@@ -336,8 +190,6 @@ class ObjectOperationsTest
 			StringView second = json[1];
 			Test.Assert(first == "first", scope $"First item should be 'first'. Got: {first}");
 			Test.Assert(second == "third", scope $"Second item should be 'third'. Got: {second}");
-			
-			Debug.WriteLine("  Test 4 (JsonArray.RemoveAt valid): PASSED");
 		}
 
 		{
@@ -356,8 +208,6 @@ class ObjectOperationsTest
 			Test.Assert(json.Count == 1, "Should have 1 item");
 			val = json[0];
 			Test.Assert(val == 2, scope $"Remaining item should be 2. Got: {val}");
-			
-			Debug.WriteLine("  Test 5 (JsonArray.RemoveAt first/last): PASSED");
 		}
 
 		{
@@ -373,8 +223,6 @@ class ObjectOperationsTest
 			let removed = json.Remove(target);
 			Test.Assert(removed, "Remove should return true for existing value");
 			Test.Assert(json.Count == 2, scope $"Should have 2 items after removal. Got: {json.Count}");
-			
-			Debug.WriteLine("  Test 6 (JsonArray.Remove by value): PASSED");
 		}
 
 		{
@@ -388,8 +236,6 @@ class ObjectOperationsTest
 			let removed = json.Remove(notInArray);
 			Test.Assert(!removed, "Remove should return false for non-existing value");
 			Test.Assert(json.Count == 2, "Count should remain unchanged");
-			
-			Debug.WriteLine("  Test 7 (JsonArray.Remove non-existing): PASSED");
 		}
 
 		// Test 8: JsonArray.RemoveAt - nested array (ensure proper disposal)
@@ -406,8 +252,6 @@ class ObjectOperationsTest
 			
 			StringView remaining = json[0];
 			Test.Assert(remaining == "keep", scope $"Remaining item should be 'keep'. Got: {remaining}");
-			
-			Debug.WriteLine("  Test 8 (JsonArray.RemoveAt nested): PASSED");
 		}
 
 		{
@@ -423,8 +267,6 @@ class ObjectOperationsTest
 			Test.Assert(json.Count == 2, scope $"Should have 2 keys. Got: {json.Count}");
 			Test.Assert(json.ContainsKey("a"), "Should have 'a'");
 			Test.Assert(json.ContainsKey("c"), "Should have 'c'");
-			
-			Debug.WriteLine("  Test 9 (multiple removes): PASSED");
 		}
 
 		{
@@ -439,10 +281,76 @@ class ObjectOperationsTest
 				json.RemoveAt(0);
 			}
 			Test.Assert(json.Count == 0, "Array should be empty");
-			
-			Debug.WriteLine("  Test 10 (remove all from array): PASSED");
+		}
+	}
+
+	[Test(Name = "Regression: object indexer copies the key it stores")]
+	public static void T_IndexerKeyOwnership()
+	{
+		var json = JsonObject();
+		json[scope String("a")] = JsonNumber((int64)1);
+
+		let output = scope String();
+		Test.Assert(Json.Serialize(json, output) case .Ok, "serialize must succeed");
+		Test.Assert(output == "{\"a\":1}", scope $"got '{output}'");
+
+		json.Dispose();
+	}
+
+	[Test(Name = "Regression: typed accessors reject the wrong type")]
+	public static void T_TypedAccessors()
+	{
+		var result = Json.Deserialize("{\"text\":\"hello\",\"flag\":true,\"count\":7}");
+		defer result.Dispose();
+
+		Test.Assert(result case .Ok(let doc), "parse must succeed");
+
+		var root = doc;
+		var text = root.TryGetRef("text").Value;
+		Test.Assert(text.AsString() case .Ok(let str), "text must read as a string");
+		Test.Assert(str == "hello", scope $"got '{str}'");
+		Test.Assert(text.AsNumber() case .Err, "a string must not read as a number");
+
+		var flag = root.TryGetRef("flag").Value;
+		Test.Assert(flag.AsBool() case .Ok(let boolean) && boolean, "flag must read as true");
+		Test.Assert(flag.AsString() case .Err, "a bool must not read as a string");
+
+		var count = root.TryGetRef("count").Value;
+		Test.Assert(count.AsNumber() case .Ok(let number) && (number == 7), "count must read as 7");
+		Test.Assert(count.AsBool() case .Err, "a number must not read as a bool");
+	}
+
+	[Test(Name = "JsonObject Keys and Values enumerate every stored entry")]
+	public static void T_ObjectKeysAndValues()
+	{
+		var json = JsonObject();
+		json.Add("alpha", JsonNumber((int64)1));
+		json.Add("beta", JsonNumber((int64)2));
+		json.Add("gamma", JsonNumber((int64)3));
+		defer json.Dispose();
+
+		int keyCount = 0;
+		bool sawBeta = false;
+		for (let key in json.Keys)
+		{
+			keyCount++;
+			if (key == "beta")
+				sawBeta = true;
 		}
 
-		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+		Test.Assert(keyCount == 3, scope $"Keys should yield 3 entries, got {keyCount}");
+		Test.Assert(sawBeta, "Keys should include 'beta'");
+
+		int valueCount = 0;
+		int64 total = 0;
+		for (let value in json.Values)
+		{
+			int64 number = value;
+			total += number;
+			valueCount++;
+		}
+
+		Test.Assert(valueCount == 3, scope $"Values should yield 3 entries, got {valueCount}");
+		Test.Assert(total == 6, scope $"Values should total 6, got {total}");
 	}
 }

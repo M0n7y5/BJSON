@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Diagnostics;
 using BJSON;
 using BJSON.Models;
 
@@ -25,210 +24,43 @@ namespace BJSON.Test
 		public static void T_SchemaBasic()
 		{
 			let schemaText = "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"]}";
-			let schemaResult = JsonSchema.Parse(schemaText);
-			Test.Assert(schemaResult case .Ok, "Failed to parse schema");
 
-			let okInstance = Json.Deserialize("{\"name\":\"Alice\"}");
-			defer okInstance.Dispose();
-			Test.Assert(okInstance case .Ok, "Failed to parse instance");
-			let okValidate = schemaResult.Value.Validate(okInstance.Value);
-			defer okValidate.Dispose();
-			Test.Assert(okValidate case .Ok, "Validation failed");
-			Test.Assert(okValidate.Value.IsValid, "Instance should be valid");
-
-			let badInstance = Json.Deserialize("{\"age\":30}");
-			defer badInstance.Dispose();
-			Test.Assert(badInstance case .Ok, "Failed to parse instance");
-			let badValidate = schemaResult.Value.Validate(badInstance.Value);
-			defer badValidate.Dispose();
-			Test.Assert(badValidate case .Ok, "Validation failed");
-			Test.Assert(!badValidate.Value.IsValid, "Instance should be invalid");
-			
-			delete schemaResult.Value;
+			AssertValidates(schemaText, "{\"name\":\"Alice\"}", true, "An object carrying the required name");
+			AssertValidates(schemaText, "{\"age\":30}", false, "An object missing the required name");
 		}
 
 		[Test(Name = "JSON Schema type validation")]
 		public static void T_SchemaTypes()
 		{
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"null\"}");
-				Test.Assert(schema case .Ok);
-				let json1 = Json.Deserialize("null");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				let json2 = Json.Deserialize("123");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				delete schema.Value;
-			}
+			AssertValidates("{\"type\":\"null\"}", "null", true, "null against type null");
+			AssertValidates("{\"type\":\"null\"}", "123", false, "123 against type null");
 
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"boolean\"}");
-				Test.Assert(schema case .Ok);
-				let json1 = Json.Deserialize("true");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				let json2 = Json.Deserialize("\"true\"");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				delete schema.Value;
-			}
+			AssertValidates("{\"type\":\"boolean\"}", "true", true, "true against type boolean");
+			AssertValidates("{\"type\":\"boolean\"}", "\"true\"", false, "the string \"true\" against type boolean");
 
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"string\"}");
-				Test.Assert(schema case .Ok);
-				let json1 = Json.Deserialize("\"hello\"");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				let json2 = Json.Deserialize("123");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				delete schema.Value;
-			}
+			AssertValidates("{\"type\":\"string\"}", "\"hello\"", true, "a string against type string");
+			AssertValidates("{\"type\":\"string\"}", "123", false, "123 against type string");
 
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"integer\"}");
-				Test.Assert(schema case .Ok);
-				let json1 = Json.Deserialize("42");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				let json2 = Json.Deserialize("3.14");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				delete schema.Value;
-			}
+			AssertValidates("{\"type\":\"integer\"}", "42", true, "42 against type integer");
+			AssertValidates("{\"type\":\"integer\"}", "3.14", false, "3.14 against type integer");
 
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"number\"}");
-				Test.Assert(schema case .Ok);
-				let json1 = Json.Deserialize("42");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				let json2 = Json.Deserialize("3.14");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
-				}
-				let json3 = Json.Deserialize("\"number\"");
-				defer json3.Dispose();
-				if (json3 case .Ok(let val3))
-				{
-					let result3 = schema.Value.Validate(val3);
-					defer result3.Dispose();
-					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
-				}
-				delete schema.Value;
-			}
+			AssertValidates("{\"type\":\"number\"}", "42", true, "42 against type number");
+			AssertValidates("{\"type\":\"number\"}", "3.14", true, "3.14 against type number");
+			AssertValidates("{\"type\":\"number\"}", "\"number\"", false, "a string against type number");
 
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"array\"}");
-				Test.Assert(schema case .Ok);
-				let json1 = Json.Deserialize("[1,2,3]");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				let json2 = Json.Deserialize("{\"key\":\"value\"}");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				delete schema.Value;
-			}
+			AssertValidates("{\"type\":\"array\"}", "[1,2,3]", true, "an array against type array");
+			AssertValidates("{\"type\":\"array\"}", "{\"key\":\"value\"}", false, "an object against type array");
 
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"object\"}");
-				Test.Assert(schema case .Ok);
-				let json1 = Json.Deserialize("{\"key\":\"value\"}");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				let json2 = Json.Deserialize("[1,2,3]");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				delete schema.Value;
-			}
+			AssertValidates("{\"type\":\"object\"}", "{\"key\":\"value\"}", true, "an object against type object");
+			AssertValidates("{\"type\":\"object\"}", "[1,2,3]", false, "an array against type object");
 		}
 
 		[Test(Name = "JSON Schema local $ref")]
 		public static void T_SchemaLocalRef()
 		{
 			let schemaText = "{\"$defs\":{\"person\":{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"]}},\"$ref\":\"#/$defs/person\"}";
-			let schemaResult = JsonSchema.Parse(schemaText);
-			Test.Assert(schemaResult case .Ok, "Failed to parse schema");
 
-			let okInstance = Json.Deserialize("{\"name\":\"Bob\"}");
-			defer okInstance.Dispose();
-			Test.Assert(okInstance case .Ok, "Failed to parse instance");
-			let okValidate = schemaResult.Value.Validate(okInstance.Value);
-			defer okValidate.Dispose();
-			Test.Assert(okValidate case .Ok, "Validation failed");
-			Test.Assert(okValidate.Value.IsValid, "Instance should be valid");
-			
-			delete schemaResult.Value;
+			AssertValidates(schemaText, "{\"name\":\"Bob\"}", true, "A local $ref to $defs/person");
 		}
 
 		[Test(Name = "JSON Schema external $ref (file)")]
@@ -249,7 +81,7 @@ namespace BJSON.Test
 			var schemaRoot = JsonObject();
 			schemaRoot.Add("$ref", JsonString(schemaPath));
 			let schemaResult = JsonSchema.FromRoot(schemaRoot);
-			
+
 			if (schemaResult case .Err(let err))
 			{
 				let msg = scope String();
@@ -258,12 +90,12 @@ namespace BJSON.Test
 				return;
 			}
 
-			let okInstance = Json.Deserialize("{\"name\":\"Eve\",\"age\":42}");
-			defer okInstance.Dispose();
-			Test.Assert(okInstance case .Ok, "Failed to parse instance");
-			let okValidate = schemaResult.Value.Validate(okInstance.Value);
+			var instance = ParseInstanceOrFail("{\"name\":\"Eve\",\"age\":42}");
+			defer instance.Dispose();
+
+			let okValidate = schemaResult.Value.Validate(instance);
 			defer okValidate.Dispose();
-			
+
 			if (okValidate case .Err(let valErr))
 			{
 				let msg = scope String();
@@ -272,7 +104,7 @@ namespace BJSON.Test
 				delete schemaResult.Value;
 				return;
 			}
-			
+
 			if (!okValidate.Value.IsValid)
 			{
 				if (okValidate.Value.Errors != null && okValidate.Value.Errors.Count > 0)
@@ -285,7 +117,7 @@ namespace BJSON.Test
 					Test.Assert(false, scope $"Validation returned IsValid=false but no errors. Schema path: {schemaPath}");
 				}
 			}
-			
+
 			delete schemaResult.Value;
 		}
 
@@ -293,7 +125,7 @@ namespace BJSON.Test
 		public static void T_SchemaObject()
 		{
 			{
-				let schema = JsonSchema.Parse("""
+				let schemaText = """
 					{
 						"type": "object",
 						"properties": {
@@ -302,66 +134,22 @@ namespace BJSON.Test
 						},
 						"required": ["name"]
 					}
-					""");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("{\"name\":\"Alice\"}");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("{\"age\":30}");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				delete schema.Value;
+					""";
+
+				AssertValidates(schemaText, "{\"name\":\"Alice\"}", true, "An object with a string name");
+				AssertValidates(schemaText, "{\"age\":30}", false, "An object without the required name");
 			}
 
 			{
-				let schema = JsonSchema.Parse("{\"type\":\"object\",\"minProperties\":2,\"maxProperties\":3}");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("{\"a\":1,\"b\":2}");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("{\"a\":1}");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				let json3 = Json.Deserialize("{\"a\":1,\"b\":2,\"c\":3,\"d\":4}");
-				defer json3.Dispose();
-				if (json3 case .Ok(let val3))
-				{
-					let result3 = schema.Value.Validate(val3);
-					defer result3.Dispose();
-					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
-				}
-				
-				delete schema.Value;
+				let schemaText = "{\"type\":\"object\",\"minProperties\":2,\"maxProperties\":3}";
+
+				AssertValidates(schemaText, "{\"a\":1,\"b\":2}", true, "Two properties inside minProperties 2 and maxProperties 3");
+				AssertValidates(schemaText, "{\"a\":1}", false, "One property below minProperties 2");
+				AssertValidates(schemaText, "{\"a\":1,\"b\":2,\"c\":3,\"d\":4}", false, "Four properties above maxProperties 3");
 			}
 
 			{
-				let schema = JsonSchema.Parse("""
+				let schemaText = """
 					{
 						"type": "object",
 						"properties": {
@@ -369,28 +157,10 @@ namespace BJSON.Test
 						},
 						"additionalProperties": false
 					}
-					""");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("{\"name\":\"Alice\"}");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("{\"name\":\"Alice\",\"extra\":\"value\"}");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				delete schema.Value;
+					""";
+
+				AssertValidates(schemaText, "{\"name\":\"Alice\"}", true, "Only the declared property");
+				AssertValidates(schemaText, "{\"name\":\"Alice\",\"extra\":\"value\"}", false, "An undeclared property against additionalProperties false");
 			}
 		}
 
@@ -398,91 +168,29 @@ namespace BJSON.Test
 		public static void T_SchemaArray()
 		{
 			{
-				let schema = JsonSchema.Parse("{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("[1,2,3]");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("[1,\"two\",3]");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				delete schema.Value;
+				let schemaText = "{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}";
+
+				AssertValidates(schemaText, "[1,2,3]", true, "All integer items");
+				AssertValidates(schemaText, "[1,\"two\",3]", false, "A string among integer items");
 			}
 
 			{
-				let schema = JsonSchema.Parse("{\"type\":\"array\",\"minItems\":2,\"maxItems\":3}");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("[1,2]");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("[1]");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				let json3 = Json.Deserialize("[1,2,3,4]");
-				defer json3.Dispose();
-				if (json3 case .Ok(let val3))
-				{
-					let result3 = schema.Value.Validate(val3);
-					defer result3.Dispose();
-					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
-				}
-				
-				delete schema.Value;
+				let schemaText = "{\"type\":\"array\",\"minItems\":2,\"maxItems\":3}";
+
+				AssertValidates(schemaText, "[1,2]", true, "Two items inside minItems 2 and maxItems 3");
+				AssertValidates(schemaText, "[1]", false, "One item below minItems 2");
+				AssertValidates(schemaText, "[1,2,3,4]", false, "Four items above maxItems 3");
 			}
 
 			{
-				let schema = JsonSchema.Parse("{\"type\":\"array\",\"uniqueItems\":true}");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("[1,2,3]");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("[1,2,1]");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				delete schema.Value;
+				let schemaText = "{\"type\":\"array\",\"uniqueItems\":true}";
+
+				AssertValidates(schemaText, "[1,2,3]", true, "Distinct items against uniqueItems");
+				AssertValidates(schemaText, "[1,2,1]", false, "A repeated item against uniqueItems");
 			}
 
 			{
-				let schema = JsonSchema.Parse("""
+				let schemaText = """
 					{
 						"type": "array",
 						"prefixItems": [
@@ -490,28 +198,10 @@ namespace BJSON.Test
 							{ "type": "integer" }
 						]
 					}
-					""");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("[\"hello\",42]");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("[42,\"hello\"]");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				delete schema.Value;
+					""";
+
+				AssertValidates(schemaText, "[\"hello\",42]", true, "Positions matching prefixItems");
+				AssertValidates(schemaText, "[42,\"hello\"]", false, "Positions swapped against prefixItems");
 			}
 		}
 
@@ -519,268 +209,92 @@ namespace BJSON.Test
 		public static void T_SchemaNumeric()
 		{
 			{
-				let schema = JsonSchema.Parse("{\"type\":\"number\",\"minimum\":0,\"maximum\":100}");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("50");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("0");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
-				}
-				
-				let json3 = Json.Deserialize("100");
-				defer json3.Dispose();
-				if (json3 case .Ok(let val3))
-				{
-					let result3 = schema.Value.Validate(val3);
-					defer result3.Dispose();
-					Test.Assert(result3 case .Ok(let r3) && r3.IsValid);
-				}
-				
-				let json4 = Json.Deserialize("-1");
-				defer json4.Dispose();
-				if (json4 case .Ok(let val4))
-				{
-					let result4 = schema.Value.Validate(val4);
-					defer result4.Dispose();
-					Test.Assert(result4 case .Ok(let r4) && !r4.IsValid);
-				}
-				
-				let json5 = Json.Deserialize("101");
-				defer json5.Dispose();
-				if (json5 case .Ok(let val5))
-				{
-					let result5 = schema.Value.Validate(val5);
-					defer result5.Dispose();
-					Test.Assert(result5 case .Ok(let r5) && !r5.IsValid);
-				}
-				
-				delete schema.Value;
+				let schemaText = "{\"type\":\"number\",\"minimum\":0,\"maximum\":100}";
+
+				AssertValidates(schemaText, "50", true, "50 inside minimum 0 and maximum 100");
+				AssertValidates(schemaText, "0", true, "0 on the inclusive minimum");
+				AssertValidates(schemaText, "100", true, "100 on the inclusive maximum");
+				AssertValidates(schemaText, "-1", false, "-1 below minimum 0");
+				AssertValidates(schemaText, "101", false, "101 above maximum 100");
 			}
 
 			{
-				let schema = JsonSchema.Parse("{\"type\":\"number\",\"exclusiveMinimum\":0,\"exclusiveMaximum\":100}");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("50");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("0");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				let json3 = Json.Deserialize("100");
-				defer json3.Dispose();
-				if (json3 case .Ok(let val3))
-				{
-					let result3 = schema.Value.Validate(val3);
-					defer result3.Dispose();
-					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
-				}
-				
-				delete schema.Value;
+				let schemaText = "{\"type\":\"number\",\"exclusiveMinimum\":0,\"exclusiveMaximum\":100}";
+
+				AssertValidates(schemaText, "50", true, "50 inside the exclusive bounds");
+				AssertValidates(schemaText, "0", false, "0 on exclusiveMinimum 0");
+				AssertValidates(schemaText, "100", false, "100 on exclusiveMaximum 100");
 			}
 		}
 
 		[Test(Name = "JSON Schema string validation")]
 		public static void T_SchemaString()
 		{
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"string\",\"minLength\":2,\"maxLength\":10}");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("\"hello\"");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("\"h\"");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				let json3 = Json.Deserialize("\"this is too long\"");
-				defer json3.Dispose();
-				if (json3 case .Ok(let val3))
-				{
-					let result3 = schema.Value.Validate(val3);
-					defer result3.Dispose();
-					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
-				}
-				
-				delete schema.Value;
-			}
+			let schemaText = "{\"type\":\"string\",\"minLength\":2,\"maxLength\":10}";
+
+			AssertValidates(schemaText, "\"hello\"", true, "Five characters inside minLength 2 and maxLength 10");
+			AssertValidates(schemaText, "\"h\"", false, "One character below minLength 2");
+			AssertValidates(schemaText, "\"this is too long\"", false, "Sixteen characters above maxLength 10");
 		}
 
 		[Test(Name = "JSON Schema combining keywords")]
 		public static void T_SchemaCombining()
 		{
 			{
-				let schema = JsonSchema.Parse("""
+				let schemaText = """
 					{
 						"allOf": [
 							{ "type": "object" },
 							{ "required": ["name"] }
 						]
 					}
-					""");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("{\"name\":\"Alice\"}");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("{}");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				delete schema.Value;
+					""";
+
+				AssertValidates(schemaText, "{\"name\":\"Alice\"}", true, "An object with name against allOf");
+				AssertValidates(schemaText, "{}", false, "An empty object against allOf");
 			}
 
 			{
-				let schema = JsonSchema.Parse("""
+				let schemaText = """
 					{
 						"anyOf": [
 							{ "type": "string" },
 							{ "type": "integer" }
 						]
 					}
-					""");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("\"hello\"");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("42");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
-				}
-				
-				let json3 = Json.Deserialize("true");
-				defer json3.Dispose();
-				if (json3 case .Ok(let val3))
-				{
-					let result3 = schema.Value.Validate(val3);
-					defer result3.Dispose();
-					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
-				}
-				
-				delete schema.Value;
+					""";
+
+				AssertValidates(schemaText, "\"hello\"", true, "A string against anyOf string or integer");
+				AssertValidates(schemaText, "42", true, "An integer against anyOf string or integer");
+				AssertValidates(schemaText, "true", false, "A boolean against anyOf string or integer");
 			}
 
 			{
-				let schema = JsonSchema.Parse("""
+				let schemaText = """
 					{
 						"oneOf": [
 							{ "type": "string" },
 							{ "type": "integer" }
 						]
 					}
-					""");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("\"hello\"");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("42");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
-				}
-				
-				delete schema.Value;
+					""";
+
+				AssertValidates(schemaText, "\"hello\"", true, "A string against oneOf string or integer");
+				AssertValidates(schemaText, "42", true, "An integer against oneOf string or integer");
 			}
 
 			{
-				let schema = JsonSchema.Parse("{\"not\":{\"type\":\"string\"}}");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("123");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("\"string\"");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				delete schema.Value;
+				let schemaText = "{\"not\":{\"type\":\"string\"}}";
+
+				AssertValidates(schemaText, "123", true, "A number against not string");
+				AssertValidates(schemaText, "\"string\"", false, "A string against not string");
 			}
 		}
 
 		[Test(Name = "JSON Schema conditional validation")]
 		public static void T_SchemaConditional()
 		{
-			let schema = JsonSchema.Parse("""
+			let schemaText = """
 				{
 					"type": "object",
 					"properties": {
@@ -796,166 +310,44 @@ namespace BJSON.Test
 						"required": ["department"]
 					}
 				}
-				""");
-			Test.Assert(schema case .Ok);
-			
-			let json1 = Json.Deserialize("{\"role\":\"admin\",\"permissions\":[\"read\",\"write\"]}");
-			defer json1.Dispose();
-			if (json1 case .Ok(let val1))
-			{
-				let result1 = schema.Value.Validate(val1);
-				defer result1.Dispose();
-				Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-			}
-			
-			let json2 = Json.Deserialize("{\"role\":\"admin\"}");
-			defer json2.Dispose();
-			if (json2 case .Ok(let val2))
-			{
-				let result2 = schema.Value.Validate(val2);
-				defer result2.Dispose();
-				Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-			}
-			
-			let json3 = Json.Deserialize("{\"role\":\"user\",\"department\":\"IT\"}");
-			defer json3.Dispose();
-			if (json3 case .Ok(let val3))
-			{
-				let result3 = schema.Value.Validate(val3);
-				defer result3.Dispose();
-				Test.Assert(result3 case .Ok(let r3) && r3.IsValid);
-			}
-			
-			let json4 = Json.Deserialize("{\"role\":\"user\"}");
-			defer json4.Dispose();
-			if (json4 case .Ok(let val4))
-			{
-				let result4 = schema.Value.Validate(val4);
-				defer result4.Dispose();
-				Test.Assert(result4 case .Ok(let r4) && !r4.IsValid);
-			}
-			
-			delete schema.Value;
+				""";
+
+			AssertValidates(schemaText, "{\"role\":\"admin\",\"permissions\":[\"read\",\"write\"]}", true, "An admin with permissions takes the then branch");
+			AssertValidates(schemaText, "{\"role\":\"admin\"}", false, "An admin without permissions breaks the then branch");
+			AssertValidates(schemaText, "{\"role\":\"user\",\"department\":\"IT\"}", true, "A user with a department takes the else branch");
+			AssertValidates(schemaText, "{\"role\":\"user\"}", false, "A user without a department breaks the else branch");
 		}
 
 		[Test(Name = "JSON Schema constants")]
 		public static void T_SchemaConstants()
 		{
 			{
-				let schema = JsonSchema.Parse("{\"enum\":[\"red\",\"green\",\"blue\"]}");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("\"red\"");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("\"yellow\"");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				delete schema.Value;
+				let schemaText = "{\"enum\":[\"red\",\"green\",\"blue\"]}";
+
+				AssertValidates(schemaText, "\"red\"", true, "A listed enum member");
+				AssertValidates(schemaText, "\"yellow\"", false, "A value outside the enum");
 			}
 
 			{
-				let schema = JsonSchema.Parse("{\"const\":\"active\"}");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("\"active\"");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("\"inactive\"");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				delete schema.Value;
+				let schemaText = "{\"const\":\"active\"}";
+
+				AssertValidates(schemaText, "\"active\"", true, "The const value");
+				AssertValidates(schemaText, "\"inactive\"", false, "A value differing from the const");
 			}
 		}
 
 		[Test(Name = "JSON Schema boolean schemas")]
 		public static void T_SchemaBoolean()
 		{
-			{
-				let schema = JsonSchema.Parse("true");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("null");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("123");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
-				}
-				
-				let json3 = Json.Deserialize("\"anything\"");
-				defer json3.Dispose();
-				if (json3 case .Ok(let val3))
-				{
-					let result3 = schema.Value.Validate(val3);
-					defer result3.Dispose();
-					Test.Assert(result3 case .Ok(let r3) && r3.IsValid);
-				}
-				
-				delete schema.Value;
-			}
+			AssertValidates("true", "null", true, "null against the true schema");
+			AssertValidates("true", "123", true, "123 against the true schema");
+			AssertValidates("true", "\"anything\"", true, "a string against the true schema");
+
+			AssertValidates("false", "null", false, "null against the false schema");
+			AssertValidates("false", "123", false, "123 against the false schema");
 
 			{
-				let schema = JsonSchema.Parse("false");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("null");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && !r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("123");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				delete schema.Value;
-			}
-
-			{
-				let schema = JsonSchema.Parse("""
+				let schemaText = """
 					{
 						"type": "object",
 						"properties": {
@@ -963,87 +355,53 @@ namespace BJSON.Test
 							"neverValid": false
 						}
 					}
-					""");
-				Test.Assert(schema case .Ok);
-				
-				let json1 = Json.Deserialize("{\"alwaysValid\":\"anything\"}");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-				}
-				
-				let json2 = Json.Deserialize("{\"neverValid\":\"anything\"}");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
-				}
-				
-				delete schema.Value;
+					""";
+
+				AssertValidates(schemaText, "{\"alwaysValid\":\"anything\"}", true, "A property held by the true schema");
+				AssertValidates(schemaText, "{\"neverValid\":\"anything\"}", false, "A property held by the false schema");
 			}
 		}
 
 		[Test(Name = "JSON Schema $id and $anchor")]
 		public static void T_SchemaIdAnchor()
 		{
-			let schema = JsonSchema.Parse("""
-				{
-					"type": "object",
-					"properties": {
-						"name": { "type": "string" }
-					}
-				}
-				""");
-			Test.Assert(schema case .Ok);
-			
-			let json1 = Json.Deserialize("{\"name\":\"test\"}");
-			defer json1.Dispose();
-			if (json1 case .Ok(let val1))
 			{
-				let result1 = schema.Value.Validate(val1);
-				defer result1.Dispose();
-				Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
-			}
-			
-			delete schema.Value;
-
-			let schemaWithAnchor = JsonSchema.Parse("""
-				{
-					"$defs": {
-						"person": {
-							"$anchor": "person",
-							"type": "object",
-							"properties": {
-								"name": { "type": "string" }
-							}
+				let schemaText = """
+					{
+						"type": "object",
+						"properties": {
+							"name": { "type": "string" }
 						}
-					},
-					"$ref": "#person"
-				}
-				""");
-			Test.Assert(schemaWithAnchor case .Ok);
-			
-			let json2 = Json.Deserialize("{\"name\":\"Alice\"}");
-			defer json2.Dispose();
-			if (json2 case .Ok(let val2))
-			{
-				let result2 = schemaWithAnchor.Value.Validate(val2);
-				defer result2.Dispose();
-				Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
+					}
+					""";
+
+				AssertValidates(schemaText, "{\"name\":\"test\"}", true, "A schema without $id");
 			}
-			
-			delete schemaWithAnchor.Value;
+
+			{
+				let schemaText = """
+					{
+						"$defs": {
+							"person": {
+								"$anchor": "person",
+								"type": "object",
+								"properties": {
+									"name": { "type": "string" }
+								}
+							}
+						},
+						"$ref": "#person"
+					}
+					""";
+
+				AssertValidates(schemaText, "{\"name\":\"Alice\"}", true, "A $ref to an $anchor");
+			}
 		}
 
 		[Test(Name = "JSON Schema recursive $ref")]
 		public static void T_SchemaRecursiveRef()
 		{
-			let schema = JsonSchema.Parse("""
+			let schemaText = """
 				{
 					"$defs": {
 						"node": {
@@ -1056,36 +414,16 @@ namespace BJSON.Test
 					},
 					"$ref": "#/$defs/node"
 				}
-				""");
-			Test.Assert(schema case .Ok, "Failed to parse the recursive schema");
+				""";
 
-			let json1 = Json.Deserialize("{\"value\":1,\"next\":{\"value\":2,\"next\":{\"value\":3}}}");
-			defer json1.Dispose();
-			if (json1 case .Ok(let val1))
-			{
-				let result1 = schema.Value.Validate(val1);
-				defer result1.Dispose();
-				let summary = Summarize(result1, .. scope String());
-				Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"Two levels of recursion should be valid, got {summary}");
-			}
-
-			let json2 = Json.Deserialize("{\"value\":1,\"next\":{\"value\":\"two\"}}");
-			defer json2.Dispose();
-			if (json2 case .Ok(let val2))
-			{
-				let result2 = schema.Value.Validate(val2);
-				defer result2.Dispose();
-				let summary = Summarize(result2, .. scope String());
-				Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"A nested type mismatch should be invalid, got {summary}");
-			}
-
-			delete schema.Value;
+			AssertValidates(schemaText, "{\"value\":1,\"next\":{\"value\":2,\"next\":{\"value\":3}}}", true, "Two levels of recursion should be valid");
+			AssertValidates(schemaText, "{\"value\":1,\"next\":{\"value\":\"two\"}}", false, "A nested type mismatch should be invalid");
 		}
 
 		[Test(Name = "JSON Schema $ref cycle detection")]
 		public static void T_SchemaRefCycle()
 		{
-			let schema = JsonSchema.Parse("""
+			let schema = ParseSchemaOrFail("""
 				{
 					"$defs": {
 						"a": { "$ref": "#/$defs/b" },
@@ -1094,32 +432,30 @@ namespace BJSON.Test
 					"$ref": "#/$defs/a"
 				}
 				""");
-			Test.Assert(schema case .Ok, "Failed to parse the cyclic schema");
+			defer delete schema;
 
-			let json1 = Json.Deserialize("{}");
-			defer json1.Dispose();
-			if (json1 case .Ok(let val1))
+			var instance = ParseInstanceOrFail("{}");
+			defer instance.Dispose();
+
+			let result = schema.Validate(instance);
+			defer result.Dispose();
+
+			bool cycleDetected = false;
+			if (result case .Err(let err))
 			{
-				let result1 = schema.Value.Validate(val1);
-				defer result1.Dispose();
-				bool cycleDetected = false;
-				if (result1 case .Err(let err))
-				{
-					if (err case .RefCycleDetected)
-						cycleDetected = true;
-				}
-				let summary = Summarize(result1, .. scope String());
-				Test.Assert(cycleDetected, scope $"A $ref reaching itself must report a cycle, got {summary}");
+				if (err case .RefCycleDetected)
+					cycleDetected = true;
 			}
 
-			delete schema.Value;
+			let summary = Summarize(result, .. scope String());
+			Test.Assert(cycleDetected, scope $"A $ref reaching itself must report a cycle, got {summary}");
 		}
 
 		[Test(Name = "JSON Schema $ref to an embedded $id")]
 		public static void T_SchemaEmbeddedIdRef()
 		{
 			let resolver = scope RecordingSchemaResolver();
-			let schema = JsonSchema.Parse("""
+			let schemaResult = JsonSchema.Parse("""
 				{
 					"$id": "https://example.com/root",
 					"$defs": {
@@ -1132,276 +468,156 @@ namespace BJSON.Test
 					"$ref": "https://example.com/name"
 				}
 				""", "", resolver);
-			Test.Assert(schema case .Ok, "Failed to parse the schema with an embedded $id");
+			Test.Assert(schemaResult case .Ok, "Failed to parse the schema with an embedded $id");
 
-			let json1 = Json.Deserialize("\"Ada\"");
-			defer json1.Dispose();
-			if (json1 case .Ok(let val1))
+			let schema = schemaResult.Value;
+			defer delete schema;
+
 			{
-				let result1 = schema.Value.Validate(val1);
-				defer result1.Dispose();
-				let summary = Summarize(result1, .. scope String());
-				Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"The embedded $id should resolve locally, got {summary}");
+				var instance = ParseInstanceOrFail("\"Ada\"");
+				defer instance.Dispose();
+
+				let result = schema.Validate(instance);
+				defer result.Dispose();
+				let summary = Summarize(result, .. scope String());
+				Test.Assert(result case .Ok(let validation) && validation.IsValid, scope $"The embedded $id should resolve locally, got {summary}");
 			}
 
-			let json2 = Json.Deserialize("\"A\"");
-			defer json2.Dispose();
-			if (json2 case .Ok(let val2))
 			{
-				let result2 = schema.Value.Validate(val2);
-				defer result2.Dispose();
-				let summary = Summarize(result2, .. scope String());
-				Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"minLength of the embedded schema should apply, got {summary}");
+				var instance = ParseInstanceOrFail("\"A\"");
+				defer instance.Dispose();
+
+				let result = schema.Validate(instance);
+				defer result.Dispose();
+				let summary = Summarize(result, .. scope String());
+				Test.Assert(result case .Ok(let validation) && !validation.IsValid, scope $"minLength of the embedded schema should apply, got {summary}");
 			}
 
 			Test.Assert(!resolver.WasCalled, scope $"The embedded $id must resolve from the id index, resolver called: {resolver.WasCalled}");
-
-			delete schema.Value;
 		}
 
 		[Test(Name = "JSON Schema multipleOf")]
 		public static void T_SchemaMultipleOf()
 		{
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"number\",\"multipleOf\":3}");
-				Test.Assert(schema case .Ok);
-
-				let json1 = Json.Deserialize("9");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					let summary = Summarize(result1, .. scope String());
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"9 is a multiple of 3, got {summary}");
-				}
-
-				let json2 = Json.Deserialize("10");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					let summary = Summarize(result2, .. scope String());
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"10 is not a multiple of 3, got {summary}");
-				}
-
-				delete schema.Value;
-			}
+			AssertValidates("{\"type\":\"number\",\"multipleOf\":3}", "9", true, "9 is a multiple of 3");
+			AssertValidates("{\"type\":\"number\",\"multipleOf\":3}", "10", false, "10 is not a multiple of 3");
 
 			// 0.3 divided by 0.1 is not exact in binary floating point
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"number\",\"multipleOf\":0.1}");
-				Test.Assert(schema case .Ok);
-
-				let json1 = Json.Deserialize("0.3");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					let summary = Summarize(result1, .. scope String());
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"0.3 is a multiple of 0.1, got {summary}");
-				}
-
-				let json2 = Json.Deserialize("0.35");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					let summary = Summarize(result2, .. scope String());
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"0.35 is not a multiple of 0.1, got {summary}");
-				}
-
-				delete schema.Value;
-			}
+			AssertValidates("{\"type\":\"number\",\"multipleOf\":0.1}", "0.3", true, "0.3 is a multiple of 0.1");
+			AssertValidates("{\"type\":\"number\",\"multipleOf\":0.1}", "0.35", false, "0.35 is not a multiple of 0.1");
 		}
 
 		[Test(Name = "JSON Schema contains with minContains and maxContains")]
 		public static void T_SchemaContains()
 		{
 			{
-				let schema = JsonSchema.Parse("{\"type\":\"array\",\"contains\":{\"type\":\"integer\"},\"minContains\":2,\"maxContains\":3}");
-				Test.Assert(schema case .Ok);
+				let schemaText = "{\"type\":\"array\",\"contains\":{\"type\":\"integer\"},\"minContains\":2,\"maxContains\":3}";
 
-				let json1 = Json.Deserialize("[1,\"a\",2]");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					let summary = Summarize(result1, .. scope String());
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"Two integers satisfy minContains 2, got {summary}");
-				}
-
-				let json2 = Json.Deserialize("[\"a\",1]");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					let summary = Summarize(result2, .. scope String());
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"One integer is below minContains 2, got {summary}");
-				}
-
-				let json3 = Json.Deserialize("[1,2,3,4]");
-				defer json3.Dispose();
-				if (json3 case .Ok(let val3))
-				{
-					let result3 = schema.Value.Validate(val3);
-					defer result3.Dispose();
-					let summary = Summarize(result3, .. scope String());
-					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid, scope $"Four integers exceed maxContains 3, got {summary}");
-				}
-
-				delete schema.Value;
+				AssertValidates(schemaText, "[1,\"a\",2]", true, "Two integers satisfy minContains 2");
+				AssertValidates(schemaText, "[\"a\",1]", false, "One integer is below minContains 2");
+				AssertValidates(schemaText, "[1,2,3,4]", false, "Four integers exceed maxContains 3");
 			}
 
 			// minContains defaults to 1
 			{
-				let schema = JsonSchema.Parse("{\"type\":\"array\",\"contains\":{\"const\":\"x\"}}");
-				Test.Assert(schema case .Ok);
+				let schemaText = "{\"type\":\"array\",\"contains\":{\"const\":\"x\"}}";
 
-				let json1 = Json.Deserialize("[\"y\",\"x\"]");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					let summary = Summarize(result1, .. scope String());
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"The array contains x, got {summary}");
-				}
-
-				let json2 = Json.Deserialize("[\"y\",\"z\"]");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					let summary = Summarize(result2, .. scope String());
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"The array has no x, got {summary}");
-				}
-
-				delete schema.Value;
+				AssertValidates(schemaText, "[\"y\",\"x\"]", true, "The array contains x");
+				AssertValidates(schemaText, "[\"y\",\"z\"]", false, "The array has no x");
 			}
 		}
 
 		[Test(Name = "JSON Schema propertyNames")]
 		public static void T_SchemaPropertyNames()
 		{
-			let schema = JsonSchema.Parse("{\"type\":\"object\",\"propertyNames\":{\"maxLength\":3}}");
-			Test.Assert(schema case .Ok);
+			let schemaText = "{\"type\":\"object\",\"propertyNames\":{\"maxLength\":3}}";
 
-			let json1 = Json.Deserialize("{\"abc\":1,\"de\":2}");
-			defer json1.Dispose();
-			if (json1 case .Ok(let val1))
-			{
-				let result1 = schema.Value.Validate(val1);
-				defer result1.Dispose();
-				let summary = Summarize(result1, .. scope String());
-				Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"Every property name fits maxLength 3, got {summary}");
-			}
-
-			let json2 = Json.Deserialize("{\"abc\":1,\"defg\":2}");
-			defer json2.Dispose();
-			if (json2 case .Ok(let val2))
-			{
-				let result2 = schema.Value.Validate(val2);
-				defer result2.Dispose();
-				let summary = Summarize(result2, .. scope String());
-				Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"The name defg breaks maxLength 3, got {summary}");
-			}
-
-			delete schema.Value;
+			AssertValidates(schemaText, "{\"abc\":1,\"de\":2}", true, "Every property name fits maxLength 3");
+			AssertValidates(schemaText, "{\"abc\":1,\"defg\":2}", false, "The name defg breaks maxLength 3");
 		}
 
 		[Test(Name = "JSON Schema string length counts code points")]
 		public static void T_SchemaStringCodePointLength()
 		{
 			// "a\u00f1b" is three code points held in four UTF-8 bytes
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"string\",\"maxLength\":3}");
-				Test.Assert(schema case .Ok);
-
-				let json1 = Json.Deserialize("\"a\\u00f1b\"");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					let summary = Summarize(result1, .. scope String());
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"Three code points fit maxLength 3, got {summary}");
-				}
-
-				delete schema.Value;
-			}
-
-			{
-				let schema = JsonSchema.Parse("{\"type\":\"string\",\"minLength\":4}");
-				Test.Assert(schema case .Ok);
-
-				let json1 = Json.Deserialize("\"a\\u00f1b\"");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					let summary = Summarize(result1, .. scope String());
-					Test.Assert(result1 case .Ok(let r1) && !r1.IsValid, scope $"Three code points are below minLength 4, got {summary}");
-				}
-
-				delete schema.Value;
-			}
+			AssertValidates("{\"type\":\"string\",\"maxLength\":3}", "\"a\\u00f1b\"", true, "Three code points fit maxLength 3");
+			AssertValidates("{\"type\":\"string\",\"minLength\":4}", "\"a\\u00f1b\"", false, "Three code points are below minLength 4");
 		}
 
 		[Test(Name = "JSON Schema const with an integer above 2^53")]
 		public static void T_SchemaLargeIntegerConst()
 		{
 			// 9007199254740992 and 9007199254740993 collapse to the same double
-			{
-				let schema = JsonSchema.Parse("{\"const\":9007199254740993}");
-				Test.Assert(schema case .Ok);
+			AssertValidates("{\"const\":9007199254740993}", "9007199254740993", true, "9007199254740993 matches the const");
+			AssertValidates("{\"const\":9007199254740993}", "9007199254740992", false, "9007199254740992 differs from the const");
 
-				let json1 = Json.Deserialize("9007199254740993");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					let summary = Summarize(result1, .. scope String());
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"9007199254740993 matches the const, got {summary}");
-				}
+			AssertValidates("{\"const\":1}", "1.0", true, "1.0 equals the const 1");
+		}
 
-				let json2 = Json.Deserialize("9007199254740992");
-				defer json2.Dispose();
-				if (json2 case .Ok(let val2))
-				{
-					let result2 = schema.Value.Validate(val2);
-					defer result2.Dispose();
-					let summary = Summarize(result2, .. scope String());
-					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"9007199254740992 differs from the const, got {summary}");
-				}
+		[Test(Name = "Regression: a schema error reference survives the resolution that built it")]
+		public static void T_SchemaErrorReferenceOutlivesResolution()
+		{
+			let schemaText = """
+				{"$ref": "missing-schema.json"}
+				""";
 
-				delete schema.Value;
-			}
+			let schema = ParseSchemaOrFail(schemaText);
+			defer delete schema;
 
-			{
-				let schema = JsonSchema.Parse("{\"const\":1}");
-				Test.Assert(schema case .Ok);
+			var instance = ParseInstanceOrFail("{}");
+			defer instance.Dispose();
 
-				let json1 = Json.Deserialize("1.0");
-				defer json1.Dispose();
-				if (json1 case .Ok(let val1))
-				{
-					let result1 = schema.Value.Validate(val1);
-					defer result1.Dispose();
-					let summary = Summarize(result1, .. scope String());
-					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"1.0 equals the const 1, got {summary}");
-				}
+			let result = schema.Validate(instance);
+			Test.Assert(result case .Err(let err), "an unresolvable $ref must fail validation");
 
-				delete schema.Value;
-			}
+			let text = scope String();
+			err.ToString(text);
+			Test.Assert(text.Contains("missing-schema.json"), scope $"error text lost the reference: '{text}'");
+		}
+
+		/// Compiles a schema, failing the test instead of returning when it does not compile.
+		/// @param schemaText The schema document.
+		/// @returns The compiled schema, which the caller must delete.
+		private static JsonSchema ParseSchemaOrFail(StringView schemaText)
+		{
+			let result = JsonSchema.Parse(schemaText);
+			Test.Assert(result case .Ok, scope $"The schema must compile: {schemaText}");
+
+			return result.Value;
+		}
+
+		/// Parses an instance document, failing the test instead of returning when it does not parse.
+		/// @param instanceText The instance document.
+		/// @returns The parsed tree, which the caller must dispose.
+		private static JsonValue ParseInstanceOrFail(StringView instanceText)
+		{
+			let result = Json.Deserialize(instanceText);
+			Test.Assert(result case .Ok, scope $"The instance must parse: {instanceText}");
+
+			return result.Value;
+		}
+
+		/// Compiles the schema, parses the instance, and asserts the validity the caller expects.
+		/// @param schemaText The schema document.
+		/// @param instanceText The instance document.
+		/// @param expectValid Whether validation must report the instance valid.
+		/// @param message What the case proves, prefixed to the failure text.
+		private static void AssertValidates(StringView schemaText, StringView instanceText, bool expectValid, StringView message)
+		{
+			let schema = ParseSchemaOrFail(schemaText);
+			defer delete schema;
+
+			var instance = ParseInstanceOrFail(instanceText);
+			defer instance.Dispose();
+
+			let result = schema.Validate(instance);
+			defer result.Dispose();
+
+			let summary = Summarize(result, .. scope String());
+			if (result case .Ok(let validation))
+				Test.Assert(validation.IsValid == expectValid, scope $"{message}: expected {expectValid ? "valid" : "invalid"}, got {summary}");
+			else
+				Test.Assert(false, scope $"{message}: validation must complete, got {summary}");
 		}
 
 		private static void Summarize(Result<SchemaValidationResult, JsonSchemaError> result, String buffer)

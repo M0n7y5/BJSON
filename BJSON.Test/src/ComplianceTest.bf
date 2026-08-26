@@ -1,9 +1,25 @@
 using System;
 using BJSON.Models;
 using System.IO;
-using System.Diagnostics;
 
 namespace BJSON.Test;
+
+/// What a corpus expects of every file it holds.
+enum SuiteContract
+{
+	/// JSONTestSuite naming: 'y_' must parse, 'n_' must fail, 'i_' is implementation defined and
+	/// its result is never asserted.
+	NamePrefixLetter,
+
+	/// json.org naming: 'fail*' must fail, every other file must parse.
+	FailPrefix,
+
+	/// Every file must parse.
+	MustParse,
+
+	/// Every file must parse and serialize back byte identical.
+	ByteIdenticalRoundTrip
+}
 
 /// Compliance tests from various JSON test suites:
 /// - JSONTestSuite (https://github.com/nst/JSONTestSuite)
@@ -12,222 +28,38 @@ namespace BJSON.Test;
 /// - nativejson-benchmark (https://github.com/miloyip/nativejson-benchmark)
 class ComplianceTest
 {
-	static int idx = 1;
-
 	[Test(Name = "Compliance tests from JSONTestSuite")]
 	public static void T_TestSuite1()
 	{
 		// https://seriot.ch/projects/parsing_json.html
-
-		Console.WriteLine("Compliance tests from JSONTestSuite ...");
-
-		let currentPath = Directory.GetCurrentDirectory(.. scope .());
-
-		Path.Combine(currentPath, "TestSuites", "nst_json_testsuite");
-
-		let files = Directory.EnumerateFiles(currentPath);
-		int localIdx = 1;
-		for (let file in files)
-		{
-			let filePath = file.GetFilePath(.. scope .());
-
-			let fileName = file.GetFileName(.. scope .());
-
-			bool ignoreResult = fileName[0] == 'i';
-			bool shouldFail = fileName[0] == 'n';
-
-			let stream = scope FileStream();
-
-			if (stream.Open(filePath, .Read, .Read) case .Ok)
-			{
-				defer stream.Close();
-				var result = Json.Deserialize(stream);
-				defer result.Dispose();
-
-				if (ignoreResult == false)
-				{
-					if (result case .Ok)
-					{
-						if (shouldFail)
-							Console.WriteLine(scope $"FAIL: File '{fileName}' should NOT have parsed successfully!");
-						Test.Assert(shouldFail == false, scope $"This file should not be successfully parsed! {fileName}");
-					}
-					else
-					{
-						if (!shouldFail)
-							Console.WriteLine(scope $"FAIL: File '{fileName}' should have parsed successfully but got error!");
-						Test.Assert(shouldFail, scope $"This file should not fail to parse! {fileName}");
-					}
-				}
-
-			}
-			else
-			{
-				Test.Assert(false, scope $"Unable to open file {fileName}");
-			}
-
-			localIdx++;
-		}
-
-		Console.WriteLine("TEST COMPLETED SUCESSFULLY!");
+		RunSuite("nst_json_testsuite", .NamePrefixLetter);
 	}
 
 	[Test(Name = "Compliance tests from json.org")]
 	public static void T_TestSuite2()
 	{
-		
-		Debug.WriteLine("Compliance tests from json.org ...");
-		let currentPath = Directory.GetCurrentDirectory(.. scope .());
-
-		Path.Combine(currentPath, "TestSuites", "json_org_testsuite");
-
-		let files = Directory.EnumerateFiles(currentPath);
-		for (let file in files)
-		{
-			let filePath = file.GetFilePath(.. scope .());
-
-			let fileName = file.GetFileName(.. scope .());
-
-			if (fileName.StartsWith("fail1"))
-			{
-				//this test is not RFC 8259 compliant
-				continue;
-			}
-
-			bool shouldFail = fileName.StartsWith("fail");
-
-			let stream = scope FileStream();
-
-			if (stream.Open(filePath, .Read, .Read) case .Ok)
-			{
-				defer stream.Close();
-
-				var result = Json.Deserialize(stream);
-				defer result.Dispose();
-
-				Console.WriteLine();
-
-				if (result case .Ok)
-				{
-					Test.Assert(shouldFail == false, scope $"This file should not be successfully parsed! {fileName}");
-				}
-				else
-				{
-					Test.Assert(shouldFail, scope $"This file should not fail to parse! {fileName}");
-				}
-
-				Debug.WriteLine(scope $"{idx} Done testing file: {fileName} Result: {result case .Ok ? "Ok" : "Err"}");
-			}
-			else
-			{
-				Test.Assert(false, scope $"Unable to open file {fileName}");
-			}
-
-			idx++;
-		}
-
-		Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
+		RunSuite("json_org_testsuite", .FailPrefix);
 	}
 
 	[Test(Name = "Big List of Naughty Strings")]
 	public static void T_TestSuite3()
 	{
-
-		Debug.WriteLine("Big List of Naughty Strings ...");
-		let currentPath = Directory.GetCurrentDirectory(.. scope .());
-
-		Path.Combine(currentPath, "TestSuites", "big_list_of_naughty_strings");
-
-		let files = Directory.EnumerateFiles(currentPath);
-		for (let file in files)
-		{
-			let filePath = file.GetFilePath(.. scope .());
-
-			let fileName = file.GetFileName(.. scope .());
-
-			let stream = scope FileStream();
-
-			if (stream.Open(filePath, .Read, .Read) case .Ok)
-			{
-				defer stream.Close();
-
-				var result = Json.Deserialize(stream);
-				defer result.Dispose();
-
-				Console.WriteLine();
-
-				if (result case .Err(let err))
-				{
-					Test.Assert(false, scope $"Parsing naughty strings failed! Err: {err.ToString(.. scope .())}");
-				}
-
-				Debug.WriteLine(scope $"{idx} Done testing file: {fileName} Result: {result case .Ok ? "Ok" : "Err"}");
-			}
-			else
-			{
-				Test.Assert(false, scope $"Unable to open file {fileName}");
-			}
-			idx++;
-		}
-
-		Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
+		RunSuite("big_list_of_naughty_strings", .MustParse);
 	}
 
 	[Test(Name = "nativejson-benchmark round-trip tests")]
 	public static void T_TestSuite4()
 	{
-
-		Debug.WriteLine("nativejson-benchmark round-trip tests ...");
-		let currentPath = Directory.GetCurrentDirectory(.. scope .());
-
-		Path.Combine(currentPath, "TestSuites", "nativejson_benchmark", "roundtrip");
-
-		let files = Directory.EnumerateFiles(currentPath);
-		for (let file in files)
-		{
-			let filePath = file.GetFilePath(.. scope .());
-			let fileName = file.GetFileName(.. scope .());
-
-			let stream = scope FileStream();
-			let strReader = scope StreamReader(stream);
-
-			if (stream.Open(filePath, .Read, .Read) case .Ok)
-			{
-				defer stream.Close();
-
-				let inputStr = strReader.ReadToEnd(.. scope .());
-
-				var result = Json.Deserialize(inputStr);
-				defer result.Dispose();
-
-				Console.WriteLine();
-				if (result case .Err(let err))
-				{
-					Test.Assert(false, scope $"Roundtrip parsing failed! ({fileName}) Err: {err.ToString(.. scope .())}");
-					return;
-				}
-
-				let outJson = Json.Serialize(result, .. scope .());
-				Test.Assert(inputStr == outJson, scope $"Failed to pass rountrip test. ({fileName}) Expected: {inputStr}, Got: {outJson}");
-
-				Debug.WriteLine(scope $"{idx} Done testing file: {fileName} Result: {result case .Ok ? "Ok" : "Err"}");
-			}
-			else
-			{
-				Test.Assert(false, scope $"Unable to open file {fileName}");
-			}
-			idx++;
-		}
-
-		Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
+		RunSuite("nativejson_benchmark", .ByteIdenticalRoundTrip, "roundtrip");
 	}
 
 	[Test(Name = "Compliance tests from nativejson-benchmark")]
 	public static void T_TestSuite5()
 	{
-		Debug.WriteLine("Compliance tests from nativejson-benchmark ...");
 		// test cases from https://github.com/miloyip/nativejson-benchmark/blob/master/src/main.cpp
 
+		// The parser must land on the exact double these literals name, so the comparison is
+		// intentionally byte identical instead of tolerance based.
 		static void TEST_DOUBLE(StringView json_string, double expected)
 		{
 			var result = Json.Deserialize(json_string);
@@ -238,9 +70,6 @@ class ComplianceTest
 			case .Ok(let val):
 				double number = val[0];
 				Test.Assert(number == expected, scope $"Expected: {expected}, Got: {number}");
-
-				Debug.WriteLine(scope $"{idx} Done testing {json_string}.");
-				idx++;
 			case .Err(let err):
 				Test.Assert(false, scope $"Parsing double failed! String: {json_string}, Err: {err.ToString(.. scope .())}");
 			}
@@ -355,7 +184,82 @@ class ComplianceTest
 			"7567186443383770486037861622771738545623065874679014086723327636718751234567890123456789012345678901" +
 			"e-308]",
 			2.2250738585072014e-308);
+	}
 
-		Debug.WriteLine("TEST COMPLETED SUCESSFULLY!");
+	/// Walks one corpus directory below TestSuites, which resolves against the process working
+	/// directory with no fallback, and holds every file in it to the contract.
+	private static void RunSuite(StringView suiteDir, SuiteContract contract, StringView subDir = "")
+	{
+		let currentPath = Directory.GetCurrentDirectory(.. scope .());
+
+		if (subDir.IsEmpty)
+			Path.Combine(currentPath, "TestSuites", suiteDir);
+		else
+			Path.Combine(currentPath, "TestSuites", suiteDir, subDir);
+
+		let files = Directory.EnumerateFiles(currentPath);
+		for (let file in files)
+		{
+			let filePath = file.GetFilePath(.. scope .());
+			let fileName = file.GetFileName(.. scope .());
+
+			// fail1.json is not RFC 8259 compliant: a top level string is legal
+			if ((contract == .FailPrefix) && fileName.StartsWith("fail1"))
+				continue;
+
+			let stream = scope FileStream();
+
+			if (stream.Open(filePath, .Read, .Read) case .Ok)
+			{
+				defer stream.Close();
+
+				if (contract == .ByteIdenticalRoundTrip)
+				{
+					let strReader = scope StreamReader(stream);
+					let inputStr = strReader.ReadToEnd(.. scope .());
+
+					var roundTrip = Json.Deserialize(inputStr);
+					defer roundTrip.Dispose();
+
+					if (roundTrip case .Err(let err))
+					{
+						Test.Assert(false, scope $"Roundtrip parsing failed! ({fileName}) Err: {err.ToString(.. scope .())}");
+						continue;
+					}
+
+					let outJson = Json.Serialize(roundTrip, .. scope .());
+					Test.Assert(inputStr == outJson, scope $"Failed to pass rountrip test. ({fileName}) Expected: {inputStr}, Got: {outJson}");
+					continue;
+				}
+
+				var result = Json.Deserialize(stream);
+				defer result.Dispose();
+
+				bool ignoreResult = false;
+				bool shouldFail = false;
+
+				if (contract == .NamePrefixLetter)
+				{
+					ignoreResult = fileName[0] == 'i';
+					shouldFail = fileName[0] == 'n';
+				}
+				else if (contract == .FailPrefix)
+				{
+					shouldFail = fileName.StartsWith("fail");
+				}
+
+				if (ignoreResult)
+					continue;
+
+				if (result case .Ok)
+					Test.Assert(shouldFail == false, scope $"This file should not be successfully parsed! {fileName}");
+				else if (result case .Err(let err))
+					Test.Assert(shouldFail, scope $"This file should not fail to parse! {fileName} Err: {err.ToString(.. scope .())}");
+			}
+			else
+			{
+				Test.Assert(false, scope $"Unable to open file {fileName}");
+			}
+		}
 	}
 }

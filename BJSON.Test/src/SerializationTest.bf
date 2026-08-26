@@ -1,7 +1,6 @@
 using System;
 using BJSON.Models;
 using System.IO;
-using System.Diagnostics;
 
 namespace BJSON.Test;
 
@@ -10,8 +9,6 @@ class SerializationTest
 	[Test(Name = "Serialization - Basic tests")]
 	public static void T_SerializationBasic()
 	{
-		Debug.WriteLine("Serialization - Basic tests ...");
-
 		{
 			let json = JsonNull();
 			defer json.Dispose();
@@ -21,7 +18,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of null should succeed");
 			Test.Assert(output == "null", scope $"Expected 'null', got '{output}'");
-			Debug.WriteLine(scope $"  Test 1 (null): PASSED - output: {output}");
 		}
 
 		{
@@ -33,7 +29,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of true should succeed");
 			Test.Assert(output == "true", scope $"Expected 'true', got '{output}'");
-			Debug.WriteLine(scope $"  Test 2 (true): PASSED - output: {output}");
 		}
 
 		{
@@ -45,7 +40,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of false should succeed");
 			Test.Assert(output == "false", scope $"Expected 'false', got '{output}'");
-			Debug.WriteLine(scope $"  Test 3 (false): PASSED - output: {output}");
 		}
 
 		{
@@ -57,7 +51,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of integer should succeed");
 			Test.Assert(output == "42", scope $"Expected '42', got '{output}'");
-			Debug.WriteLine(scope $"  Test 4 (int 42): PASSED - output: {output}");
 		}
 
 		{
@@ -69,7 +62,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of negative integer should succeed");
 			Test.Assert(output == "-123", scope $"Expected '-123', got '{output}'");
-			Debug.WriteLine(scope $"  Test 5 (int -123): PASSED - output: {output}");
 		}
 
 		{
@@ -81,7 +73,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of unsigned integer should succeed");
 			Test.Assert(output == "999", scope $"Expected '999', got '{output}'");
-			Debug.WriteLine(scope $"  Test 6 (uint 999): PASSED - output: {output}");
 		}
 
 		{
@@ -92,7 +83,6 @@ class SerializationTest
 			let result = Json.Serialize(json, output);
 
 			Test.Assert(result case .Ok, "Serialization of float should succeed");
-			Debug.WriteLine(scope $"  Test 7 (float 3.14): PASSED - output: {output}");
 		}
 
 		{
@@ -132,19 +122,12 @@ class SerializationTest
 			Test.Assert(output.Contains("\n  \"phoneNumbers\""), "phoneNumbers should be indented");
 			Test.Assert(output.Contains("\n      \"type\""), "type field should be double-indented");
 			Test.Assert(output.Contains("\n      \"number\""), "number field should be double-indented");
-			
-			Debug.WriteLine(scope $"  Test 8 (exact indentation validation): PASSED");
-			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
-
-		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
 	}
 
 	[Test(Name = "Serialization - Pretty-print tests")]
 	public static void T_SerializationPrettyPrint()
 	{
-		Debug.WriteLine("Serialization - Pretty-print tests ...");
-
 		{
 			var json = JsonObject();
 			json.Add("name", JsonString("test"));
@@ -158,8 +141,6 @@ class SerializationTest
 			Test.Assert(result case .Ok, "Pretty-print serialization should succeed");
 			Test.Assert(output.Contains("\n"), "Output should contain newlines");
 			Test.Assert(output.Contains("  "), "Output should contain indentation");
-			Debug.WriteLine(scope $"  Test 1 (pretty object): PASSED");
-			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
 
 		{
@@ -175,8 +156,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Pretty-print array serialization should succeed");
 			Test.Assert(output.Contains("\n"), "Output should contain newlines");
-			Debug.WriteLine(scope $"  Test 2 (pretty array): PASSED");
-			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
 
 		{
@@ -190,8 +169,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Tab-indented serialization should succeed");
 			Test.Assert(output.Contains("\t"), "Output should contain tabs");
-			Debug.WriteLine(scope $"  Test 3 (tab indent): PASSED");
-			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
 
 		{
@@ -205,8 +182,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "4-space indented serialization should succeed");
 			Test.Assert(output.Contains("    "), "Output should contain 4-space indentation");
-			Debug.WriteLine(scope $"  Test 4 (4-space indent): PASSED");
-			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
 
 		{
@@ -220,7 +195,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "CRLF serialization should succeed");
 			Test.Assert(output.Contains("\r\n"), "Output should contain CRLF");
-			Debug.WriteLine(scope $"  Test 5 (CRLF newline): PASSED");
 		}
 
 		{
@@ -241,8 +215,6 @@ class SerializationTest
 			let result = Json.Serialize(json, output, options);
 
 			Test.Assert(result case .Ok, "Nested pretty-print should succeed");
-			Debug.WriteLine(scope $"  Test 6 (nested pretty): PASSED");
-			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
 
 		{
@@ -257,7 +229,6 @@ class SerializationTest
 			Test.Assert(result case .Ok, "Non-indented serialization should succeed");
 			Test.Assert(!output.Contains("\n"), "Minified output should not contain newlines");
 			Test.Assert(output == "{\"key\":\"value\"}", scope $"Minified output mismatch, got '{output}'");
-			Debug.WriteLine(scope $"  Test 7 (minified): PASSED - output: {output}");
 		}
 
 		{
@@ -297,20 +268,13 @@ class SerializationTest
 			Test.Assert(output.Contains("\n  \"phoneNumbers\""), "phoneNumbers should be indented");
 			Test.Assert(output.Contains("\n      \"type\""), "type field should be double-indented");
 			Test.Assert(output.Contains("\n      \"number\""), "number field should be double-indented");
-			
-			Debug.WriteLine(scope $"  Test 8 (exact indentation validation): PASSED");
-			Debug.WriteLine(scope $"    Output:\n{output}");
 		}
-
-		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
 	}
 
 	[Test(Name = "Serialization - Round-trip tests")]
 	public static void T_SerializationRoundTrip()
 	{
-		Debug.WriteLine("Serialization - Round-trip tests ...");
-
-		static void TestRoundTrip(StringView originalJson, int testNum, StringView testName)
+		static void TestRoundTrip(StringView originalJson, StringView testName)
 		{
 			var result1 = Json.Deserialize(originalJson);
 			defer result1.Dispose();
@@ -323,7 +287,7 @@ class SerializationTest
 
 				if (result2 case .Err(let serErr))
 				{
-					Test.Assert(false, scope $"Round-trip serialization failed! {serErr}");
+					Test.Assert(false, scope $"Round-trip serialization failed for {testName}! {serErr}");
 					return;
 				}
 
@@ -336,44 +300,39 @@ class SerializationTest
 					let serialized2 = scope String();
 					Json.Serialize(json2, serialized2);
 
-					Test.Assert(serialized == serialized2, scope $"Round-trip mismatch! First: {serialized}, Second: {serialized2}");
-					Debug.WriteLine(scope $"  Test {testNum} ({testName}): PASSED - {serialized}");
+					Test.Assert(serialized == serialized2, scope $"Round-trip mismatch for {testName}! First: {serialized}, Second: {serialized2}");
 				case .Err(let parseErr):
-					Test.Assert(false, scope $"Round-trip re-parse failed: {parseErr}");
+					Test.Assert(false, scope $"Round-trip re-parse failed for {testName}: {parseErr}");
 				}
 			case .Err(let err):
-				Test.Assert(false, scope $"Round-trip initial parse failed: {err}");
+				Test.Assert(false, scope $"Round-trip initial parse failed for {testName}: {err}");
 			}
 		}
 
-		TestRoundTrip("null", 1, "null");
-		TestRoundTrip("true", 2, "true");
-		TestRoundTrip("false", 3, "false");
-		TestRoundTrip("42", 4, "integer");
-		TestRoundTrip("-123", 5, "negative int");
-		TestRoundTrip("3.14", 6, "float");
-		TestRoundTrip("\"hello\"", 7, "string");
-		TestRoundTrip("{}", 8, "empty object");
-		TestRoundTrip("[]", 9, "empty array");
-		TestRoundTrip("[1,2,3]", 10, "simple array");
-		TestRoundTrip("{\"key\":\"value\"}", 11, "simple object");
-		TestRoundTrip("[null,true,false,42,\"text\"]", 12, "mixed array");
-		TestRoundTrip("{\"nested\":{\"inner\":\"value\"}}", 13, "nested object");
-		TestRoundTrip("[[1,2],[3,4]]", 14, "nested arrays");
-		TestRoundTrip("{\"arr\":[1,2],\"obj\":{\"x\":1}}", 15, "complex structure");
+		TestRoundTrip("null", "null");
+		TestRoundTrip("true", "true");
+		TestRoundTrip("false", "false");
+		TestRoundTrip("42", "integer");
+		TestRoundTrip("-123", "negative int");
+		TestRoundTrip("3.14", "float");
+		TestRoundTrip("\"hello\"", "string");
+		TestRoundTrip("{}", "empty object");
+		TestRoundTrip("[]", "empty array");
+		TestRoundTrip("[1,2,3]", "simple array");
+		TestRoundTrip("{\"key\":\"value\"}", "simple object");
+		TestRoundTrip("[null,true,false,42,\"text\"]", "mixed array");
+		TestRoundTrip("{\"nested\":{\"inner\":\"value\"}}", "nested object");
+		TestRoundTrip("[[1,2],[3,4]]", "nested arrays");
+		TestRoundTrip("{\"arr\":[1,2],\"obj\":{\"x\":1}}", "complex structure");
 
-		TestRoundTrip("9223372036854775807", 16, "max int64");
-		TestRoundTrip("-9223372036854775808", 17, "min int64");
-		TestRoundTrip("18446744073709551615", 18, "max uint64");
-
-		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+		TestRoundTrip("9223372036854775807", "max int64");
+		TestRoundTrip("-9223372036854775808", "min int64");
+		TestRoundTrip("18446744073709551615", "max uint64");
 	}
 
 	[Test(Name = "Serialization - Error handling tests")]
 	public static void T_SerializationErrors()
 	{
-		Debug.WriteLine("Serialization - Error handling tests ...");
-
 		{
 			let json = JsonNumber(Double.NaN);
 			defer json.Dispose();
@@ -382,7 +341,6 @@ class SerializationTest
 			let result = Json.Serialize(json, output);
 
 			Test.Assert(result case .Err(.NaNNotAllowed), "NaN serialization should return NaNNotAllowed error");
-			Debug.WriteLine("  Test 1 (NaN error): PASSED");
 		}
 
 		{
@@ -393,7 +351,6 @@ class SerializationTest
 			let result = Json.Serialize(json, output);
 
 			Test.Assert(result case .Err(.InfinityNotAllowed), "Positive Infinity should return InfinityNotAllowed error");
-			Debug.WriteLine("  Test 2 (Positive Infinity error): PASSED");
 		}
 
 		{
@@ -404,17 +361,12 @@ class SerializationTest
 			let result = Json.Serialize(json, output);
 
 			Test.Assert(result case .Err(.InfinityNotAllowed), "Negative Infinity should return InfinityNotAllowed error");
-			Debug.WriteLine("  Test 3 (Negative Infinity error): PASSED");
 		}
-
-		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
 	}
 
 	[Test(Name = "Serialization - Escape character tests")]
 	public static void T_SerializationEscapeCharacters()
 	{
-		Debug.WriteLine("Serialization - Escape character tests ...");
-
 		{
 			var json = JsonString("hello\nworld");
 			defer json.Dispose();
@@ -424,7 +376,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of string with newline should succeed");
 			Test.Assert(output == "\"hello\\nworld\"", scope $"Expected '\"hello\\nworld\"', got '{output}'");
-			Debug.WriteLine(scope $"  Test 1 (newline): PASSED - output: {output}");
 		}
 
 		{
@@ -436,7 +387,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of string with tab should succeed");
 			Test.Assert(output == "\"hello\\tworld\"", scope $"Expected '\"hello\\tworld\"', got '{output}'");
-			Debug.WriteLine(scope $"  Test 2 (tab): PASSED - output: {output}");
 		}
 
 		{
@@ -448,7 +398,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of string with carriage return should succeed");
 			Test.Assert(output == "\"hello\\rworld\"", scope $"Expected '\"hello\\rworld\"', got '{output}'");
-			Debug.WriteLine(scope $"  Test 3 (carriage return): PASSED - output: {output}");
 		}
 
 		{
@@ -460,7 +409,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of string with quotes should succeed");
 			Test.Assert(output == "\"say \\\"hello\\\"\"", scope $"Expected '\"say \\\"hello\\\"\"', got '{output}'");
-			Debug.WriteLine(scope $"  Test 4 (quotes): PASSED - output: {output}");
 		}
 
 		{
@@ -472,7 +420,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of string with backslashes should succeed");
 			Test.Assert(output == "\"path\\\\to\\\\file\"", scope $"Expected '\"path\\\\to\\\\file\"', got '{output}'");
-			Debug.WriteLine(scope $"  Test 5 (backslash): PASSED - output: {output}");
 		}
 
 		{
@@ -484,7 +431,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of string with backspace should succeed");
 			Test.Assert(output == "\"hello\\bworld\"", scope $"Expected '\"hello\\bworld\"', got '{output}'");
-			Debug.WriteLine(scope $"  Test 6 (backspace): PASSED - output: {output}");
 		}
 
 		{
@@ -496,7 +442,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of string with form feed should succeed");
 			Test.Assert(output == "\"hello\\fworld\"", scope $"Expected '\"hello\\fworld\"', got '{output}'");
-			Debug.WriteLine(scope $"  Test 7 (form feed): PASSED - output: {output}");
 		}
 
 		{
@@ -508,7 +453,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of string with multiple escapes should succeed");
 			Test.Assert(output == "\"line1\\nline2\\ttab\\r\\n\"", scope $"Expected '\"line1\\nline2\\ttab\\r\\n\"', got '{output}'");
-			Debug.WriteLine(scope $"  Test 8 (multiple escapes): PASSED - output: {output}");
 		}
 
 		{
@@ -524,7 +468,6 @@ class SerializationTest
 
 				Test.Assert(result2 case .Ok, "Round-trip serialization should succeed");
 				Test.Assert(output == inputJson, scope $"Round-trip mismatch! Expected: {inputJson}, Got: {output}");
-				Debug.WriteLine(scope $"  Test 9 (round-trip): PASSED - input: {inputJson}, output: {output}");
 			case .Err(let err):
 				Test.Assert(false, scope $"Round-trip parse failed: {err}");
 			}
@@ -543,7 +486,6 @@ class SerializationTest
 
 				Test.Assert(result2 case .Ok, "Round-trip with all escapes should succeed");
 				Test.Assert(output == inputJson, scope $"Round-trip mismatch! Expected: {inputJson}, Got: {output}");
-				Debug.WriteLine(scope $"  Test 10 (all escapes round-trip): PASSED");
 			case .Err(let err):
 				Test.Assert(false, scope $"Round-trip parse failed: {err}");
 			}
@@ -558,7 +500,6 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of NUL character should succeed");
 			Test.Assert(output == "\"\\u0000\"", scope $"Expected '\"\\u0000\"', got '{output}'");
-			Debug.WriteLine(scope $"  Test 11 (NUL control char): PASSED - output: {output}");
 		}
 
 		{
@@ -570,9 +511,136 @@ class SerializationTest
 
 			Test.Assert(result case .Ok, "Serialization of control char 0x1F should succeed");
 			Test.Assert(output == "\"\\u001f\"", scope $"Expected '\"\\u001f\"', got '{output}'");
-			Debug.WriteLine(scope $"  Test 12 (0x1F control char): PASSED - output: {output}");
+		}
+	}
+
+	[Test(Name = "Object Key Escaping")]
+	public static void T_ObjectKeyEscaping()
+	{
+		{
+			var json = JsonObject();
+			json.Add("key\"with\"quotes", JsonString("value"));
+			defer json.Dispose();
+
+			let output = scope String();
+			let result = Json.Serialize(json, output);
+
+			Test.Assert(result case .Ok, "Serialization of key with quotes should succeed");
+			// The key should be escaped: "key\"with\"quotes"
+			Test.Assert(output.Contains("\"key\\\"with\\\"quotes\""), 
+				scope $"Key with quotes should be escaped. Got: {output}");
+
+			var parseResult = Json.Deserialize(output);
+			defer parseResult.Dispose();
+			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
 		}
 
-		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+		{
+			var json = JsonObject();
+			json.Add("path\\to\\file", JsonString("value"));
+			defer json.Dispose();
+
+			let output = scope String();
+			let result = Json.Serialize(json, output);
+
+			Test.Assert(result case .Ok, "Serialization of key with backslash should succeed");
+			// The key should be escaped: "path\\to\\file"
+			Test.Assert(output.Contains("\"path\\\\to\\\\file\""), 
+				scope $"Key with backslash should be escaped. Got: {output}");
+
+			var parseResult = Json.Deserialize(output);
+			defer parseResult.Dispose();
+			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
+		}
+
+		{
+			var json = JsonObject();
+			json.Add("line1\nline2", JsonString("value"));
+			defer json.Dispose();
+
+			let output = scope String();
+			let result = Json.Serialize(json, output);
+
+			Test.Assert(result case .Ok, "Serialization of key with newline should succeed");
+			// The key should be escaped: "line1\nline2"
+			Test.Assert(output.Contains("\"line1\\nline2\""), 
+				scope $"Key with newline should be escaped. Got: {output}");
+
+			var parseResult = Json.Deserialize(output);
+			defer parseResult.Dispose();
+			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
+		}
+
+		{
+			var json = JsonObject();
+			json.Add("col1\tcol2", JsonString("value"));
+			defer json.Dispose();
+
+			let output = scope String();
+			let result = Json.Serialize(json, output);
+
+			Test.Assert(result case .Ok, "Serialization of key with tab should succeed");
+			Test.Assert(output.Contains("\"col1\\tcol2\""), 
+				scope $"Key with tab should be escaped. Got: {output}");
+
+			var parseResult = Json.Deserialize(output);
+			defer parseResult.Dispose();
+			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
+		}
+
+		{
+			var json = JsonObject();
+			json.Add(scope String()..Append("key")..Append('\0')..Append("end"), JsonString("value"));
+			defer json.Dispose();
+
+			let output = scope String();
+			let result = Json.Serialize(json, output);
+
+			Test.Assert(result case .Ok, "Serialization of key with NUL should succeed");
+			Test.Assert(output.Contains("\\u0000"), 
+				scope $"Key with NUL should be escaped as \\u0000. Got: {output}");
+
+			var parseResult = Json.Deserialize(output);
+			defer parseResult.Dispose();
+			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
+		}
+
+		{
+			var json = JsonObject();
+			json.Add("\"quoted\"\nand\\slashed", JsonString("value"));
+			defer json.Dispose();
+
+			let output = scope String();
+			let result = Json.Serialize(json, output);
+
+			Test.Assert(result case .Ok, "Serialization of key with multiple escapes should succeed");
+
+			var parseResult = Json.Deserialize(output);
+			defer parseResult.Dispose();
+			Test.Assert(parseResult case .Ok, scope $"Round-trip parse should succeed. Output was: {output}");
+			
+			if (parseResult case .Ok(let parsed))
+			{
+				let obj = parsed.AsObject().Value;
+				Test.Assert(obj.Count == 1, "Should have exactly one key");
+				for (let item in obj)
+				{
+					Test.Assert(item.key == "\"quoted\"\nand\\slashed", 
+						scope $"Key should round-trip correctly. Got: {item.key}");
+				}
+			}
+		}
+	}
+
+	[Test(Name = "Regression: serialize appends to a non empty buffer")]
+	public static void T_SerializeIntoUsedBuffer()
+	{
+		var json = JsonObject();
+		json.Add("a", JsonNumber((int64)1));
+		defer json.Dispose();
+
+		let output = scope String("prefix:");
+		Test.Assert(Json.Serialize(json, output) case .Ok, "serialize must succeed");
+		Test.Assert(output == "prefix:{\"a\":1}", scope $"got '{output}'");
 	}
 }
