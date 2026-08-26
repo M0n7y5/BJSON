@@ -82,13 +82,5 @@ namespace BJSON.Enums
 		{
 			return sSerializeLookup[(uint8)c];
 		}
-
-		/// Checks if a character needs escaping during serialization, including the control
-		/// characters that GetEscapeChar has no letter for.
-		[Inline]
-		public static bool NeedsEscape(char8 c)
-		{
-			return (uint8)c < 0x20 || sSerializeLookup[(uint8)c] != 0;
-		}
 	}
 }

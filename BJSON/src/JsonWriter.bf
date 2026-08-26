@@ -33,39 +33,6 @@ namespace BJSON
 			this.options = options;
 		}
 
-		/// Appends a string to a String buffer with JSON escaping, without surrounding quotes.
-		/// For callers assembling JSON text in memory; the stream path is WriteEscaped.
-		/// @param buffer The string buffer to append to.
-		/// @param str The string to escape and append.
-		public static void AppendEscaped(String buffer, StringView str)
-		{
-			for (let c in str)
-			{
-				let escapeChar = JsonEscapes.GetEscapeChar(c);
-
-				if (escapeChar != 0)
-				{
-					buffer.Append('\\');
-					buffer.Append(escapeChar);
-				}
-				else if ((uint8)c < 0x20)
-				{
-					buffer.Append('\\');
-					buffer.Append('u');
-					buffer.Append('0');
-					buffer.Append('0');
-					let highNibble = ((uint8)c >> 4) & 0x0F;
-					let lowNibble = (uint8)c & 0x0F;
-					buffer.Append(highNibble < 10 ? (char8)('0' + highNibble) : (char8)('a' + highNibble - 10));
-					buffer.Append(lowNibble < 10 ? (char8)('0' + lowNibble) : (char8)('a' + lowNibble - 10));
-				}
-				else
-				{
-					buffer.Append(c);
-				}
-			}
-		}
-
 		/// Writes text to a stream verbatim.
 		/// Emitted serializers call this for structural output.
 		/// @param stream The stream to write to.
