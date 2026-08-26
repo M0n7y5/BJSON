@@ -112,6 +112,21 @@ public class JsonDeserializerCodeGen
 	[Comptime]
 	private static void EmitFieldValueDeserialization(String code, FieldInfo field, Type fieldType, StringView jsonVar, StringView indent)
 	{
+		if (fieldType.IsObject || field.FieldType.IsNullable)
+		{
+			code.AppendF($"{indent}if (!{jsonVar}.IsNull())\n");
+			code.AppendF($"{indent}{{\n");
+			EmitFieldValueDeserializationBody(code, field, fieldType, jsonVar, scope $"{indent}\t");
+			code.AppendF($"{indent}}}\n");
+			return;
+		}
+
+		EmitFieldValueDeserializationBody(code, field, fieldType, jsonVar, indent);
+	}
+
+	[Comptime]
+	private static void EmitFieldValueDeserializationBody(String code, FieldInfo field, Type fieldType, StringView jsonVar, StringView indent)
+	{
 		if (let converterAttr = field.GetCustomAttribute<JsonConverterAttribute>())
 		{
 			String typeName = scope .();

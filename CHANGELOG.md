@@ -14,6 +14,9 @@
 - Fixed the real parse error being replaced by a trailing data error whenever parsing stopped before the end of input
 - Fixed `Deserializer` keeping the parsed tree after `Deserialize` returned, which made a second call on the same instance write through freed memory
 - Fixed serialization to a failing stream aborting the process: the writers discarded the result of every stream write, and Beef traps on a discarded error. Both the DOM writer and the emitted serializers now propagate write failures as `StreamWriteFailed`, so a rejected or short write ends the document with an error instead of a trap or a silent truncation
+- Fixed null reference fields crashing the emitted serializer: a null `String`, `List`, `Dictionary`, or nested `[JsonObject]` field now writes `null`, and `[JsonIgnore(Condition = .WhenWritingNull)]` skips it, which the condition previously did only for `Nullable<T>`
+- Fixed a JSON null failing typed deserialization for reference and `Nullable<T>` fields: null now leaves the field at its current value instead of returning an error, so a document written by this library reads back
+- Fixed unsupported collection element types emitting invalid JSON such as `[,,]` or `{"key":}` while reporting success. The generator now fails the build with the offending type name
 
 ### API Changes
 

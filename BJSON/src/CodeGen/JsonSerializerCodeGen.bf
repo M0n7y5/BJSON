@@ -103,9 +103,10 @@ public class JsonSerializerCodeGen
 
 		if (let ignoreAttr = field.GetCustomAttribute<JsonIgnoreAttribute>())
 		{
-			if (ignoreAttr.Condition == .WhenWritingNull && isNullable)
+			if (ignoreAttr.Condition == .WhenWritingNull && (isNullable || fieldType.IsObject))
 			{
-				code.AppendF($"\t\tif ({field.Name}.HasValue)\n");
+				let presence = isNullable ? scope $"{field.Name}.HasValue" : scope $"{field.Name} != null";
+				code.AppendF($"\t\tif ({presence})\n");
 				code.Append("\t\t{\n");
 				EmitFieldValueSerializationWithOptions(code, field, fieldType, jsonName, "\t\t\t", true, isNullable);
 				code.Append("\t\t}\n");
@@ -162,26 +163,40 @@ public class JsonSerializerCodeGen
 			return;
 		}
 
+		let isReference = fieldType.IsObject && !isNullable;
+		var bodyIndent = scope String(indent);
+
+		if (isReference)
+		{
+			code.AppendF($"{indent}if ({fieldExpr} == null)\n");
+			code.AppendF($"{indent}{{\n");
+			code.AppendF($"{indent}\tTry!(BJSON.JsonWriter.WriteRaw(stream, \"null\"));\n");
+			code.AppendF($"{indent}}}\n");
+			code.AppendF($"{indent}else\n");
+			code.AppendF($"{indent}{{\n");
+			bodyIndent.Append('\t');
+		}
+
 		if (fieldType == typeof(bool))
 		{
-			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteBool(stream, {fieldExpr}));\n");
+			code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteBool(stream, {fieldExpr}));\n");
 		}
 		else if (fieldType.IsInteger)
 		{
-			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteInt(stream, {fieldExpr}));\n");
+			code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteInt(stream, {fieldExpr}));\n");
 		}
 		else if (fieldType.IsFloatingPoint)
 		{
-			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteFloat(stream, {fieldExpr}));\n");
+			code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteFloat(stream, {fieldExpr}));\n");
 		}
 		else if (fieldType == typeof(String))
 		{
-			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteString(stream, {fieldExpr}));\n");
+			code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteString(stream, {fieldExpr}));\n");
 		}
 		else if (fieldType.IsEnum)
 		{
 			bool useNumber = false;
-			
+
 			if (let attr = field.GetCustomAttribute<JsonNumberHandlingAttribute>())
 			{
 				useNumber = attr.Handling == .AsNumber;
@@ -190,33 +205,38 @@ public class JsonSerializerCodeGen
 			{
 				useNumber = typeAttr.Handling == .AsNumber;
 			}
-			
+
 			if (useNumber)
 			{
-				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteInt(stream, (int){fieldExpr}));\n");
+				code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteInt(stream, (int){fieldExpr}));\n");
 			}
 			else
 			{
-				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
-				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteRaw(stream, {fieldExpr}.ToString(.. scope .())));\n");
-				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
+				code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
+				code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteRaw(stream, {fieldExpr}.ToString(.. scope .())));\n");
+				code.AppendF($"{bodyIndent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
 			}
 		}
 		else if (JsonCodeGenHelper.IsList(fieldType))
 		{
-			EmitListSerializationWithOptions(code, field, fieldType, indent);
+			EmitListSerializationWithOptions(code, field, fieldType, bodyIndent);
 		}
 		else if (JsonCodeGenHelper.IsDictionary(fieldType))
 		{
-			EmitDictionarySerializationWithOptions(code, field, fieldType, indent);
+			EmitDictionarySerializationWithOptions(code, field, fieldType, bodyIndent);
 		}
 		else if (fieldType.IsSizedArray)
 		{
-			EmitSizedArraySerializationWithOptions(code, field, fieldType, indent);
+			EmitSizedArraySerializationWithOptions(code, field, fieldType, bodyIndent);
 		}
 		else if (fieldType.IsObject || fieldType.IsStruct)
 		{
-			code.AppendF($"{indent}Try!({fieldExpr}.JsonSerialize(stream, _options));\n");
+			code.AppendF($"{bodyIndent}Try!({fieldExpr}.JsonSerialize(stream, _options));\n");
+		}
+
+		if (isReference)
+		{
+			code.AppendF($"{indent}}}\n");
 		}
 	}
 
@@ -323,7 +343,10 @@ public class JsonSerializerCodeGen
 		}
 		else if (valueType == typeof(String))
 		{
-			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteString(stream, {valueExpr}));\n");
+			code.AppendF($"{indent}if ({valueExpr} == null)\n");
+			code.AppendF($"{indent}\tTry!(BJSON.JsonWriter.WriteRaw(stream, \"null\"));\n");
+			code.AppendF($"{indent}else\n");
+			code.AppendF($"{indent}\tTry!(BJSON.JsonWriter.WriteString(stream, {valueExpr}));\n");
 		}
 		else if (valueType.IsEnum)
 		{
@@ -346,7 +369,23 @@ public class JsonSerializerCodeGen
 		}
 		else if (valueType.HasCustomAttribute<JsonObjectAttribute>())
 		{
-			code.AppendF($"{indent}Try!({valueExpr}.JsonSerialize(stream, _options));\n");
+			if (valueType.IsObject)
+			{
+				code.AppendF($"{indent}if ({valueExpr} == null)\n");
+				code.AppendF($"{indent}\tTry!(BJSON.JsonWriter.WriteRaw(stream, \"null\"));\n");
+				code.AppendF($"{indent}else\n");
+				code.AppendF($"{indent}\tTry!({valueExpr}.JsonSerialize(stream, _options));\n");
+			}
+			else
+			{
+				code.AppendF($"{indent}Try!({valueExpr}.JsonSerialize(stream, _options));\n");
+			}
+		}
+		else
+		{
+			let typeName = scope String();
+			valueType.GetFullName(typeName);
+			Runtime.FatalError(scope $"BJSON cannot serialize '{typeName}' as a collection element or value. Supported: bool, integer, floating point, String, enum, and [JsonObject] types.");
 		}
 	}
 }

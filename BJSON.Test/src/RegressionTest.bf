@@ -60,6 +60,17 @@ class SerializedPoint
 	public String Label = new .() ~ delete _;
 }
 
+[JsonObject]
+class NullableHolder
+{
+	public String Text = null;
+	public List<int> Numbers = null;
+	public SerializedPoint Point = null;
+
+	[JsonIgnore(Condition = .WhenWritingNull)]
+	public String Skipped = null;
+}
+
 class RegressionTest
 {
 	[Test(Name = "Regression: shortest round-trip for a 17 digit negative double")]
@@ -166,5 +177,19 @@ class RegressionTest
 		let stream = scope ShortStream(4);
 
 		Test.Assert(point.JsonSerialize(stream) case .Err, "a truncated write must not report success");
+	}
+
+	[Test(Name = "Regression: null reference fields serialize as null")]
+	public static void T_NullReferenceFields()
+	{
+		let holder = scope NullableHolder();
+
+		let output = scope String();
+		Test.Assert(Json.Serialize(holder, output) case .Ok, "a null field must not fail serialization");
+		Test.Assert(output == "{\"Text\":null,\"Numbers\":null,\"Point\":null}", scope $"got '{output}'");
+
+		let restored = scope NullableHolder();
+		var stream = scope StringStream(output, .Reference);
+		Test.Assert(Json.Deserialize<NullableHolder>(stream, restored) case .Ok, "a null valued document must deserialize");
 	}
 }
