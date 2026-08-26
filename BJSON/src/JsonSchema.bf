@@ -52,7 +52,8 @@ namespace BJSON
 	}
 
 	/// Errors that can occur during schema parsing or reference resolution.
-	/// Payload views are not owned by the error and can alias temporaries built while resolving.
+	/// An error does not own its payload views. A reference an error from Validate carries reads
+	/// storage the JsonSchema owns and stays valid until the next Validate call on that schema.
 	public enum JsonSchemaError
 	{
 		/// A schema is unusable: a node is neither an object nor a boolean, or the root document is
@@ -144,6 +145,7 @@ namespace BJSON
 		private Dictionary<String, SchemaDocument> mDocuments = new .();
 		private ISchemaResolver mResolver;
 		private bool mOwnsResolver = false;
+		private String mErrorRef = new .() ~ delete _;
 
 		/// Builds a schema from a parsed tree, indexing the $id and $anchor declarations it finds.
 		/// @param schemaRoot The schema tree. This JsonSchema takes ownership and disposes it.
@@ -208,6 +210,30 @@ namespace BJSON
 			return validator.Validate(instance);
 		}
 
+		/// Copies the reference an error carries into storage this schema owns. Callers must anchor
+		/// before returning, while the buffer that built the reference is still alive.
+		/// @returns The same error, reading a reference that stays valid until the next Validate.
+		private JsonSchemaError AnchorRef(JsonSchemaError err)
+		{
+			switch (err)
+			{
+			case .RefNotFound(let reference):
+				mErrorRef.Set(reference);
+				return .RefNotFound(mErrorRef);
+			case .RefCycleDetected(let reference):
+				mErrorRef.Set(reference);
+				return .RefCycleDetected(mErrorRef);
+			case .ExternalSchemaNotFound(let reference):
+				mErrorRef.Set(reference);
+				return .ExternalSchemaNotFound(mErrorRef);
+			case .ExternalSchemaParseError(let reference, let inner):
+				mErrorRef.Set(reference);
+				return .ExternalSchemaParseError(mErrorRef, inner);
+			default:
+				return err;
+			}
+		}
+
 		/// Disposes the schema tree, every external document loaded through $ref, and the resolver
 		/// when this JsonSchema created it.
 		public ~this()
@@ -258,11 +284,11 @@ namespace BJSON
 			}
 
 			if (mResolver == null)
-				return .Err(.ExternalSchemaNotFound(uri));
+				return .Err(AnchorRef(.ExternalSchemaNotFound(uri)));
 
 			let resolved = mResolver.Resolve(normalized);
 			if (resolved case .Err(let err))
-				return .Err(err);
+				return .Err(AnchorRef(err));
 
 			let newDoc = new SchemaDocument(normalized, resolved.Value);
 			mDocuments.Add(new String(normalized), newDoc);
@@ -295,7 +321,7 @@ namespace BJSON
 					if (JsonPointer.Resolve(outDoc.Root, basePointer) case .Ok(let val))
 						baseSchema = val;
 					else
-						return .Err(.RefNotFound(resolvedRef));
+						return .Err(AnchorRef(.RefNotFound(resolvedRef)));
 				}
 			}
 
@@ -321,7 +347,7 @@ namespace BJSON
 					}
 					return .Ok(val);
 				}
-				return .Err(.RefNotFound(resolvedRef));
+				return .Err(AnchorRef(.RefNotFound(resolvedRef)));
 			}
 
 			let anchorBase = docUri.IsEmpty ? outDoc.BaseUri : docUri;
@@ -335,7 +361,7 @@ namespace BJSON
 					return .Ok(val);
 				}
 			}
-			return .Err(.RefNotFound(resolvedRef));
+			return .Err(AnchorRef(.RefNotFound(resolvedRef)));
 		}
 
 		/// One frame of the $ref guard: a resolved reference plus the instance location it was
@@ -420,7 +446,7 @@ namespace BJSON
 					let resolvedRef = scope String();
 					SchemaUri.ResolveUri(baseUri, refStr, resolvedRef);
 					if (IsRefOnStack(resolvedRef, instancePointer))
-						return .Err(.RefCycleDetected(resolvedRef));
+						return .Err(mSchema.AnchorRef(.RefCycleDetected(resolvedRef)));
 
 					mRefStack.Add(new SchemaRefFrame(resolvedRef, instancePointer));
 					defer

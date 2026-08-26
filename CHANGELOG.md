@@ -32,6 +32,7 @@
 - Fixed five ownership defects in `BJSON.SchemaCodeGen` that freed schema nodes twice or freed stack memory, and the CLI now reports a distinct non zero exit code for argument, schema, resolution, and output failures
 - Fixed the generator omitting `[JsonPropertyName]` when a schema key differed from the field name only by case, which made every generated class look up keys that cannot match
 - Fixed the generator copying `allOf` base properties into the derived class while also deriving from it, so generated types shadowed their base and serialized the inherited keys twice. `required` naming an inherited property now marks it on the base
+- Fixed schema errors carrying a reference into freed memory: `RefNotFound`, `RefCycleDetected`, `ExternalSchemaNotFound`, and `ExternalSchemaParseError` viewed a buffer that reference resolution released, so printing the error read reclaimed memory. The reference now reads storage the `JsonSchema` owns until the next `Validate`
 
 ### API Changes
 

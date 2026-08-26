@@ -310,4 +310,25 @@ class RegressionTest
 		var missingStream = scope StringStream("{\"employee_id\":7}", .Reference);
 		Test.Assert(Json.Deserialize<GeneratedDerived>(missingStream, missingBase) case .Err, "a missing required base field must fail");
 	}
+
+	[Test(Name = "Regression: a schema error reference survives the resolution that built it")]
+	public static void T_SchemaErrorReferenceOutlivesResolution()
+	{
+		let schemaText = """
+			{"$ref": "missing-schema.json"}
+			""";
+
+		var schema = JsonSchema.Parse(schemaText).Value;
+		defer delete schema;
+
+		var instance = Json.Deserialize("{}").Value;
+		defer instance.Dispose();
+
+		let result = schema.Validate(instance);
+		Test.Assert(result case .Err(let err), "an unresolvable $ref must fail validation");
+
+		let text = scope String();
+		err.ToString(text);
+		Test.Assert(text.Contains("missing-schema.json"), scope $"error text lost the reference: '{text}'");
+	}
 }
