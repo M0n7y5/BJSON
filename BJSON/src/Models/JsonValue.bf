@@ -576,6 +576,8 @@ namespace BJSON.Models
 			}
 		}
 
+		/// Reads or writes a value by key. The object copies the key and owns the copy,
+		/// and a write disposes the value it replaces.
 		public JsonValue this[String key]
 		{
 			get
@@ -585,7 +587,14 @@ namespace BJSON.Models
 
 			set
 			{
-				data.object[key] = value;
+				if (data.object.TryGetRefAlt(StringView(key), ?, let valPtr))
+				{
+					JsonValue.DisposeChild(*valPtr);
+					*valPtr = value;
+					return;
+				}
+
+				data.object.Add(new String(key), value);
 			}
 		}
 
@@ -707,6 +716,8 @@ namespace BJSON.Models
 			}
 		}
 
+		/// Reads or writes a value by index. A write past the end grows the array with nulls,
+		/// and a write over an existing element disposes it.
 		public JsonValue this[int index]
 		{
 			get
@@ -714,10 +725,12 @@ namespace BJSON.Models
 				return data.array[index];
 			}
 
-		set
+			set
 			{
 				if (index >= data.array.Count)
 					data.array.Resize(index + 1);
+				else
+					JsonValue.DisposeChild(data.array[index]);
 
 				data.array[index] = value;
 			}

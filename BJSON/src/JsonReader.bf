@@ -40,17 +40,16 @@ namespace BJSON
 			{
 				let res = ParseValue(stream);
 
+				if (res case .Err)
+					return res;
+
 				SkipWhitespace(stream);
 
 				let pos = stream.Position;
 				let len = stream.Length;
 
 				if (pos != len)
-				{
-					TrySilent!(stream.Peek<char8>());
-
-					return .Err(.UnexpectedToken(line + 1, column, "} or ]"));
-				}
+					return .Err(.UnexpectedToken(line, column, "end of document"));
 
 				return res;
 			}
@@ -417,6 +416,8 @@ namespace BJSON
 				if (!_handler.EndObject())
 					return .Err(.UnexpectedToken(line, column, ""));
 
+				currentDepth--;
+
 				return .Ok;
 			}
 
@@ -485,8 +486,10 @@ namespace BJSON
 			{
 				if (!_handler.EndArray())
 					return .Err(.UnexpectedToken(line, column, ""));
-				else
-					return .Ok;
+
+				currentDepth--;
+
+				return .Ok;
 			}
 
 			for (;;)
@@ -797,6 +800,24 @@ namespace BJSON
 			return .Ok;
 		}
 
+		/// Maps an expected character to a static text, so the error payload outlives the reader.
+		/// A StringView over a scope allocation would dangle once the parse call returns.
+		[Inline]
+		static StringView ExpectedText(char8 expected)
+		{
+			switch (expected)
+			{
+			case '"': return "\"";
+			case ':': return ":";
+			case ',': return ",";
+			case '{': return "{";
+			case '}': return "}";
+			case '[': return "[";
+			case ']': return "]";
+			default: return "";
+			}
+		}
+
 		[Inline]
 		Result<void, JsonParsingError> ConsumeLiteral(Stream stream, StringView expected)
 		{
@@ -805,7 +826,7 @@ namespace BJSON
 				if (stream.Peek<char8>() case .Ok(let c))
 				{
 					if (c != expected[i])
-						return .Err(.UnexpectedToken(line, column, scope $"{expected}"));
+						return .Err(.UnexpectedToken(line, column, expected));
 					stream.Skip(1);
 					column++;
 				}
@@ -827,7 +848,7 @@ namespace BJSON
 					return .Ok;
 				}
 				else
-					return .Err(.UnexpectedToken(line, column, scope $"{expected}"));
+					return .Err(.UnexpectedToken(line, column, ExpectedText(expected)));
 			}
 
 			return .Err(.UnableToRead(line, column));
@@ -847,7 +868,7 @@ namespace BJSON
 					return .Ok;
 				}
 				else
-					return .Err(.UnexpectedToken(line, column, scope $"{expected}"));
+					return .Err(.UnexpectedToken(line, column, ExpectedText(expected)));
 			}
 
 			return .Err(.UnableToRead(line, column));

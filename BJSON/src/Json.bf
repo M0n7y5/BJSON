@@ -57,17 +57,21 @@ namespace BJSON
 			return .Ok(obj);
 		}
 
+		/// Serializes a JsonValue tree, appending the text to a caller owned String.
 		public static Result<void, JsonSerializationError> Serialize(JsonValue json, String outText)
 		{
 			var stream = scope StringStream(outText, .Reference);
+			stream.Position = outText.Length;
 			var serializer = scope JsonWriter();
 
 			return serializer.Write(json, stream);
 		}
 
+		/// Serializes a JsonValue tree, appending the text to a caller owned String.
 		public static Result<void, JsonSerializationError> Serialize(JsonValue json, String outText, JsonWriterOptions options)
 		{
 			var stream = scope StringStream(outText, .Reference);
+			stream.Position = outText.Length;
 			var serializer = scope JsonWriter(options);
 
 			return serializer.Write(json, stream, options);
@@ -97,15 +101,19 @@ namespace BJSON
 			return obj.JsonSerialize(stream, options);
 		}
 
+		/// Serializes a typed object, appending the text to a caller owned String.
 		public static Result<void> Serialize<T>(T obj, String outText) where T : IJsonSerializable
 		{
 			var stream = scope StringStream(outText, .Reference);
+			stream.Position = outText.Length;
 			return obj.JsonSerialize(stream);
 		}
 
+		/// Serializes a typed object, appending the text to a caller owned String.
 		public static Result<void> Serialize<T>(T obj, String outText, JsonWriterOptions options) where T : IJsonSerializable
 		{
 			var stream = scope StringStream(outText, .Reference);
+			stream.Position = outText.Length;
 			return obj.JsonSerialize(stream, options);
 		}
 	}

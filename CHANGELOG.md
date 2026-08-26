@@ -7,6 +7,17 @@
 - Fixed `GetOrDefault<StringView>()` on objects returning a dangling view for SSO strings: the value was copied out of the dictionary, so the view referenced a dead temporary
 - Fixed `GetByPointerOrDefault<StringView>()` returning a dangling view for SSO strings: pointer resolution now walks to the stored value instead of copying it
 - Fixed `BJSON.SchemaCodeGen` failing to compile: `FileWriteError` was ambiguous with `System.IO.FileWriteError`
+- Fixed a one byte stack overflow when writing doubles: `dtoa` needs 26 bytes for its longest output plus terminator, the writer supplied 25. The writer now uses the length `dtoa` returns instead of scanning for the terminator
+- Fixed `JsonObject`'s key indexer storing a key it does not own: `Dispose` then freed caller memory, including string literals. The indexer now copies the key, and both container indexers dispose the value they replace instead of leaking it
+- Fixed parse errors carrying a `StringView` into a dead stack allocation, so `JsonParsingError.ToString` printed reclaimed memory
+- Fixed valid documents with about 200 or more empty objects or arrays being rejected with `MaximumDepthReached`: the empty container fast path never decremented the depth counter
+- Fixed the real parse error being replaced by a trailing data error whenever parsing stopped before the end of input
+- Fixed `Deserializer` keeping the parsed tree after `Deserialize` returned, which made a second call on the same instance write through freed memory
+
+### API Changes
+
+- `Json.Serialize(json, String)` and `Json.Serialize<T>(obj, String)` now append to the buffer instead of overwriting it from position zero, which used to leave stale trailing characters when the buffer was not empty
+- Trailing data now reports the real line number and names `end of document` as the expected token
 
 ### Known Limitations
 

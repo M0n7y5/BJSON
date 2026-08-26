@@ -155,9 +155,10 @@ namespace BJSON
 			if (value.IsInfinity)
 				return .Err(.InfinityNotAllowed);
 
-			char8[25] buff;
-			BJSON.Internal.dtoa(value, &buff);
-			stream.WriteStrUnsized(StringView(&buff));
+			// dtoa writes at most 25 characters plus a terminator, so 25 bytes is one short.
+			char8[32] buff;
+			let end = BJSON.Internal.dtoa(value, &buff);
+			stream.WriteStrUnsized(StringView(&buff, end - &buff));
 			return .Ok;
 		}
 
@@ -260,10 +261,9 @@ namespace BJSON
 					return .Err(.InfinityNotAllowed);
 				}
 
-				char8[25] buff;
-				BJSON.Internal.dtoa(value.data.number, &buff);
-				// Write null-terminated char8 array as string
-				stream.WriteStrUnsized(StringView(&buff));
+				char8[32] buff;
+				let end = BJSON.Internal.dtoa(value.data.number, &buff);
+				stream.WriteStrUnsized(StringView(&buff, end - &buff));
 			default:
 				return .Err(.InvalidNumber);
 			}

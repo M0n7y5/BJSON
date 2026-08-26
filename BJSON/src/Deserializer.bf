@@ -72,11 +72,16 @@ namespace BJSON
 							return .Err(.InvalidDocument);
 						}
 
-						return this.treeStack.Front;
+						let root = this.treeStack.Front;
+						ResetParseState();
+
+						return root;
 					}
 				case .Err(let err):
 					if (this.treeStack.Count != 0)
 						this.treeStack.Front.Dispose();
+
+					ResetParseState();
 
 					return .Err(err);
 			}
@@ -100,14 +105,29 @@ namespace BJSON
 							return .Err(.InvalidDocument);
 						}
 
-						return this.treeStack.Front;
+						let root = this.treeStack.Front;
+						ResetParseState();
+
+						return root;
 					}
 				case .Err(let err):
 					if (this.treeStack.Count != 0)
 						this.treeStack.Front.Dispose();
 
+					ResetParseState();
+
 					return .Err(err);
 			}
+		}
+
+		/// Drops the parse state so the instance can parse another document.
+		/// The returned tree is owned by the caller, so the queue is cleared without disposing.
+		private void ResetParseState()
+		{
+			treeStack.Clear();
+			currentKey = null;
+			IsIgnoringDuplicate = false;
+			IgnoredDepthCounter = 0;
 		}
 
 		[Inline]
@@ -151,7 +171,7 @@ namespace BJSON
 		[Inline]
 		private bool AddToObject(JsonObject jObj, JsonValue value)
 		{
-			if (jObj.data.object.TryGetValueAlt(currentKey, var existingValue))
+			if (jObj.data.object.ContainsKeyAlt(currentKey))
 			{
 				switch (Config.DuplicateBehavior)
 				{
@@ -166,7 +186,7 @@ namespace BJSON
 						return true;
 
 					case .AlwaysRewrite:
-						existingValue.Dispose();
+						// The indexer disposes the value it replaces.
 						jObj[currentKey] = value;
 						currentKey = null;
 						return true;
@@ -244,7 +264,7 @@ namespace BJSON
 
 						let jObj = document.As<JsonObject>();
 
-						if (jObj.data.object.TryGetValueAlt(currentKey, var existingValue))
+						if (jObj.data.object.ContainsKeyAlt(currentKey))
 						{
 							switch (Config.DuplicateBehavior)
 							{
@@ -257,7 +277,7 @@ namespace BJSON
 									return true;
 
 								case .AlwaysRewrite:
-									existingValue.Dispose();
+									// The indexer disposes the value it replaces.
 									let jVal = JsonObject();
 									jObj[currentKey] = jVal;
 									treeStack.Add(jVal);
@@ -350,7 +370,7 @@ namespace BJSON
 
 						let jObj = document.As<JsonObject>();
 
-						if (jObj.data.object.TryGetValueAlt(currentKey, var existingValue))
+						if (jObj.data.object.ContainsKeyAlt(currentKey))
 						{
 							switch (Config.DuplicateBehavior)
 							{
@@ -363,7 +383,7 @@ namespace BJSON
 									return true;
 
 								case .AlwaysRewrite:
-									existingValue.Dispose();
+									// The indexer disposes the value it replaces.
 									let jVal = JsonArray();
 									jObj[currentKey] = jVal;
 									treeStack.Add(jVal);
