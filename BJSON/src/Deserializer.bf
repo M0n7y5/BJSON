@@ -186,7 +186,6 @@ namespace BJSON
 						return true;
 
 					case .AlwaysRewrite:
-						// The indexer disposes the value it replaces.
 						jObj[currentKey] = value;
 						currentKey = null;
 						return true;
@@ -277,7 +276,6 @@ namespace BJSON
 									return true;
 
 								case .AlwaysRewrite:
-									// The indexer disposes the value it replaces.
 									let jVal = JsonObject();
 									jObj[currentKey] = jVal;
 									treeStack.Add(jVal);
@@ -383,7 +381,6 @@ namespace BJSON
 									return true;
 
 								case .AlwaysRewrite:
-									// The indexer disposes the value it replaces.
 									let jVal = JsonArray();
 									jObj[currentKey] = jVal;
 									treeStack.Add(jVal);

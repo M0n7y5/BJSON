@@ -13,10 +13,13 @@
 - Fixed valid documents with about 200 or more empty objects or arrays being rejected with `MaximumDepthReached`: the empty container fast path never decremented the depth counter
 - Fixed the real parse error being replaced by a trailing data error whenever parsing stopped before the end of input
 - Fixed `Deserializer` keeping the parsed tree after `Deserialize` returned, which made a second call on the same instance write through freed memory
+- Fixed serialization to a failing stream aborting the process: the writers discarded the result of every stream write, and Beef traps on a discarded error. Both the DOM writer and the emitted serializers now propagate write failures as `StreamWriteFailed`, so a rejected or short write ends the document with an error instead of a trap or a silent truncation
 
 ### API Changes
 
 - `Json.Serialize(json, String)` and `Json.Serialize<T>(obj, String)` now append to the buffer instead of overwriting it from position zero, which used to leave stale trailing characters when the buffer was not empty
+- `JsonWriter.WriteBool`, `WriteInt`, `WriteUInt`, `WriteString`, and `WriteEscaped` return `Result<void, JsonSerializationError>` instead of `void`, and `WriteRaw` and `WriteChar` are new. Regenerate types that carry an emitted serializer
+- Added `JsonSerializationError.StreamWriteFailed`
 - Trailing data now reports the real line number and names `end of document` as the expected token
 
 ### Known Limitations

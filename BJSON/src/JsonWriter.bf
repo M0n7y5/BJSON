@@ -54,11 +54,40 @@ namespace BJSON
 			}
 		}
 
+		/// Writes text to a stream verbatim.
+		/// Used by comptime-generated serialization code for structural output.
+		/// @param stream The stream to write to.
+		/// @param text The text to write.
+		/// @returns Ok, or Err if the stream rejected or truncated the write.
+		[Inline]
+		public static Result<void, JsonSerializationError> WriteRaw(Stream stream, StringView text)
+		{
+			if (stream.WriteStrUnsized(text) case .Err)
+				return .Err(.StreamWriteFailed);
+
+			return .Ok;
+		}
+
+		/// Writes a single character to a stream verbatim.
+		/// Used by comptime-generated serialization code for structural output.
+		/// @param stream The stream to write to.
+		/// @param c The character to write.
+		/// @returns Ok, or Err if the stream rejected or truncated the write.
+		[Inline]
+		public static Result<void, JsonSerializationError> WriteChar(Stream stream, char8 c)
+		{
+			if (stream.Write<char8>(c) case .Err)
+				return .Err(.StreamWriteFailed);
+
+			return .Ok;
+		}
+
 		/// Writes a string to a stream with proper JSON escaping (without quotes).
 		/// Used by comptime-generated serialization code.
 		/// @param stream The stream to write to.
 		/// @param str The string to escape and write.
-		public static void WriteEscaped(Stream stream, StringView str)
+		/// @returns Ok, or Err if the stream rejected or truncated the write.
+		public static Result<void, JsonSerializationError> WriteEscaped(Stream stream, StringView str)
 		{
 			int spanStart = 0;
 			int i = 0;
@@ -69,85 +98,86 @@ namespace BJSON
 
 				if (escapeChar != 0)
 				{
-					// Write any non-escaped characters before this one
 					if (i > spanStart)
 					{
-						stream.WriteStrUnsized(str.Substring(spanStart, i - spanStart));
+						Try!(WriteRaw(stream, str.Substring(spanStart, i - spanStart)));
 					}
 
-					// Write the escape sequence
-					stream.Write<char8>('\\');
-					stream.Write<char8>(escapeChar);
+					Try!(WriteChar(stream, '\\'));
+					Try!(WriteChar(stream, escapeChar));
 					spanStart = i + 1;
 				}
 				else if ((uint8)c < 0x20)
 				{
-					// Handle other control characters with \uXXXX
 					if (i > spanStart)
 					{
-						stream.WriteStrUnsized(str.Substring(spanStart, i - spanStart));
+						Try!(WriteRaw(stream, str.Substring(spanStart, i - spanStart)));
 					}
 
-					stream.Write<char8>('\\');
-					stream.Write<char8>('u');
-					stream.Write<char8>('0');
-					stream.Write<char8>('0');
+					Try!(WriteRaw(stream, "\\u00"));
 					let highNibble = ((uint8)c >> 4) & 0x0F;
 					let lowNibble = (uint8)c & 0x0F;
-					stream.Write<char8>(highNibble < 10 ? (char8)('0' + highNibble) : (char8)('a' + highNibble - 10));
-					stream.Write<char8>(lowNibble < 10 ? (char8)('0' + lowNibble) : (char8)('a' + lowNibble - 10));
+					Try!(WriteChar(stream, highNibble < 10 ? (char8)('0' + highNibble) : (char8)('a' + highNibble - 10)));
+					Try!(WriteChar(stream, lowNibble < 10 ? (char8)('0' + lowNibble) : (char8)('a' + lowNibble - 10)));
 					spanStart = i + 1;
 				}
 
 				i++;
 			}
 
-			// Write any remaining non-escaped characters
 			if (i > spanStart)
 			{
-				stream.WriteStrUnsized(str.Substring(spanStart, i - spanStart));
+				Try!(WriteRaw(stream, str.Substring(spanStart, i - spanStart)));
 			}
+
+			return .Ok;
 		}
 
 		/// Writes a JSON string value to a stream (with surrounding quotes).
 		/// Used by comptime-generated serialization code.
 		/// @param stream The stream to write to.
 		/// @param str The string value to write.
-		public static void WriteString(Stream stream, StringView str)
+		/// @returns Ok, or Err if the stream rejected or truncated the write.
+		public static Result<void, JsonSerializationError> WriteString(Stream stream, StringView str)
 		{
-			stream.Write<char8>('"');
-			WriteEscaped(stream, str);
-			stream.Write<char8>('"');
+			Try!(WriteChar(stream, '"'));
+			Try!(WriteEscaped(stream, str));
+			Try!(WriteChar(stream, '"'));
+
+			return .Ok;
 		}
 
 		/// Writes a boolean value to a stream.
 		/// @param stream The stream to write to.
 		/// @param value The boolean value.
-		public static void WriteBool(Stream stream, bool value)
+		/// @returns Ok, or Err if the stream rejected or truncated the write.
+		public static Result<void, JsonSerializationError> WriteBool(Stream stream, bool value)
 		{
-			stream.WriteStrUnsized(value ? TrueLiteral : FalseLiteral);
+			return WriteRaw(stream, value ? TrueLiteral : FalseLiteral);
 		}
 
 		/// Writes an integer value to a stream.
 		/// @param stream The stream to write to.
 		/// @param value The integer value.
-		public static void WriteInt(Stream stream, int64 value)
+		/// @returns Ok, or Err if the stream rejected or truncated the write.
+		public static Result<void, JsonSerializationError> WriteInt(Stream stream, int64 value)
 		{
-			stream.WriteStrUnsized(value.ToString(.. scope .()));
+			return WriteRaw(stream, value.ToString(.. scope .()));
 		}
 
 		/// Writes an unsigned integer value to a stream.
 		/// @param stream The stream to write to.
 		/// @param value The unsigned integer value.
-		public static void WriteUInt(Stream stream, uint64 value)
+		/// @returns Ok, or Err if the stream rejected or truncated the write.
+		public static Result<void, JsonSerializationError> WriteUInt(Stream stream, uint64 value)
 		{
-			stream.WriteStrUnsized(value.ToString(.. scope .()));
+			return WriteRaw(stream, value.ToString(.. scope .()));
 		}
 
 		/// Writes a floating-point value to a stream.
 		/// @param stream The stream to write to.
 		/// @param value The floating-point value.
-		/// @returns Ok on success, Err if value is NaN or Infinity.
+		/// @returns Ok, Err if value is NaN or Infinity, or Err if the write failed.
 		public static Result<void, JsonSerializationError> WriteFloat(Stream stream, double value)
 		{
 			if (value.IsNaN)
@@ -155,11 +185,10 @@ namespace BJSON
 			if (value.IsInfinity)
 				return .Err(.InfinityNotAllowed);
 
-			// dtoa writes at most 25 characters plus a terminator, so 25 bytes is one short.
 			char8[32] buff;
 			let end = BJSON.Internal.dtoa(value, &buff);
-			stream.WriteStrUnsized(StringView(&buff, end - &buff));
-			return .Ok;
+
+			return WriteRaw(stream, StringView(&buff, end - &buff));
 		}
 
 		public Result<void, JsonSerializationError> Write(JsonValue json, Stream stream)
@@ -172,6 +201,7 @@ namespace BJSON
 			this.options = options;
 			this.depth = 0;
 			this.stream = stream;
+			defer { this.stream = null; }
 
 			return WriteInternal(json);
 		}
@@ -204,40 +234,38 @@ namespace BJSON
 		}
 
 		[Inline]
-		private void WriteIndent()
+		private Result<void, JsonSerializationError> WriteIndent()
 		{
 			if (!options.Indented)
-				return;
+				return .Ok;
 
 			for (int i = 0; i < depth; i++)
 			{
-				stream.WriteStrUnsized(options.IndentString);
+				Try!(WriteRaw(stream, options.IndentString));
 			}
+
+			return .Ok;
 		}
 
 		[Inline]
-		private void WriteNewLine()
+		private Result<void, JsonSerializationError> WriteNewLine()
 		{
 			if (!options.Indented)
-				return;
+				return .Ok;
 
-			stream.WriteStrUnsized(options.NewLine);
+			return WriteRaw(stream, options.NewLine);
 		}
 
 		Result<void, JsonSerializationError> WriteNull(JsonValue value)
 		{
-			stream.WriteStrUnsized(NullLiteral);
-
-			return .Ok;
+			return WriteRaw(stream, NullLiteral);
 		}
 
 		Result<void, JsonSerializationError> WriteBoolean(JsonValue value)
 		{
 			bool boolean = value;
 
-			stream.WriteStrUnsized(boolean ? TrueLiteral : FalseLiteral);
-
-			return .Ok;
+			return WriteRaw(stream, boolean ? TrueLiteral : FalseLiteral);
 		}
 
 		Result<void, JsonSerializationError> WriteNumber(JsonValue value)
@@ -245,57 +273,32 @@ namespace BJSON
 			switch (value.type)
 			{
 			case .NUMBER_UNSIGNED:
-				stream.WriteStrUnsized(value.data.unsignedNumber.ToString(.. scope .()));
+				return WriteRaw(stream, value.data.unsignedNumber.ToString(.. scope .()));
 			case .NUMBER_SIGNED:
-				stream.WriteStrUnsized(value.data.signedNumber.ToString(.. scope .()));
+				return WriteRaw(stream, value.data.signedNumber.ToString(.. scope .()));
 			case .NUMBER:
-				let number = value.data.number;
-
-				if (number.IsNaN)
-				{
-					return .Err(.NaNNotAllowed);
-				}
-
-				if (number.IsInfinity)
-				{
-					return .Err(.InfinityNotAllowed);
-				}
-
-				char8[32] buff;
-				let end = BJSON.Internal.dtoa(value.data.number, &buff);
-				stream.WriteStrUnsized(StringView(&buff, end - &buff));
+				return WriteFloat(stream, value.data.number);
 			default:
 				return .Err(.InvalidNumber);
 			}
-
-			return .Ok;
-		}
-
-		[Inline]
-		private void WriteEscapedString(StringView string)
-		{
-			WriteEscaped(stream, string);
 		}
 
 		Result<void, JsonSerializationError> WriteString(JsonValue value)
 		{
 			StringView string = value;
-			
-			stream.Write<char8>('"');
-			WriteEscapedString(string);
-			stream.Write<char8>('"');
-			return .Ok;
+
+			return WriteString(stream, string);
 		}
 
 		Result<void, JsonSerializationError> WriteArray(JsonValue value)
 		{
 			let array = value.AsArray().Value;
 
-			stream.Write<char8>((char8)JsonToken.LEFT_SQUARE_BRACKET);
+			Try!(WriteChar(stream, (char8)JsonToken.LEFT_SQUARE_BRACKET));
 
 			if (array.Count > 0 && options.Indented)
 			{
-				WriteNewLine();
+				Try!(WriteNewLine());
 				depth++;
 			}
 
@@ -304,40 +307,34 @@ namespace BJSON
 			{
 				if (!first)
 				{
-					stream.Write<char8>((char8)JsonToken.COMMA);
-					if (options.Indented)
-						WriteNewLine();
+					Try!(WriteChar(stream, (char8)JsonToken.COMMA));
+					Try!(WriteNewLine());
 				}
 				first = false;
 
-				if (options.Indented)
-					WriteIndent();
-
-				if (WriteInternal(item) case .Err(let err))
-					return .Err(err);
+				Try!(WriteIndent());
+				Try!(WriteInternal(item));
 			}
 
 			if (array.Count > 0 && options.Indented)
 			{
-				WriteNewLine();
+				Try!(WriteNewLine());
 				depth--;
-				WriteIndent();
+				Try!(WriteIndent());
 			}
 
-			stream.Write<char8>((char8)JsonToken.RIGHT_SQUARE_BRACKET);
-
-			return .Ok;
+			return WriteChar(stream, (char8)JsonToken.RIGHT_SQUARE_BRACKET);
 		}
 
 		Result<void, JsonSerializationError> WriteObject(JsonValue value)
 		{
 			let obj = value.AsObject().Value;
 
-			stream.Write<char8>((char8)JsonToken.LEFT_CURLY_BRACKET);
+			Try!(WriteChar(stream, (char8)JsonToken.LEFT_CURLY_BRACKET));
 
 			if (obj.Count > 0 && options.Indented)
 			{
-				WriteNewLine();
+				Try!(WriteNewLine());
 				depth++;
 			}
 
@@ -346,33 +343,28 @@ namespace BJSON
 			{
 				if (!first)
 				{
-					stream.Write<char8>((char8)JsonToken.COMMA);
-					if (options.Indented)
-						WriteNewLine();
+					Try!(WriteChar(stream, (char8)JsonToken.COMMA));
+					Try!(WriteNewLine());
 				}
 				first = false;
 
-				if (options.Indented)
-					WriteIndent();
+				Try!(WriteIndent());
 
-				stream.Write<char8>('"');
-				WriteEscapedString(item.key);
-				stream.WriteStrUnsized(options.Indented ? "\": " : "\":");
+				Try!(WriteChar(stream, '"'));
+				Try!(WriteEscaped(stream, item.key));
+				Try!(WriteRaw(stream, options.Indented ? "\": " : "\":"));
 
-				if (WriteInternal(item.value) case .Err(let err))
-					return .Err(err);
+				Try!(WriteInternal(item.value));
 			}
 
 			if (obj.Count > 0 && options.Indented)
 			{
-				WriteNewLine();
+				Try!(WriteNewLine());
 				depth--;
-				WriteIndent();
+				Try!(WriteIndent());
 			}
 
-			stream.Write<char8>((char8)JsonToken.RIGHT_CURLY_BRACKET);
-
-			return .Ok;
+			return WriteChar(stream, (char8)JsonToken.RIGHT_CURLY_BRACKET);
 		}
 	}
 }

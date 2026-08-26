@@ -91,11 +91,13 @@ namespace BJSON
 			return serializer.Write(json, stream, options);
 		}
 
+		/// Serializes a typed object to a stream.
 		public static Result<void> Serialize<T>(T obj, Stream stream) where T : IJsonSerializable
 		{
 			return obj.JsonSerialize(stream);
 		}
 
+		/// Serializes a typed object to a stream.
 		public static Result<void> Serialize<T>(T obj, Stream stream, JsonWriterOptions options) where T : IJsonSerializable
 		{
 			return obj.JsonSerialize(stream, options);
@@ -106,7 +108,8 @@ namespace BJSON
 		{
 			var stream = scope StringStream(outText, .Reference);
 			stream.Position = outText.Length;
-			return obj.JsonSerialize(stream);
+
+			return Serialize<T>(obj, stream);
 		}
 
 		/// Serializes a typed object, appending the text to a caller owned String.
@@ -114,7 +117,8 @@ namespace BJSON
 		{
 			var stream = scope StringStream(outText, .Reference);
 			stream.Position = outText.Length;
-			return obj.JsonSerialize(stream, options);
+
+			return Serialize<T>(obj, stream, options);
 		}
 	}
 }

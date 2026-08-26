@@ -8,6 +8,7 @@ namespace BJSON.Enums
 		case NaNNotAllowed;
 		case InfinityNotAllowed;
 		case UnknownType;
+		case StreamWriteFailed;
 
 		public override void ToString(String string)
 		{
@@ -21,6 +22,8 @@ namespace BJSON.Enums
 				string.Append("Infinity is not a valid JSON number value!");
 			case UnknownType:
 				string.Append("Unknown JSON type encountered!");
+			case StreamWriteFailed:
+				string.Append("Writing to the stream failed!");
 			}
 		}
 	}

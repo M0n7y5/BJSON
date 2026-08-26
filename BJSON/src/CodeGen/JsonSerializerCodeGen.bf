@@ -28,7 +28,7 @@ public class JsonSerializerCodeGen
 			public {newKeyword}Result<void> JsonSerialize(System.IO.Stream stream, BJSON.JsonWriterOptions _options)
 			{{
 				int _depth = 0;
-				stream.Write<char8>('{{');
+				Try!(BJSON.JsonWriter.WriteChar(stream, '{{'));
 
 			""");
 
@@ -37,9 +37,9 @@ public class JsonSerializerCodeGen
 		code.Append("""
 				if (_options.Indented && !_firstField)
 				{
-					stream.WriteStrUnsized(_options.NewLine);
+					Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine));
 				}
-				stream.Write<char8>('}');
+				Try!(BJSON.JsonWriter.WriteChar(stream, '}'));
 				return .Ok;
 			}\n
 			""");
@@ -139,14 +139,14 @@ public class JsonSerializerCodeGen
 	{
 		if (handleComma)
 		{
-			code.AppendF($"{indent}if (!_firstField) stream.Write<char8>(',');\n");
+			code.AppendF($"{indent}if (!_firstField) Try!(BJSON.JsonWriter.WriteChar(stream, ','));\n");
 			code.AppendF($"{indent}_firstField = false;\n");
-			code.AppendF($"{indent}if (_options.Indented) {{ stream.WriteStrUnsized(_options.NewLine); for (int _i = 0; _i <= _depth; _i++) stream.WriteStrUnsized(_options.IndentString); }}\n");
+			code.AppendF($"{indent}if (_options.Indented) {{ Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine)); for (int _i = 0; _i <= _depth; _i++) Try!(BJSON.JsonWriter.WriteRaw(stream, _options.IndentString)); }}\n");
 		}
 
-		code.AppendF($"{indent}stream.Write<char8>('\"');\n");
-		code.AppendF($"{indent}stream.WriteStrUnsized(\"{jsonName}\");\n");
-		code.AppendF($"{indent}stream.WriteStrUnsized(_options.Indented ? \"\\\": \" : \"\\\":\");\n");
+		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
+		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteRaw(stream, \"{jsonName}\"));\n");
+		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteRaw(stream, _options.Indented ? \"\\\": \" : \"\\\":\"));\n");
 
 		let fieldExpr = isNullable ? scope $"{field.Name}.Value" : scope $"{field.Name}";
 
@@ -164,11 +164,11 @@ public class JsonSerializerCodeGen
 
 		if (fieldType == typeof(bool))
 		{
-			code.AppendF($"{indent}BJSON.JsonWriter.WriteBool(stream, {fieldExpr});\n");
+			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteBool(stream, {fieldExpr}));\n");
 		}
 		else if (fieldType.IsInteger)
 		{
-			code.AppendF($"{indent}BJSON.JsonWriter.WriteInt(stream, {fieldExpr});\n");
+			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteInt(stream, {fieldExpr}));\n");
 		}
 		else if (fieldType.IsFloatingPoint)
 		{
@@ -176,7 +176,7 @@ public class JsonSerializerCodeGen
 		}
 		else if (fieldType == typeof(String))
 		{
-			code.AppendF($"{indent}BJSON.JsonWriter.WriteString(stream, {fieldExpr});\n");
+			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteString(stream, {fieldExpr}));\n");
 		}
 		else if (fieldType.IsEnum)
 		{
@@ -193,13 +193,13 @@ public class JsonSerializerCodeGen
 			
 			if (useNumber)
 			{
-				code.AppendF($"{indent}BJSON.JsonWriter.WriteInt(stream, (int){fieldExpr});\n");
+				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteInt(stream, (int){fieldExpr}));\n");
 			}
 			else
 			{
-				code.AppendF($"{indent}stream.Write<char8>('\"');\n");
-				code.AppendF($"{indent}stream.WriteStrUnsized({fieldExpr}.ToString(.. scope .()));\n");
-				code.AppendF($"{indent}stream.Write<char8>('\"');\n");
+				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
+				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteRaw(stream, {fieldExpr}.ToString(.. scope .())));\n");
+				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
 			}
 		}
 		else if (JsonCodeGenHelper.IsList(fieldType))
@@ -227,21 +227,21 @@ public class JsonSerializerCodeGen
 		if (elementType == null)
 			return;
 
-		code.AppendF($"{indent}stream.Write<char8>('[');\n");
+		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '['));\n");
 		code.AppendF($"{indent}_depth++;\n");
 		code.AppendF($"{indent}bool _first{field.Name} = true;\n");
 		code.AppendF($"{indent}for (let _item in {field.Name})\n");
 		code.AppendF($"{indent}{{\n");
-		code.AppendF($"{indent}\tif (!_first{field.Name}) stream.Write<char8>(',');\n");
+		code.AppendF($"{indent}\tif (!_first{field.Name}) Try!(BJSON.JsonWriter.WriteChar(stream, ','));\n");
 		code.AppendF($"{indent}\t_first{field.Name} = false;\n");
-		code.AppendF($"{indent}\tif (_options.Indented) {{ stream.WriteStrUnsized(_options.NewLine); for (int _i = 0; _i < _depth; _i++) stream.WriteStrUnsized(_options.IndentString); }}\n");
+		code.AppendF($"{indent}\tif (_options.Indented) {{ Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine)); for (int _i = 0; _i < _depth; _i++) Try!(BJSON.JsonWriter.WriteRaw(stream, _options.IndentString)); }}\n");
 
 		EmitValueSerializationWithOptions(code, elementType, "_item", scope $"{indent}\t");
 
 		code.AppendF($"{indent}}}\n");
 		code.AppendF($"{indent}_depth--;\n");
-		code.AppendF($"{indent}if (_options.Indented && !_first{field.Name}) {{ stream.WriteStrUnsized(_options.NewLine); for (int _i = 0; _i < _depth; _i++) stream.WriteStrUnsized(_options.IndentString); }}\n");
-		code.AppendF($"{indent}stream.Write<char8>(']');\n");
+		code.AppendF($"{indent}if (_options.Indented && !_first{field.Name}) {{ Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine)); for (int _i = 0; _i < _depth; _i++) Try!(BJSON.JsonWriter.WriteRaw(stream, _options.IndentString)); }}\n");
+		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, ']'));\n");
 	}
 
 	[Comptime]
@@ -252,24 +252,24 @@ public class JsonSerializerCodeGen
 		if (keyType == null || valueType == null)
 			return;
 
-		code.AppendF($"{indent}stream.Write<char8>('{{');\n");
+		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '{{'));\n");
 		code.AppendF($"{indent}_depth++;\n");
 		code.AppendF($"{indent}bool _first{field.Name} = true;\n");
 		code.AppendF($"{indent}for (let _kv in {field.Name})\n");
 		code.AppendF($"{indent}{{\n");
-		code.AppendF($"{indent}\tif (!_first{field.Name}) stream.Write<char8>(',');\n");
+		code.AppendF($"{indent}\tif (!_first{field.Name}) Try!(BJSON.JsonWriter.WriteChar(stream, ','));\n");
 		code.AppendF($"{indent}\t_first{field.Name} = false;\n");
-		code.AppendF($"{indent}\tif (_options.Indented) {{ stream.WriteStrUnsized(_options.NewLine); for (int _i = 0; _i < _depth; _i++) stream.WriteStrUnsized(_options.IndentString); }}\n");
-		code.AppendF($"{indent}\tstream.Write<char8>('\"');\n");
-		code.AppendF($"{indent}\tBJSON.JsonWriter.WriteEscaped(stream, _kv.key);\n");
-		code.AppendF($"{indent}\tstream.WriteStrUnsized(_options.Indented ? \"\\\": \" : \"\\\":\");\n");
+		code.AppendF($"{indent}\tif (_options.Indented) {{ Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine)); for (int _i = 0; _i < _depth; _i++) Try!(BJSON.JsonWriter.WriteRaw(stream, _options.IndentString)); }}\n");
+		code.AppendF($"{indent}\tTry!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
+		code.AppendF($"{indent}\tTry!(BJSON.JsonWriter.WriteEscaped(stream, _kv.key));\n");
+		code.AppendF($"{indent}\tTry!(BJSON.JsonWriter.WriteRaw(stream, _options.Indented ? \"\\\": \" : \"\\\":\"));\n");
 
 		EmitValueSerializationWithOptions(code, valueType, "_kv.value", scope $"{indent}\t");
 
 		code.AppendF($"{indent}}}\n");
 		code.AppendF($"{indent}_depth--;\n");
-		code.AppendF($"{indent}if (_options.Indented && !_first{field.Name}) {{ stream.WriteStrUnsized(_options.NewLine); for (int _i = 0; _i < _depth; _i++) stream.WriteStrUnsized(_options.IndentString); }}\n");
-		code.AppendF($"{indent}stream.Write<char8>('}}');\n");
+		code.AppendF($"{indent}if (_options.Indented && !_first{field.Name}) {{ Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine)); for (int _i = 0; _i < _depth; _i++) Try!(BJSON.JsonWriter.WriteRaw(stream, _options.IndentString)); }}\n");
+		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '}}'));\n");
 	}
 
 	[Comptime]
@@ -279,19 +279,19 @@ public class JsonSerializerCodeGen
 		let sizedArrayType = fieldType as SizedArrayType;
 		let arraySize = sizedArrayType != null ? sizedArrayType.ElementCount : 0;
 
-		code.AppendF($"{indent}stream.Write<char8>('[');\n");
+		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '['));\n");
 		code.AppendF($"{indent}_depth++;\n");
 		code.AppendF($"{indent}for (int _i = 0; _i < {arraySize}; _i++)\n");
 		code.AppendF($"{indent}{{\n");
-		code.AppendF($"{indent}\tif (_i > 0) stream.Write<char8>(',');\n");
-		code.AppendF($"{indent}\tif (_options.Indented) {{ stream.WriteStrUnsized(_options.NewLine); for (int _j = 0; _j < _depth; _j++) stream.WriteStrUnsized(_options.IndentString); }}\n");
+		code.AppendF($"{indent}\tif (_i > 0) Try!(BJSON.JsonWriter.WriteChar(stream, ','));\n");
+		code.AppendF($"{indent}\tif (_options.Indented) {{ Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine)); for (int _j = 0; _j < _depth; _j++) Try!(BJSON.JsonWriter.WriteRaw(stream, _options.IndentString)); }}\n");
 
 		EmitValueSerializationWithOptions(code, elementType, scope $"{field.Name}[_i]", scope $"{indent}\t");
 
 		code.AppendF($"{indent}}}\n");
 		code.AppendF($"{indent}_depth--;\n");
-		code.AppendF($"{indent}if (_options.Indented && {arraySize} > 0) {{ stream.WriteStrUnsized(_options.NewLine); for (int _j = 0; _j < _depth; _j++) stream.WriteStrUnsized(_options.IndentString); }}\n");
-		code.AppendF($"{indent}stream.Write<char8>(']');\n");
+		code.AppendF($"{indent}if (_options.Indented && {arraySize} > 0) {{ Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine)); for (int _j = 0; _j < _depth; _j++) Try!(BJSON.JsonWriter.WriteRaw(stream, _options.IndentString)); }}\n");
+		code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, ']'));\n");
 	}
 
 	[Comptime]
@@ -311,11 +311,11 @@ public class JsonSerializerCodeGen
 
 		if (valueType == typeof(bool))
 		{
-			code.AppendF($"{indent}BJSON.JsonWriter.WriteBool(stream, {valueExpr});\n");
+			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteBool(stream, {valueExpr}));\n");
 		}
 		else if (valueType.IsInteger)
 		{
-			code.AppendF($"{indent}BJSON.JsonWriter.WriteInt(stream, {valueExpr});\n");
+			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteInt(stream, {valueExpr}));\n");
 		}
 		else if (valueType.IsFloatingPoint)
 		{
@@ -323,7 +323,7 @@ public class JsonSerializerCodeGen
 		}
 		else if (valueType == typeof(String))
 		{
-			code.AppendF($"{indent}BJSON.JsonWriter.WriteString(stream, {valueExpr});\n");
+			code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteString(stream, {valueExpr}));\n");
 		}
 		else if (valueType.IsEnum)
 		{
@@ -335,13 +335,13 @@ public class JsonSerializerCodeGen
 			
 			if (useNumber)
 			{
-				code.AppendF($"{indent}BJSON.JsonWriter.WriteInt(stream, (int){valueExpr});\n");
+				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteInt(stream, (int){valueExpr}));\n");
 			}
 			else
 			{
-				code.AppendF($"{indent}stream.Write<char8>('\"');\n");
-				code.AppendF($"{indent}stream.WriteStrUnsized({valueExpr}.ToString(.. scope .()));\n");
-				code.AppendF($"{indent}stream.Write<char8>('\"');\n");
+				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
+				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteRaw(stream, {valueExpr}.ToString(.. scope .())));\n");
+				code.AppendF($"{indent}Try!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
 			}
 		}
 		else if (valueType.HasCustomAttribute<JsonObjectAttribute>())
