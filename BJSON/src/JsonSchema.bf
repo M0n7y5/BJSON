@@ -29,10 +29,18 @@ namespace BJSON
 	}
 
 	/// Validation result for JSON Schema evaluation.
-	public struct SchemaValidationResult
+	/// Owns Errors and every error inside it. The caller MUST Dispose the result exactly once.
+	/// Copies of this struct share one list, so only one copy may be disposed.
+	public struct SchemaValidationResult : IDisposable
 	{
 		public bool IsValid = true;
 		public List<SchemaValidationError> Errors = null;
+
+		/// Frees the error list and the errors it holds.
+		public void Dispose()
+		{
+			DeleteContainerAndItems!(Errors);
+		}
 	}
 
 	/// Errors that can occur during schema parsing or reference resolution.
@@ -147,6 +155,9 @@ namespace BJSON
 		}
 
 		/// Validates a JSON instance against this schema.
+		/// @param instance The value to validate. Ownership stays with the caller.
+		/// @param options Error collection limits.
+		/// @returns A result that owns its collected errors. The caller MUST Dispose it.
 		public Result<SchemaValidationResult, JsonSchemaError> Validate(JsonValue instance, SchemaValidationOptions options = default)
 		{
 			let validator = scope SchemaValidator(this, options);
@@ -188,6 +199,17 @@ namespace BJSON
 
 			if (mDocuments.TryGetValueAlt(normalized, let doc))
 				return .Ok(doc);
+
+			// A $ref can name an $id embedded in a document that is already loaded, so the
+			// id indexes are searched before the resolver is allowed to touch the file system.
+			if (mRootDocument != null && mRootDocument.IdIndex.ContainsKeyAlt(normalized))
+				return .Ok(mRootDocument);
+
+			for (var entry in mDocuments)
+			{
+				if (entry.value.IdIndex.ContainsKeyAlt(normalized))
+					return .Ok(entry.value);
+			}
 
 			if (mResolver == null)
 				return .Err(.ExternalSchemaNotFound(uri));
@@ -270,13 +292,28 @@ namespace BJSON
 			return .Err(.RefNotFound(resolvedRef));
 		}
 
+		/// One frame of the $ref guard: a resolved reference plus the instance location it was
+		/// applied at. A recursive schema meets the same reference at a deeper instance location,
+		/// while a true cycle meets it at the same one.
+		private class SchemaRefFrame
+		{
+			public String Reference = new .() ~ delete _;
+			public String InstancePointer = new .() ~ delete _;
+
+			public this(StringView reference, StringView instancePointer)
+			{
+				Reference.Set(reference);
+				InstancePointer.Set(instancePointer);
+			}
+		}
+
 		private class SchemaValidator
 		{
 			private JsonSchema mSchema;
 			private SchemaValidationOptions mOptions;
 			private SchemaValidationResult mResult = .();
 			private bool mStop = false;
-			private List<String> mRefStack = new .() ~ DeleteContainerAndItems!(_);
+			private List<SchemaRefFrame> mRefStack = new .() ~ DeleteContainerAndItems!(_);
 
 			public this(JsonSchema schema, SchemaValidationOptions options)
 			{
@@ -284,6 +321,9 @@ namespace BJSON
 				mOptions = options;
 			}
 
+			/// Runs validation and hands ownership of the collected errors to the caller.
+			/// @param instance The value to validate.
+			/// @returns A result that owns its collected errors. The caller MUST Dispose it.
 			public Result<SchemaValidationResult, JsonSchemaError> Validate(JsonValue instance)
 			{
 				if (mSchema.mRootDocument == null)
@@ -292,7 +332,16 @@ namespace BJSON
 				if (ValidateSchema(mSchema.mRootDocument, mSchema.mRootDocument.Root, "", instance, "", true) case .Err(let err))
 					return .Err(err);
 
-				return .Ok(mResult);
+				let result = mResult;
+				mResult = .();
+				return .Ok(result);
+			}
+
+			/// Frees errors of a run whose result never reached the caller, which is the error
+			/// path of Validate.
+			public ~this()
+			{
+				mResult.Dispose();
 			}
 
 			private Result<bool, JsonSchemaError> ValidateSchema(SchemaDocument doc, JsonValue schemaNode, StringView schemaPointer, JsonValue instance, StringView instancePointer, bool collectErrors)
@@ -324,10 +373,10 @@ namespace BJSON
 					let refStr = (StringView)refVal;
 					let resolvedRef = scope String();
 					SchemaUri.ResolveUri(baseUri, refStr, resolvedRef);
-					if (IsRefOnStack(resolvedRef))
+					if (IsRefOnStack(resolvedRef, instancePointer))
 						return .Err(.RefCycleDetected(resolvedRef));
 
-					mRefStack.Add(new String(resolvedRef));
+					mRefStack.Add(new SchemaRefFrame(resolvedRef, instancePointer));
 					defer
 					{
 						let last = mRefStack.Back;
@@ -505,6 +554,28 @@ namespace BJSON
 					}
 				}
 
+				if (schemaObj.TryGet("multipleOf") case .Ok(let multipleVal))
+				{
+					if (multipleVal.IsNumber())
+					{
+						double divisor = (double)multipleVal;
+						if (divisor <= 0)
+						{
+							let keywordPointer = scope String();
+							SchemaUri.BuildPointer(schemaPointer, "multipleOf", keywordPointer);
+							AddError("multipleOf must be greater than zero", instancePointer, keywordPointer, collectErrors);
+							valid = false;
+						}
+						else if (!IsMultipleOf(value, divisor))
+						{
+							let keywordPointer = scope String();
+							SchemaUri.BuildPointer(schemaPointer, "multipleOf", keywordPointer);
+							AddError("Number is not a multiple of multipleOf", instancePointer, keywordPointer, collectErrors);
+							valid = false;
+						}
+					}
+				}
+
 				return valid;
 			}
 
@@ -515,7 +586,7 @@ namespace BJSON
 
 				bool valid = true;
 				let strView = (StringView)instance;
-				let length = strView.Length;
+				let length = CountCodePoints(strView);
 
 				if (schemaObj.TryGet("minLength") case .Ok(let minVal))
 				{
@@ -599,6 +670,70 @@ namespace BJSON
 							SchemaUri.BuildPointer(schemaPointer, "uniqueItems", keywordPointer);
 							AddError("Array items are not unique", instancePointer, keywordPointer, collectErrors);
 							valid = false;
+						}
+					}
+				}
+
+				if (schemaObj.TryGet("contains") case .Ok(let containsVal))
+				{
+					if (containsVal.IsObject() || containsVal.IsBool())
+					{
+						let containsSchemaPtr = scope String();
+						SchemaUri.BuildPointer(schemaPointer, "contains", containsSchemaPtr);
+						int matchCount = 0;
+						for (int i = 0; i < count; i++)
+						{
+							let indexStr = scope String();
+							indexStr.AppendF("{}", i);
+							let childInstancePtr = scope String();
+							SchemaUri.BuildPointer(instancePointer, indexStr, childInstancePtr);
+							let result = ValidateSchema(doc, containsVal, containsSchemaPtr, arr[i], childInstancePtr, false);
+							if (result case .Err(let err))
+								return .Err(err);
+							if (result case .Ok(let ok) && ok)
+								matchCount++;
+						}
+
+						int minContains = 1;
+						bool hasMinContains = false;
+						if (schemaObj.TryGet("minContains") case .Ok(let minContainsVal))
+						{
+							if (minContainsVal.IsNumber())
+							{
+								minContains = (int)(double)minContainsVal;
+								hasMinContains = true;
+							}
+						}
+
+						if (matchCount < minContains)
+						{
+							let keywordPointer = scope String();
+							if (hasMinContains)
+							{
+								SchemaUri.BuildPointer(schemaPointer, "minContains", keywordPointer);
+								AddError("Array has fewer matching items than minContains", instancePointer, keywordPointer, collectErrors);
+							}
+							else
+							{
+								SchemaUri.BuildPointer(schemaPointer, "contains", keywordPointer);
+								AddError("Array does not contain a matching item", instancePointer, keywordPointer, collectErrors);
+							}
+							valid = false;
+						}
+
+						if (schemaObj.TryGet("maxContains") case .Ok(let maxContainsVal))
+						{
+							if (maxContainsVal.IsNumber())
+							{
+								int maxContains = (int)(double)maxContainsVal;
+								if (matchCount > maxContains)
+								{
+									let keywordPointer = scope String();
+									SchemaUri.BuildPointer(schemaPointer, "maxContains", keywordPointer);
+									AddError("Array has more matching items than maxContains", instancePointer, keywordPointer, collectErrors);
+									valid = false;
+								}
+							}
 						}
 					}
 				}
@@ -786,6 +921,27 @@ namespace BJSON
 									valid = false;
 								}
 							}
+						}
+					}
+				}
+
+				if (schemaObj.TryGet("propertyNames") case .Ok(let propNamesVal))
+				{
+					if (propNamesVal.IsObject() || propNamesVal.IsBool())
+					{
+						let propNamesSchemaPtr = scope String();
+						SchemaUri.BuildPointer(schemaPointer, "propertyNames", propNamesSchemaPtr);
+						for (var kv in obj)
+						{
+							let childInstancePtr = scope String();
+							SchemaUri.BuildPointer(instancePointer, kv.key, childInstancePtr);
+							var nameValue = JsonString(kv.key);
+							let result = ValidateSchema(doc, propNamesVal, propNamesSchemaPtr, nameValue, childInstancePtr, collectErrors);
+							nameValue.Dispose();
+							if (result case .Err(let err))
+								return .Err(err);
+							if (result case .Ok(let ok) && !ok)
+								valid = false;
 						}
 					}
 				}
@@ -1024,6 +1180,30 @@ namespace BJSON
 				return false;
 			}
 
+			/// A double cannot hold divisors such as 0.1 exactly, so the quotient is measured
+			/// against the nearest integer within a relative tolerance rather than by remainder.
+			private bool IsMultipleOf(double value, double divisor)
+			{
+				if (value == 0)
+					return true;
+
+				let quotient = value / divisor;
+				let nearest = Math.Round(quotient);
+				let tolerance = (1e-9 * Math.Abs(quotient)) + 1e-12;
+				return Math.Abs(quotient - nearest) <= tolerance;
+			}
+
+			/// minLength and maxLength are defined over code points, while StringView.Length
+			/// counts UTF-8 bytes.
+			private int CountCodePoints(StringView text)
+			{
+				int count = 0;
+				var chars = text.DecodedChars;
+				while (chars.MoveNext())
+					count++;
+				return count;
+			}
+
 			private bool ArrayItemsUnique(JsonArray array)
 			{
 				for (int i = 0; i < array.Count; i++)
@@ -1040,7 +1220,7 @@ namespace BJSON
 			private bool JsonEquals(JsonValue a, JsonValue b)
 			{
 				if (a.IsNumber() && b.IsNumber())
-					return (double)a == (double)b;
+					return NumberEquals(a, b);
 
 				if (a.type != b.type)
 					return false;
@@ -1054,7 +1234,7 @@ namespace BJSON
 				case .STRING:
 					return (StringView)a == (StringView)b;
 				case .NUMBER, .NUMBER_SIGNED, .NUMBER_UNSIGNED:
-					return (double)a == (double)b;
+					return NumberEquals(a, b);
 				case .ARRAY:
 					{
 						let arrA = a.As<JsonArray>();
@@ -1091,11 +1271,39 @@ namespace BJSON
 				}
 			}
 
-			private bool IsRefOnStack(StringView resolvedRef)
+			/// Two integer typed numbers compare as integers so that values above 2^53 stay
+			/// distinct. A mixed integer and double pair falls back to double comparison, which
+			/// is what keeps 1 equal to 1.0 as the spec requires.
+			private bool NumberEquals(JsonValue a, JsonValue b)
 			{
-				for (var item in mRefStack)
+				if (a.type == .NUMBER_UNSIGNED && b.type == .NUMBER_UNSIGNED)
+					return (uint)a == (uint)b;
+
+				if (IsIntegerType(a) && IsIntegerType(b))
 				{
-					if (item == resolvedRef)
+					if (a.type == .NUMBER_UNSIGNED && (uint)a > (uint)int.MaxValue)
+						return false;
+					if (b.type == .NUMBER_UNSIGNED && (uint)b > (uint)int.MaxValue)
+						return false;
+					return (int)a == (int)b;
+				}
+
+				return (double)a == (double)b;
+			}
+
+			private bool IsIntegerType(JsonValue value)
+			{
+				return value.type == .NUMBER_SIGNED || value.type == .NUMBER_UNSIGNED;
+			}
+
+			/// The guard is keyed on the reference paired with the instance location: a recursive
+			/// $ref descends into nested instances, while a $ref that reaches itself without
+			/// consuming instance is a real cycle.
+			private bool IsRefOnStack(StringView resolvedRef, StringView instancePointer)
+			{
+				for (var frame in mRefStack)
+				{
+					if (frame.Reference == resolvedRef && frame.InstancePointer == instancePointer)
 						return true;
 				}
 				return false;

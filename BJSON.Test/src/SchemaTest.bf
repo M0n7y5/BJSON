@@ -6,6 +6,19 @@ using BJSON.Models;
 
 namespace BJSON.Test
 {
+	/// Records whether external resolution was attempted, so a test can prove that a $ref
+	/// resolved from a document already in memory.
+	class RecordingSchemaResolver : ISchemaResolver
+	{
+		public bool WasCalled = false;
+
+		public Result<JsonValue, JsonSchemaError> Resolve(StringView uri)
+		{
+			WasCalled = true;
+			return .Err(.ExternalSchemaNotFound(uri));
+		}
+	}
+
 	class SchemaTest
 	{
 		[Test(Name = "JSON Schema basic validation")]
@@ -19,6 +32,7 @@ namespace BJSON.Test
 			defer okInstance.Dispose();
 			Test.Assert(okInstance case .Ok, "Failed to parse instance");
 			let okValidate = schemaResult.Value.Validate(okInstance.Value);
+			defer okValidate.Dispose();
 			Test.Assert(okValidate case .Ok, "Validation failed");
 			Test.Assert(okValidate.Value.IsValid, "Instance should be valid");
 
@@ -26,6 +40,7 @@ namespace BJSON.Test
 			defer badInstance.Dispose();
 			Test.Assert(badInstance case .Ok, "Failed to parse instance");
 			let badValidate = schemaResult.Value.Validate(badInstance.Value);
+			defer badValidate.Dispose();
 			Test.Assert(badValidate case .Ok, "Validation failed");
 			Test.Assert(!badValidate.Value.IsValid, "Instance should be invalid");
 			
@@ -44,6 +59,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				let json2 = Json.Deserialize("123");
@@ -51,6 +67,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				delete schema.Value;
@@ -65,6 +82,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				let json2 = Json.Deserialize("\"true\"");
@@ -72,6 +90,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				delete schema.Value;
@@ -86,6 +105,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				let json2 = Json.Deserialize("123");
@@ -93,6 +113,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				delete schema.Value;
@@ -107,6 +128,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				let json2 = Json.Deserialize("3.14");
@@ -114,6 +136,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				delete schema.Value;
@@ -128,6 +151,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				let json2 = Json.Deserialize("3.14");
@@ -135,6 +159,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
 				}
 				let json3 = Json.Deserialize("\"number\"");
@@ -142,6 +167,7 @@ namespace BJSON.Test
 				if (json3 case .Ok(let val3))
 				{
 					let result3 = schema.Value.Validate(val3);
+					defer result3.Dispose();
 					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
 				}
 				delete schema.Value;
@@ -156,6 +182,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				let json2 = Json.Deserialize("{\"key\":\"value\"}");
@@ -163,6 +190,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				delete schema.Value;
@@ -177,6 +205,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				let json2 = Json.Deserialize("[1,2,3]");
@@ -184,6 +213,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				delete schema.Value;
@@ -201,6 +231,7 @@ namespace BJSON.Test
 			defer okInstance.Dispose();
 			Test.Assert(okInstance case .Ok, "Failed to parse instance");
 			let okValidate = schemaResult.Value.Validate(okInstance.Value);
+			defer okValidate.Dispose();
 			Test.Assert(okValidate case .Ok, "Validation failed");
 			Test.Assert(okValidate.Value.IsValid, "Instance should be valid");
 			
@@ -238,6 +269,7 @@ namespace BJSON.Test
 			defer okInstance.Dispose();
 			Test.Assert(okInstance case .Ok, "Failed to parse instance");
 			let okValidate = schemaResult.Value.Validate(okInstance.Value);
+			defer okValidate.Dispose();
 			
 			if (okValidate case .Err(let valErr))
 			{
@@ -286,6 +318,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -294,6 +327,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -310,6 +344,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -318,6 +353,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -326,6 +362,7 @@ namespace BJSON.Test
 				if (json3 case .Ok(let val3))
 				{
 					let result3 = schema.Value.Validate(val3);
+					defer result3.Dispose();
 					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
 				}
 				
@@ -350,6 +387,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -358,6 +396,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -378,6 +417,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -386,6 +426,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -402,6 +443,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -410,6 +452,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -418,6 +461,7 @@ namespace BJSON.Test
 				if (json3 case .Ok(let val3))
 				{
 					let result3 = schema.Value.Validate(val3);
+					defer result3.Dispose();
 					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
 				}
 				
@@ -434,6 +478,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -442,6 +487,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -466,6 +512,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -474,6 +521,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -494,6 +542,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -502,6 +551,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
 				}
 				
@@ -510,6 +560,7 @@ namespace BJSON.Test
 				if (json3 case .Ok(let val3))
 				{
 					let result3 = schema.Value.Validate(val3);
+					defer result3.Dispose();
 					Test.Assert(result3 case .Ok(let r3) && r3.IsValid);
 				}
 				
@@ -518,6 +569,7 @@ namespace BJSON.Test
 				if (json4 case .Ok(let val4))
 				{
 					let result4 = schema.Value.Validate(val4);
+					defer result4.Dispose();
 					Test.Assert(result4 case .Ok(let r4) && !r4.IsValid);
 				}
 				
@@ -526,6 +578,7 @@ namespace BJSON.Test
 				if (json5 case .Ok(let val5))
 				{
 					let result5 = schema.Value.Validate(val5);
+					defer result5.Dispose();
 					Test.Assert(result5 case .Ok(let r5) && !r5.IsValid);
 				}
 				
@@ -542,6 +595,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -550,6 +604,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -558,6 +613,7 @@ namespace BJSON.Test
 				if (json3 case .Ok(let val3))
 				{
 					let result3 = schema.Value.Validate(val3);
+					defer result3.Dispose();
 					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
 				}
 				
@@ -578,6 +634,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -586,6 +643,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -594,6 +652,7 @@ namespace BJSON.Test
 				if (json3 case .Ok(let val3))
 				{
 					let result3 = schema.Value.Validate(val3);
+					defer result3.Dispose();
 					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
 				}
 				
@@ -621,6 +680,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -629,6 +689,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -652,6 +713,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -660,6 +722,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
 				}
 				
@@ -668,6 +731,7 @@ namespace BJSON.Test
 				if (json3 case .Ok(let val3))
 				{
 					let result3 = schema.Value.Validate(val3);
+					defer result3.Dispose();
 					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid);
 				}
 				
@@ -691,6 +755,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -699,6 +764,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
 				}
 				
@@ -715,6 +781,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -723,6 +790,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -758,6 +826,7 @@ namespace BJSON.Test
 			if (json1 case .Ok(let val1))
 			{
 				let result1 = schema.Value.Validate(val1);
+				defer result1.Dispose();
 				Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 			}
 			
@@ -766,6 +835,7 @@ namespace BJSON.Test
 			if (json2 case .Ok(let val2))
 			{
 				let result2 = schema.Value.Validate(val2);
+				defer result2.Dispose();
 				Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 			}
 			
@@ -775,6 +845,7 @@ namespace BJSON.Test
 			if (json3 case .Ok(let val3))
 			{
 				let result3 = schema.Value.Validate(val3);
+				defer result3.Dispose();
 				Test.Assert(result3 case .Ok(let r3) && r3.IsValid);
 			}
 			
@@ -783,6 +854,7 @@ namespace BJSON.Test
 			if (json4 case .Ok(let val4))
 			{
 				let result4 = schema.Value.Validate(val4);
+				defer result4.Dispose();
 				Test.Assert(result4 case .Ok(let r4) && !r4.IsValid);
 			}
 			
@@ -802,6 +874,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -810,6 +883,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -826,6 +900,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -834,6 +909,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -854,6 +930,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -862,6 +939,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
 				}
 				
@@ -870,6 +948,7 @@ namespace BJSON.Test
 				if (json3 case .Ok(let val3))
 				{
 					let result3 = schema.Value.Validate(val3);
+					defer result3.Dispose();
 					Test.Assert(result3 case .Ok(let r3) && r3.IsValid);
 				}
 				
@@ -886,6 +965,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && !r1.IsValid);
 				}
 				
@@ -894,6 +974,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -918,6 +999,7 @@ namespace BJSON.Test
 				if (json1 case .Ok(let val1))
 				{
 					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
 					Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 				}
 				
@@ -926,6 +1008,7 @@ namespace BJSON.Test
 				if (json2 case .Ok(let val2))
 				{
 					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
 					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid);
 				}
 				
@@ -952,6 +1035,7 @@ namespace BJSON.Test
 			if (json1 case .Ok(let val1))
 			{
 				let result1 = schema.Value.Validate(val1);
+				defer result1.Dispose();
 				Test.Assert(result1 case .Ok(let r1) && r1.IsValid);
 			}
 			
@@ -979,10 +1063,390 @@ namespace BJSON.Test
 			if (json2 case .Ok(let val2))
 			{
 				let result2 = schemaWithAnchor.Value.Validate(val2);
+				defer result2.Dispose();
 				Test.Assert(result2 case .Ok(let r2) && r2.IsValid);
 			}
 			
 			delete schemaWithAnchor.Value;
+		}
+
+		[Test(Name = "JSON Schema recursive $ref")]
+		public static void T_SchemaRecursiveRef()
+		{
+			let schema = JsonSchema.Parse("""
+				{
+					"$defs": {
+						"node": {
+							"type": "object",
+							"properties": {
+								"value": { "type": "integer" },
+								"next": { "$ref": "#/$defs/node" }
+							}
+						}
+					},
+					"$ref": "#/$defs/node"
+				}
+				""");
+			Test.Assert(schema case .Ok, "Failed to parse the recursive schema");
+
+			let json1 = Json.Deserialize("{\"value\":1,\"next\":{\"value\":2,\"next\":{\"value\":3}}}");
+			defer json1.Dispose();
+			if (json1 case .Ok(let val1))
+			{
+				let result1 = schema.Value.Validate(val1);
+				defer result1.Dispose();
+				let summary = Summarize(result1, .. scope String());
+				Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"Two levels of recursion should be valid, got {summary}");
+			}
+
+			let json2 = Json.Deserialize("{\"value\":1,\"next\":{\"value\":\"two\"}}");
+			defer json2.Dispose();
+			if (json2 case .Ok(let val2))
+			{
+				let result2 = schema.Value.Validate(val2);
+				defer result2.Dispose();
+				let summary = Summarize(result2, .. scope String());
+				Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"A nested type mismatch should be invalid, got {summary}");
+			}
+
+			delete schema.Value;
+		}
+
+		[Test(Name = "JSON Schema $ref cycle detection")]
+		public static void T_SchemaRefCycle()
+		{
+			let schema = JsonSchema.Parse("""
+				{
+					"$defs": {
+						"a": { "$ref": "#/$defs/b" },
+						"b": { "$ref": "#/$defs/a" }
+					},
+					"$ref": "#/$defs/a"
+				}
+				""");
+			Test.Assert(schema case .Ok, "Failed to parse the cyclic schema");
+
+			let json1 = Json.Deserialize("{}");
+			defer json1.Dispose();
+			if (json1 case .Ok(let val1))
+			{
+				let result1 = schema.Value.Validate(val1);
+				defer result1.Dispose();
+				bool cycleDetected = false;
+				if (result1 case .Err(let err))
+				{
+					if (err case .RefCycleDetected)
+						cycleDetected = true;
+				}
+				let summary = Summarize(result1, .. scope String());
+				Test.Assert(cycleDetected, scope $"A $ref reaching itself must report a cycle, got {summary}");
+			}
+
+			delete schema.Value;
+		}
+
+		[Test(Name = "JSON Schema $ref to an embedded $id")]
+		public static void T_SchemaEmbeddedIdRef()
+		{
+			let resolver = scope RecordingSchemaResolver();
+			let schema = JsonSchema.Parse("""
+				{
+					"$id": "https://example.com/root",
+					"$defs": {
+						"name": {
+							"$id": "https://example.com/name",
+							"type": "string",
+							"minLength": 2
+						}
+					},
+					"$ref": "https://example.com/name"
+				}
+				""", "", resolver);
+			Test.Assert(schema case .Ok, "Failed to parse the schema with an embedded $id");
+
+			let json1 = Json.Deserialize("\"Ada\"");
+			defer json1.Dispose();
+			if (json1 case .Ok(let val1))
+			{
+				let result1 = schema.Value.Validate(val1);
+				defer result1.Dispose();
+				let summary = Summarize(result1, .. scope String());
+				Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"The embedded $id should resolve locally, got {summary}");
+			}
+
+			let json2 = Json.Deserialize("\"A\"");
+			defer json2.Dispose();
+			if (json2 case .Ok(let val2))
+			{
+				let result2 = schema.Value.Validate(val2);
+				defer result2.Dispose();
+				let summary = Summarize(result2, .. scope String());
+				Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"minLength of the embedded schema should apply, got {summary}");
+			}
+
+			Test.Assert(!resolver.WasCalled, scope $"The embedded $id must resolve from the id index, resolver called: {resolver.WasCalled}");
+
+			delete schema.Value;
+		}
+
+		[Test(Name = "JSON Schema multipleOf")]
+		public static void T_SchemaMultipleOf()
+		{
+			{
+				let schema = JsonSchema.Parse("{\"type\":\"number\",\"multipleOf\":3}");
+				Test.Assert(schema case .Ok);
+
+				let json1 = Json.Deserialize("9");
+				defer json1.Dispose();
+				if (json1 case .Ok(let val1))
+				{
+					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
+					let summary = Summarize(result1, .. scope String());
+					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"9 is a multiple of 3, got {summary}");
+				}
+
+				let json2 = Json.Deserialize("10");
+				defer json2.Dispose();
+				if (json2 case .Ok(let val2))
+				{
+					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
+					let summary = Summarize(result2, .. scope String());
+					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"10 is not a multiple of 3, got {summary}");
+				}
+
+				delete schema.Value;
+			}
+
+			// 0.3 divided by 0.1 is not exact in binary floating point
+			{
+				let schema = JsonSchema.Parse("{\"type\":\"number\",\"multipleOf\":0.1}");
+				Test.Assert(schema case .Ok);
+
+				let json1 = Json.Deserialize("0.3");
+				defer json1.Dispose();
+				if (json1 case .Ok(let val1))
+				{
+					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
+					let summary = Summarize(result1, .. scope String());
+					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"0.3 is a multiple of 0.1, got {summary}");
+				}
+
+				let json2 = Json.Deserialize("0.35");
+				defer json2.Dispose();
+				if (json2 case .Ok(let val2))
+				{
+					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
+					let summary = Summarize(result2, .. scope String());
+					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"0.35 is not a multiple of 0.1, got {summary}");
+				}
+
+				delete schema.Value;
+			}
+		}
+
+		[Test(Name = "JSON Schema contains with minContains and maxContains")]
+		public static void T_SchemaContains()
+		{
+			{
+				let schema = JsonSchema.Parse("{\"type\":\"array\",\"contains\":{\"type\":\"integer\"},\"minContains\":2,\"maxContains\":3}");
+				Test.Assert(schema case .Ok);
+
+				let json1 = Json.Deserialize("[1,\"a\",2]");
+				defer json1.Dispose();
+				if (json1 case .Ok(let val1))
+				{
+					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
+					let summary = Summarize(result1, .. scope String());
+					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"Two integers satisfy minContains 2, got {summary}");
+				}
+
+				let json2 = Json.Deserialize("[\"a\",1]");
+				defer json2.Dispose();
+				if (json2 case .Ok(let val2))
+				{
+					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
+					let summary = Summarize(result2, .. scope String());
+					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"One integer is below minContains 2, got {summary}");
+				}
+
+				let json3 = Json.Deserialize("[1,2,3,4]");
+				defer json3.Dispose();
+				if (json3 case .Ok(let val3))
+				{
+					let result3 = schema.Value.Validate(val3);
+					defer result3.Dispose();
+					let summary = Summarize(result3, .. scope String());
+					Test.Assert(result3 case .Ok(let r3) && !r3.IsValid, scope $"Four integers exceed maxContains 3, got {summary}");
+				}
+
+				delete schema.Value;
+			}
+
+			// minContains defaults to 1
+			{
+				let schema = JsonSchema.Parse("{\"type\":\"array\",\"contains\":{\"const\":\"x\"}}");
+				Test.Assert(schema case .Ok);
+
+				let json1 = Json.Deserialize("[\"y\",\"x\"]");
+				defer json1.Dispose();
+				if (json1 case .Ok(let val1))
+				{
+					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
+					let summary = Summarize(result1, .. scope String());
+					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"The array contains x, got {summary}");
+				}
+
+				let json2 = Json.Deserialize("[\"y\",\"z\"]");
+				defer json2.Dispose();
+				if (json2 case .Ok(let val2))
+				{
+					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
+					let summary = Summarize(result2, .. scope String());
+					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"The array has no x, got {summary}");
+				}
+
+				delete schema.Value;
+			}
+		}
+
+		[Test(Name = "JSON Schema propertyNames")]
+		public static void T_SchemaPropertyNames()
+		{
+			let schema = JsonSchema.Parse("{\"type\":\"object\",\"propertyNames\":{\"maxLength\":3}}");
+			Test.Assert(schema case .Ok);
+
+			let json1 = Json.Deserialize("{\"abc\":1,\"de\":2}");
+			defer json1.Dispose();
+			if (json1 case .Ok(let val1))
+			{
+				let result1 = schema.Value.Validate(val1);
+				defer result1.Dispose();
+				let summary = Summarize(result1, .. scope String());
+				Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"Every property name fits maxLength 3, got {summary}");
+			}
+
+			let json2 = Json.Deserialize("{\"abc\":1,\"defg\":2}");
+			defer json2.Dispose();
+			if (json2 case .Ok(let val2))
+			{
+				let result2 = schema.Value.Validate(val2);
+				defer result2.Dispose();
+				let summary = Summarize(result2, .. scope String());
+				Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"The name defg breaks maxLength 3, got {summary}");
+			}
+
+			delete schema.Value;
+		}
+
+		[Test(Name = "JSON Schema string length counts code points")]
+		public static void T_SchemaStringCodePointLength()
+		{
+			// "a\u00f1b" is three code points held in four UTF-8 bytes
+			{
+				let schema = JsonSchema.Parse("{\"type\":\"string\",\"maxLength\":3}");
+				Test.Assert(schema case .Ok);
+
+				let json1 = Json.Deserialize("\"a\\u00f1b\"");
+				defer json1.Dispose();
+				if (json1 case .Ok(let val1))
+				{
+					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
+					let summary = Summarize(result1, .. scope String());
+					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"Three code points fit maxLength 3, got {summary}");
+				}
+
+				delete schema.Value;
+			}
+
+			{
+				let schema = JsonSchema.Parse("{\"type\":\"string\",\"minLength\":4}");
+				Test.Assert(schema case .Ok);
+
+				let json1 = Json.Deserialize("\"a\\u00f1b\"");
+				defer json1.Dispose();
+				if (json1 case .Ok(let val1))
+				{
+					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
+					let summary = Summarize(result1, .. scope String());
+					Test.Assert(result1 case .Ok(let r1) && !r1.IsValid, scope $"Three code points are below minLength 4, got {summary}");
+				}
+
+				delete schema.Value;
+			}
+		}
+
+		[Test(Name = "JSON Schema const with an integer above 2^53")]
+		public static void T_SchemaLargeIntegerConst()
+		{
+			// 9007199254740992 and 9007199254740993 collapse to the same double
+			{
+				let schema = JsonSchema.Parse("{\"const\":9007199254740993}");
+				Test.Assert(schema case .Ok);
+
+				let json1 = Json.Deserialize("9007199254740993");
+				defer json1.Dispose();
+				if (json1 case .Ok(let val1))
+				{
+					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
+					let summary = Summarize(result1, .. scope String());
+					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"9007199254740993 matches the const, got {summary}");
+				}
+
+				let json2 = Json.Deserialize("9007199254740992");
+				defer json2.Dispose();
+				if (json2 case .Ok(let val2))
+				{
+					let result2 = schema.Value.Validate(val2);
+					defer result2.Dispose();
+					let summary = Summarize(result2, .. scope String());
+					Test.Assert(result2 case .Ok(let r2) && !r2.IsValid, scope $"9007199254740992 differs from the const, got {summary}");
+				}
+
+				delete schema.Value;
+			}
+
+			{
+				let schema = JsonSchema.Parse("{\"const\":1}");
+				Test.Assert(schema case .Ok);
+
+				let json1 = Json.Deserialize("1.0");
+				defer json1.Dispose();
+				if (json1 case .Ok(let val1))
+				{
+					let result1 = schema.Value.Validate(val1);
+					defer result1.Dispose();
+					let summary = Summarize(result1, .. scope String());
+					Test.Assert(result1 case .Ok(let r1) && r1.IsValid, scope $"1.0 equals the const 1, got {summary}");
+				}
+
+				delete schema.Value;
+			}
+		}
+
+		private static void Summarize(Result<SchemaValidationResult, JsonSchemaError> result, String buffer)
+		{
+			if (result case .Err(let err))
+			{
+				buffer.Append("error ");
+				err.ToString(buffer);
+				return;
+			}
+
+			let validation = result.Value;
+			buffer.AppendF("IsValid={}", validation.IsValid);
+			if (validation.Errors != null && validation.Errors.Count > 0)
+				buffer.AppendF(", first error: {} at {}", validation.Errors[0].Message, validation.Errors[0].InstancePointer);
 		}
 	}
 }

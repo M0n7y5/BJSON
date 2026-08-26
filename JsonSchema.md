@@ -43,11 +43,14 @@ Control object structure and required fields:
     "required": ["name"],
     "minProperties": 1,
     "maxProperties": 5,
-    "additionalProperties": false
+    "additionalProperties": false,
+    "propertyNames": { "maxLength": 32 }
 }
 ```
 
-**Keywords:** `properties`, `required`, `minProperties`, `maxProperties`, `additionalProperties`
+**Keywords:** `properties`, `required`, `minProperties`, `maxProperties`, `additionalProperties`, `propertyNames`
+
+`propertyNames` applies its subschema to each property name as a string instance.
 
 ### Array Validation
 
@@ -59,11 +62,16 @@ Validate arrays and their contents:
     "items": { "type": "string" },
     "minItems": 1,
     "maxItems": 10,
-    "uniqueItems": true
+    "uniqueItems": true,
+    "contains": { "type": "string" },
+    "minContains": 1,
+    "maxContains": 5
 }
 ```
 
-**Keywords:** `items`, `prefixItems`, `additionalItems`, `minItems`, `maxItems`, `uniqueItems`
+**Keywords:** `items`, `prefixItems`, `additionalItems`, `minItems`, `maxItems`, `uniqueItems`, `contains`, `minContains`, `maxContains`
+
+`minContains` defaults to 1, so a bare `contains` requires at least one matching item.
 
 ### Numeric Validation
 
@@ -75,11 +83,14 @@ Set constraints on numeric values:
     "minimum": 0,
     "maximum": 100,
     "exclusiveMinimum": 0,
-    "exclusiveMaximum": 100
+    "exclusiveMaximum": 100,
+    "multipleOf": 0.5
 }
 ```
 
-**Keywords:** `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`
+**Keywords:** `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`
+
+`multipleOf` compares the quotient against the nearest integer within a relative tolerance, because divisors such as `0.1` have no exact double representation. A `multipleOf` of zero or less is reported as a validation error.
 
 ### String Validation
 
@@ -94,6 +105,8 @@ Set length constraints on strings:
 ```
 
 **Keywords:** `minLength`, `maxLength`
+
+Both count Unicode code points, not UTF-8 bytes.
 
 ### Combining Schemas
 
@@ -274,6 +287,7 @@ let json = Json.Deserialize("{\"name\":\"Alice\",\"age\":30}");
 if (json case .Ok(let value))
 {
     let result = schemaResult.Value.Validate(value);
+    defer result.Dispose();
     if (result case .Ok(let validation))
     {
         Console.WriteLine(scope $"Valid: {validation.IsValid}");
@@ -317,6 +331,7 @@ if (schema case .Ok(let s))
 {
     // The schema validates against the $ref target
     let result = s.Validate(JsonValue.Parse("{\"name\":\"Bob\"}"));
+    defer result.Dispose();
     delete s;
 }
 ```
@@ -333,6 +348,7 @@ if (schemaResult case .Ok(let schema))
 {
     let instance = Json.Deserialize("{\"name\":\"Eve\",\"age\":42}");
     let result = schema.Validate(instance.Value);
+    defer result.Dispose();
     // ...
     delete schema;
 }
@@ -344,6 +360,7 @@ if (schemaResult case .Ok(let schema))
 // Limit the number of errors collected
 let options = SchemaValidationOptions() { MaxErrors = 5 };
 let result = schema.Validate(jsonValue, options);
+defer result.Dispose();
 ```
 
 ## Memory Management
@@ -367,6 +384,10 @@ The destructor (`~this()`) automatically handles cleaning up:
 - Internal indexes and caches
 - The resolver (if owned by the schema)
 
+A `SchemaValidationResult` owns the `Errors` list and every error in it. Dispose the result of
+`Validate` exactly once, on the success and the failure path alike. Copies of the struct share one
+list, so never dispose two copies of the same result.
+
 ## Error Handling
 
 The validation result includes detailed error information:
@@ -385,10 +406,11 @@ if (validation.Errors != null)
 
 ## Limitations
 
-- Maximum validation depth: 200 nested levels (prevents stack overflow on circular references)
 - Maximum error collection: Configurable via `SchemaValidationOptions.MaxErrors` (default: 16)
 - No regex support: Pattern validation must be done in application code
 - File-based external references only: No HTTP/HTTPS URL support
+- The validator has no depth cap of its own. Recursion follows the instance, and a document parsed
+  from text is already limited to 200 nesting levels by the parser
 
 ## See Also
 
