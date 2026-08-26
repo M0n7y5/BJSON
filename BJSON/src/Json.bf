@@ -163,8 +163,8 @@ namespace BJSON
 		/// Serializes a typed object to a stream through its emitted serializer.
 		/// @param obj The object to write.
 		/// @param stream The destination. A failed or short write ends the document with an error.
-		/// @returns Ok, or Err without detail, since the emitted path collapses failures.
-		public static Result<void> Serialize<T>(T obj, Stream stream) where T : IJsonSerializable
+		/// @returns Ok, or the error the emitted serializer reported.
+		public static Result<void, JsonSerializationError> Serialize<T>(T obj, Stream stream) where T : IJsonSerializable
 		{
 			return obj.JsonSerialize(stream);
 		}
@@ -173,8 +173,8 @@ namespace BJSON
 		/// @param obj The object to write.
 		/// @param stream The destination. A failed or short write ends the document with an error.
 		/// @param options Indentation and newline settings.
-		/// @returns Ok, or Err without detail, since the emitted path collapses failures.
-		public static Result<void> Serialize<T>(T obj, Stream stream, JsonWriterOptions options) where T : IJsonSerializable
+		/// @returns Ok, or the error the emitted serializer reported.
+		public static Result<void, JsonSerializationError> Serialize<T>(T obj, Stream stream, JsonWriterOptions options) where T : IJsonSerializable
 		{
 			return obj.JsonSerialize(stream, options);
 		}
@@ -182,8 +182,8 @@ namespace BJSON
 		/// Serializes a typed object, appending the text to a caller owned String.
 		/// @param obj The object to write.
 		/// @param outText The buffer to append to. Existing content is kept.
-		/// @returns Ok, or Err without detail, since the emitted path collapses failures.
-		public static Result<void> Serialize<T>(T obj, String outText) where T : IJsonSerializable
+		/// @returns Ok, or the error the emitted serializer reported.
+		public static Result<void, JsonSerializationError> Serialize<T>(T obj, String outText) where T : IJsonSerializable
 		{
 			var stream = scope StringStream(outText, .Reference);
 			stream.Position = outText.Length;
@@ -195,8 +195,8 @@ namespace BJSON
 		/// @param obj The object to write.
 		/// @param outText The buffer to append to. Existing content is kept.
 		/// @param options Indentation and newline settings.
-		/// @returns Ok, or Err without detail, since the emitted path collapses failures.
-		public static Result<void> Serialize<T>(T obj, String outText, JsonWriterOptions options) where T : IJsonSerializable
+		/// @returns Ok, or the error the emitted serializer reported.
+		public static Result<void, JsonSerializationError> Serialize<T>(T obj, String outText, JsonWriterOptions options) where T : IJsonSerializable
 		{
 			var stream = scope StringStream(outText, .Reference);
 			stream.Position = outText.Length;

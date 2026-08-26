@@ -194,7 +194,7 @@ class RegressionTest
 
 		let stream = scope ShortStream(4);
 
-		Test.Assert(Json.Serialize(point, stream) case .Err, "a truncated write must not report success");
+		Test.Assert(Json.Serialize(point, stream) case .Err(.StreamWriteFailed), "a truncated write must report StreamWriteFailed");
 	}
 
 	[Test(Name = "Regression: emitted serializer reports a failing stream without the facade")]
@@ -205,7 +205,7 @@ class RegressionTest
 
 		let stream = scope ShortStream(4);
 
-		Test.Assert(point.JsonSerialize(stream) case .Err, "a truncated write must not report success");
+		Test.Assert(point.JsonSerialize(stream) case .Err(.StreamWriteFailed), "a truncated write must report StreamWriteFailed");
 	}
 
 	[Test(Name = "Regression: null reference fields serialize as null")]

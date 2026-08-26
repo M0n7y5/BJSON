@@ -26,12 +26,12 @@ public class JsonSerializerCodeGen
 		// Braces of the emitted body are doubled: inside an interpolated template {{ and }}
 		// collapse to one literal brace, and a lone { would open an interpolation hole.
 		code.AppendF($"""
-			public {newKeyword}Result<void> JsonSerialize(System.IO.Stream stream)
+			public {newKeyword}Result<void, BJSON.Enums.JsonSerializationError> JsonSerialize(System.IO.Stream stream)
 			{{
 				return JsonSerialize(stream, .());
 			}}
 
-			public {newKeyword}Result<void> JsonSerialize(System.IO.Stream stream, BJSON.JsonWriterOptions _options)
+			public {newKeyword}Result<void, BJSON.Enums.JsonSerializationError> JsonSerialize(System.IO.Stream stream, BJSON.JsonWriterOptions _options)
 			{{
 				int _depth = 0;
 				bool _firstField = true;
@@ -154,7 +154,9 @@ public class JsonSerializerCodeGen
 			code.AppendF($"{indent}{{\n");
 			code.AppendF($"{indent}\tlet _converter = new {converterTypeName}();\n");
 			code.AppendF($"{indent}\tdefer delete _converter;\n");
-			code.AppendF($"{indent}\tTry!(_converter.WriteJson(stream, {fieldExpr}));\n");
+			// WriteJson returns a bare Result<void>, so Try! has no error to widen: the refusal
+			// becomes ConverterFailed here.
+			code.AppendF($"{indent}\tif (_converter.WriteJson(stream, {fieldExpr}) case .Err) return .Err(.ConverterFailed);\n");
 			code.AppendF($"{indent}}}\n");
 			return;
 		}
@@ -341,7 +343,7 @@ public class JsonSerializerCodeGen
 				code.AppendF($"{indent}{{\n");
 				code.AppendF($"{indent}\tlet _converter = new {converterTypeName}();\n");
 				code.AppendF($"{indent}\tdefer delete _converter;\n");
-				code.AppendF($"{indent}\tTry!(_converter.WriteJson(stream, {valueExpr}));\n");
+				code.AppendF($"{indent}\tif (_converter.WriteJson(stream, {valueExpr}) case .Err) return .Err(.ConverterFailed);\n");
 				code.AppendF($"{indent}}}\n");
 			}
 		case .Bool:

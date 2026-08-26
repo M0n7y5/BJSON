@@ -21,6 +21,9 @@ namespace BJSON.Enums
 		/// itself fails here instead of overflowing the stack. Only the JsonValue tree writer
 		/// counts depth; the generated JsonSerialize methods do not.
 		case MaximumDepthReached;
+		/// An IJsonConverter.WriteJson refused the value. WriteJson reports no reason, so neither
+		/// does this.
+		case ConverterFailed;
 
 		public override void ToString(String string)
 		{
@@ -38,6 +41,8 @@ namespace BJSON.Enums
 				string.Append("Writing to the stream failed!");
 			case MaximumDepthReached:
 				string.Append("Maximum nesting depth reached!");
+			case ConverterFailed:
+				string.Append("Custom converter failed!");
 			}
 		}
 	}
