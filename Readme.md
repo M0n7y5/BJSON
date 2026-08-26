@@ -64,18 +64,20 @@ person.Name.Set("John Doe");
 person.Age = 30;
 
 let output = scope String();
-Json.Serialize(person, output);
+if (Json.Serialize(person, output) case .Err)
+    return; // a failed or short write ends the document with an error
 // Output: {"Name":"John Doe","Age":30,"IsActive":false,"email_address":"","Tags":[]}
 
 // Deserialize from JSON (pre-allocated object)
 let json = """{"Name":"Jane","Age":25}""";
-let stream = scope StringStream(json, .Reference);
 let restored = scope Person();
-Json.Deserialize<Person>(stream, restored);
+if (Json.Deserialize<Person>(json, restored) case .Err(let err))
+{
+    // err names the failure, e.g. "Type mismatch at /Age: expected number, got string"
+}
 
 // Or use allocating API (caller must delete)
-let stream2 = scope StringStream(json, .Reference);
-if (Json.Deserialize<Person>(stream2) case .Ok(let newPerson))
+if (Json.Deserialize<Person>(json) case .Ok(let newPerson))
 {
     defer delete newPerson;
     // use newPerson...
@@ -137,7 +139,8 @@ let json = JsonObject()
 defer json.Dispose();
 
 let output = scope String();
-Json.Serialize(json, output);
+if (Json.Serialize(json, output) case .Err)
+    return;
 Console.WriteLine(output);
 ```
 
@@ -167,7 +170,8 @@ let json = JsonObject()
 defer json.Dispose();
 let output = scope String();
 let options = JsonWriterOptions() { Indented = true };
-Json.Serialize(json, output, options);
+if (Json.Serialize(json, output, options) case .Err)
+    return;
 Console.WriteLine(output);
 ```
 
