@@ -3,25 +3,15 @@ using System.Collections;
 
 namespace BJSON.SchemaCodeGen;
 
-/// Renders one SchemaModel as the source text of a Beef class or enum.
-/// Ownership: mConfig is a copy of the caller's GeneratorConfig, whose Namespace string is non
-/// owning, so that string MUST outlive the generator. Generate returns a heap allocated String the
-/// caller has to delete. Nothing else here allocates beyond the call.
 class CodeGenerator
 {
 	private GeneratorConfig mConfig;
 	
-	/// @param config Generator options, copied by value. Its Namespace string stays owned by the
-	///               caller and MUST outlive this generator.
 	public this(GeneratorConfig config)
 	{
 		mConfig = config;
 	}
 	
-	/// Renders schema as a whole Beef source file: an enum for .Enum, a class for anything else.
-	/// @param schema The type to render. Non owning: the node list owns it, together with the base,
-	///               element and property schemas this call reads through it.
-	/// @returns A new String the caller owns and MUST delete.
 	public String Generate(SchemaModel schema)
 	{
 		var sb = scope String();
@@ -58,35 +48,22 @@ class CodeGenerator
 		
 		sb.Append("[JsonObject]\n");
 		sb.AppendF($"class {schema.Name}");
-		
-		// TypeResolver picked the `allOf` member that becomes the base class, so the name is read
-		// here instead of derived a second time.
-		if (!schema.BaseTypeName.IsEmpty)
-		{
-			sb.AppendF($" : {schema.BaseTypeName}");
-		}
-		
 		sb.Append("\n{\n");
-		
-		// Two JSON keys can mangle to one field name, which Beef rejects as a duplicate, so a
-		// repeat is numbered inside the type that declares it.
-		HashSet<String> usedNames = scope HashSet<String>();
-		defer { ClearAndDeleteItems!(usedNames); }
 		
 		for (var prop in schema.Properties)
 		{
-			String fieldName = scope String();
-			NameMangler.AppendUnique(prop.Name, usedNames, fieldName);
-			GenerateField(sb, prop, fieldName);
+			GenerateField(sb, prop);
+		}
+
+		if (schema.AdditionalProperties != null)
+		{
+			GenerateAdditionalPropertiesField(sb, schema);
 		}
 		
 		sb.Append("}\n");
 	}
 	
-	/// Renders one property as a field with its attributes and its initializer.
-	/// @param prop The property to render. Non owning.
-	/// @param fieldName Beef name of the field, already unique inside the declaring type.
-	private void GenerateField(String sb, PropertyModel prop, StringView fieldName)
+	private void GenerateField(String sb, PropertyModel prop)
 	{
 		if (!prop.Description.IsEmpty && !mConfig.SkipDocs)
 		{
@@ -98,13 +75,11 @@ class CodeGenerator
 			sb.Append("\t[JsonRequired]\n");
 		}
 		
-		// BJSON looks keys up case sensitively, so a rename that only changes case still needs
-		// the attribute.
-		if (!prop.JsonName.IsEmpty && !prop.JsonName.Equals(fieldName, .Ordinal))
+		if (!prop.JsonName.IsEmpty && !prop.Name.Equals(prop.JsonName, .OrdinalIgnoreCase))
 		{
-			String literal = scope String();
-			AppendSourceLiteral(prop.JsonName, literal);
-			sb.AppendF($"\t[JsonPropertyName(\"{literal}\")]\n");
+			sb.Append("\t[JsonPropertyName(\"");
+			AppendEscapedString(prop.JsonName, sb);
+			sb.Append("\")]\n");
 		}
 		
 		sb.AppendF($"\tpublic ");
@@ -113,7 +88,7 @@ class CodeGenerator
 		GetBeefType(prop.Schema, typeName);
 		sb.Append(typeName);
 		
-		sb.AppendF($" {fieldName}");
+		sb.AppendF($" {prop.Name}");
 		
 		String init = scope String();
 		GetInitializer(prop.Schema, init);
@@ -141,23 +116,47 @@ class CodeGenerator
 		
 		sb.AppendF($"{indent}/// {oneLine}\n");
 	}
-	
-	/// Escapes a JSON key for a Beef source string literal, so a key holding a quote or a
-	/// backslash cannot break or alter the generated code.
-	private void AppendSourceLiteral(StringView text, String outText)
+
+	private void GenerateAdditionalPropertiesField(String sb, SchemaModel schema)
 	{
-		for (let c in text)
+		String typeName = scope String();
+		GetBeefType(schema.AdditionalProperties, typeName);
+
+		String fieldName = scope String();
+		GetAdditionalPropertiesFieldName(schema, fieldName);
+
+		sb.Append("\t[JsonExtensionData]\n");
+		sb.AppendF($"\tpublic Dictionary<String, {typeName}> {fieldName}");
+
+		String init = scope String();
+		GetAdditionalPropertiesInitializer(schema.AdditionalProperties, init);
+		sb.Append(init);
+		sb.Append("\n\n");
+	}
+
+	private void GetAdditionalPropertiesFieldName(SchemaModel schema, String output)
+	{
+		output.Set("AdditionalProperties");
+		int suffix = 2;
+		while (HasPropertyFieldName(schema, output))
 		{
-			switch (c)
+			output.Set("AdditionalProperties");
+			output.Append(suffix);
+			suffix++;
+		}
+	}
+
+	private bool HasPropertyFieldName(SchemaModel schema, StringView fieldName)
+	{
+		for (var prop in schema.Properties)
+		{
+			if (prop.Name == fieldName)
 			{
-			case '"': outText.Append("\\\"");
-			case '\\': outText.Append("\\\\");
-			case '\n': outText.Append("\\n");
-			case '\r': outText.Append("\\r");
-			case '\t': outText.Append("\\t");
-			default: outText.Append(c);
+				return true;
 			}
 		}
+
+		return false;
 	}
 	
 	private void GenerateEnum(String sb, SchemaModel schema)
@@ -167,14 +166,10 @@ class CodeGenerator
 			AppendDocComment(sb, "", schema.Description);
 		}
 		
-		// BJSON serializes enums natively, and [JsonObject] is not valid on one.
+		// Note: [JsonObject] is not valid on enums in BJSON
+		// Enums are handled natively by the BJSON serializer
 		sb.AppendF($"enum {schema.Name}\n");
 		sb.Append("{\n");
-		
-		// Two `enum` values can mangle to one member name, which Beef rejects as a duplicate, so a
-		// repeat is numbered inside the enum that lists it.
-		HashSet<String> usedNames = scope HashSet<String>();
-		defer { ClearAndDeleteItems!(usedNames); }
 		
 		bool first = true;
 		for (var val in schema.EnumValues)
@@ -182,12 +177,9 @@ class CodeGenerator
 			if (!first) sb.Append(",\n");
 			first = false;
 			
-			String memberName = scope String();
-			NameMangler.ToEnumMemberName(val, memberName);
-			
-			String uniqueName = scope String();
-			NameMangler.AppendUnique(memberName, usedNames, uniqueName);
-			sb.AppendF($"\t{uniqueName}");
+			String enumName = scope String();
+			ToValidEnumName(val, enumName);
+			sb.AppendF($"\t{enumName}");
 		}
 		
 		sb.Append("\n}\n");
@@ -195,14 +187,18 @@ class CodeGenerator
 	
 	private void GetBeefType(SchemaModel schema, String output)
 	{
-		var resolved = schema.Resolved;
+		if (schema.Type == .Ref && schema.ReferencedSchema != null)
+		{
+			output.Append(schema.ReferencedSchema.Name);
+			return;
+		}
 		
-		switch (resolved.Type)
+		switch (schema.Type)
 		{
 		case .String:
 			output.Append("String");
 		case .Integer:
-			if (resolved.IsNullable)
+			if (schema.IsNullable)
 			{
 				output.Append(mConfig.IntegerType == .Int32 ? "int32?" : "int64?");
 			}
@@ -211,7 +207,7 @@ class CodeGenerator
 				output.Append(mConfig.IntegerType == .Int32 ? "int32" : "int64");
 			}
 		case .Number:
-			if (resolved.IsNullable)
+			if (schema.IsNullable)
 			{
 				output.Append(mConfig.NumberType == .Float ? "float?" : "double?");
 			}
@@ -220,7 +216,7 @@ class CodeGenerator
 				output.Append(mConfig.NumberType == .Float ? "float" : "double");
 			}
 		case .Boolean:
-			if (resolved.IsNullable)
+			if (schema.IsNullable)
 			{
 				output.Append("bool?");
 			}
@@ -230,9 +226,9 @@ class CodeGenerator
 			}
 		case .Array:
 			output.Append("List<");
-			if (resolved.Items != null)
+			if (schema.Items != null)
 			{
-				GetBeefType(resolved.Items, output);
+				GetBeefType(schema.Items, output);
 			}
 			else
 			{
@@ -240,11 +236,14 @@ class CodeGenerator
 			}
 			output.Append(">");
 		case .Object:
-			output.Append(resolved.Name);
+			output.Append(schema.Name);
 		case .Enum:
-			output.Append(resolved.Name);
+			output.Append(schema.Name);
 		default:
-			if (resolved.IsNullable)
+			// Fallback for unrecognized types
+			// If it's nullable, use nullable int64 as a sensible default
+			// Otherwise use JsonValue
+			if (schema.IsNullable)
 			{
 				output.Append(mConfig.IntegerType == .Int32 ? "int32?" : "int64?");
 			}
@@ -257,15 +256,20 @@ class CodeGenerator
 	
 	private void GetInitializer(SchemaModel schema, String output)
 	{
-		var resolved = schema.Resolved;
+		if (schema.Type == .Ref && schema.ReferencedSchema != null)
+		{
+			GetInitializer(schema.ReferencedSchema, output);
+			return;
+		}
 		
-		switch (resolved.Type)
+		switch (schema.Type)
 		{
 		case .String:
 			output.Append(" = new .() ~ delete _;");
+		case .Integer, .Number, .Boolean:
+			output.Clear();
 		case .Array:
-			// Only a list of heap objects may delete its items.
-			if (OwnsListItems(resolved.Items))
+			if (ArrayItemsNeedDelete(schema))
 			{
 				output.Append(" = new .() ~ DeleteContainerAndItems!(_);");
 			}
@@ -279,16 +283,55 @@ class CodeGenerator
 			output.Clear();
 		}
 	}
-	
-	/// Whether a List of this element schema holds objects the destructor has to delete.
-	private bool OwnsListItems(SchemaModel items)
+
+	private void GetAdditionalPropertiesInitializer(SchemaModel valueSchema, String output)
 	{
-		if (items == null)
+		if (SchemaIsArrayWithItemsNeedDelete(valueSchema))
+		{
+			output.Append(" = new .() ~ {\n");
+			output.Append("\t\tfor (let kv in _)\n");
+			output.Append("\t\t{\n");
+			output.Append("\t\t\tdelete kv.key;\n");
+			output.Append("\t\t\tDeleteContainerAndItems!(kv.value);\n");
+			output.Append("\t\t}\n");
+			output.Append("\t\tdelete _;\n");
+			output.Append("\t};");
+			return;
+		}
+
+		if (SchemaNeedsDelete(valueSchema))
+		{
+			output.Append(" = new .() ~ DeleteDictionaryAndKeysAndValues!(_);");
+		}
+		else
+		{
+			output.Append(" = new .() ~ DeleteDictionaryAndKeys!(_);");
+		}
+	}
+	
+	private bool ArrayItemsNeedDelete(SchemaModel schema)
+	{
+		if (schema.Items == null)
 		{
 			return false;
 		}
 		
-		switch (items.Resolved.Type)
+		return SchemaNeedsDelete(schema.Items);
+	}
+	
+	private bool SchemaNeedsDelete(SchemaModel schema)
+	{
+		if (schema == null)
+		{
+			return false;
+		}
+		
+		if (schema.Type == .Ref && schema.ReferencedSchema != null)
+		{
+			return SchemaNeedsDelete(schema.ReferencedSchema);
+		}
+		
+		switch (schema.Type)
 		{
 		case .String, .Object, .Array:
 			return true;
@@ -296,36 +339,111 @@ class CodeGenerator
 			return false;
 		}
 	}
+
+	private bool SchemaIsArrayWithItemsNeedDelete(SchemaModel schema)
+	{
+		if (schema == null)
+		{
+			return false;
+		}
+
+		if (schema.Type == .Ref && schema.ReferencedSchema != null)
+		{
+			return SchemaIsArrayWithItemsNeedDelete(schema.ReferencedSchema);
+		}
+
+		return schema.Type == .Array && ArrayItemsNeedDelete(schema);
+	}
+	
+	private void ToValidEnumName(StringView input, String output)
+	{
+		if (input.IsEmpty)
+		{
+			output.Append("Unknown");
+			return;
+		}
+		
+		bool first = true;
+		for (int i = 0; i < input.Length; i++)
+		{
+			char8 c = input[i];
+			bool isLetterOrDigit = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+			if (isLetterOrDigit)
+			{
+				if (first)
+				{
+					if (c >= '0' && c <= '9')
+					{
+						output.Append("_");
+					}
+					
+					if (c >= 'a' && c <= 'z')
+					{
+						output.Append((char8)(c - 32));
+					}
+					else
+					{
+						output.Append(c);
+					}
+					first = false;
+				}
+				else
+				{
+					output.Append(c);
+				}
+			}
+			else
+			{
+				output.Append('_');
+			}
+		}
+		
+		if (output.IsEmpty)
+		{
+			output.Append("Unknown");
+		}
+	}
+	
+	private void AppendEscapedString(StringView input, String output)
+	{
+		for (int i = 0; i < input.Length; i++)
+		{
+			char8 c = input[i];
+			switch (c)
+			{
+			case '\\':
+				output.Append("\\\\");
+			case '"':
+				output.Append("\\\"");
+			case '\n':
+				output.Append("\\n");
+			case '\r':
+				output.Append("\\r");
+			case '\t':
+				output.Append("\\t");
+			default:
+				output.Append(c);
+			}
+		}
+	}
 }
 
-/// Options that shape the generated source, copied by value into CodeGenerator.
 struct GeneratorConfig
 {
-	/// Namespace of every generated file. Non owning: the caller owns this string and MUST keep it
-	/// alive while a CodeGenerator holds the config.
 	public String Namespace;
-	/// Beef type generated for `type: integer`.
 	public IntegerType IntegerType = .Int64;
-	/// Beef type generated for `type: number`.
 	public NumberType NumberType = .Double;
-	/// When true, no schema `description` reaches the generated code as a doc comment.
 	public bool SkipDocs;
 }
 
-/// Beef type generated for `type: integer`, and for a nullable schema with no usable type.
 enum IntegerType
 {
-	/// int32, or int32? when the schema also allows null.
 	Int32,
-	/// int64, or int64? when the schema also allows null.
 	Int64
 }
 
-/// Beef type generated for `type: number`.
 enum NumberType
 {
-	/// float, or float? when the schema also allows null.
 	Float,
-	/// double, or double? when the schema also allows null.
 	Double
 }

@@ -6,13 +6,17 @@ using BJSON.Models;
 namespace BJSON.SchemaCodeGenTest;
 
 [JsonObject]
-class Employee : EmployeeBase0
+class Employee
 {
+	[JsonRequired]
+	public String Name = new .() ~ delete _;
+
+	public int64 Age;
+
 	[JsonRequired]
 	[JsonPropertyName("employee_id")]
 	public int64 EmployeeId;
 
-	[JsonPropertyName("department")]
 	public String Department = new .() ~ delete _;
 
 }

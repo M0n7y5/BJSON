@@ -12,7 +12,9 @@ namespace BJSON.CodeGen;
 public class JsonDeserializerCodeGen
 {
 	/// Emits JsonDeserialize into type: it rejects a non object JsonValue, then reads one
-	/// property per included field, including the fields of every base type.
+	/// property per included field, including the fields of every base type, and finally
+	/// captures every property no field claimed into the [JsonExtensionData] field when the
+	/// type has one.
 	/// @param type The [JsonObject] type receiving the method body.
 	[Comptime]
 	public static void EmitDeserializeMethod(Type type)
@@ -36,6 +38,7 @@ public class JsonDeserializerCodeGen
 			""");
 
 		EmitAllFields(code, type);
+		EmitExtensionDataDeserialization(code, type);
 
 		// Append, not AppendF: this tail is not interpolated, so its brace stays single.
 		code.Append("""
@@ -47,6 +50,8 @@ public class JsonDeserializerCodeGen
 	}
 
 	/// Emits the field reads for type and for every base type up to Object, base fields first.
+	/// The extension data field is not one of them: it answers to no property name of its own, so
+	/// EmitExtensionDataDeserialization fills it from what is left once every field was read.
 	[Comptime]
 	private static void EmitAllFields(String code, Type type)
 	{
@@ -65,7 +70,53 @@ public class JsonDeserializerCodeGen
 			if (!JsonCodeGenHelper.ShouldSerializeField(field, type))
 				continue;
 
+			if (JsonCodeGenHelper.IsExtensionDataField(field))
+				continue;
+
 			EmitFieldDeserialization(code, field, type);
+		}
+	}
+
+	/// Emits the capture of every property no included field claims into the [JsonExtensionData]
+	/// field, when type has one. GetFields() reports inherited fields too, so an extension data
+	/// field a base type declares is filled here as well; ValidateFields already rejected a
+	/// second one, so this loop emits at most one walk.
+	/// The entries are read by the same emitter a declared Dictionary field uses, so a captured
+	/// value gets the same typed errors and the same [JsonConverter] support.
+	/// @param code Receives the emitted source.
+	/// @param type The type being emitted, which also supplies the known property names.
+	[Comptime]
+	private static void EmitExtensionDataDeserialization(String code, Type type)
+	{
+		for (let field in type.GetFields())
+		{
+			if (!JsonCodeGenHelper.ShouldSerializeField(field, type))
+				continue;
+
+			if (!JsonCodeGenHelper.IsExtensionDataField(field))
+				continue;
+
+			Type keyType, valueType;
+			JsonCodeGenHelper.GetDictionaryTypes(field.FieldType, out keyType, out valueType);
+			// ValidateExtensionDataField already required Dictionary<String, V>, so missing key
+			// or value types are a generator fault. Bailing would drop every unknown property
+			// without a word, so it has to be fatal.
+			if (keyType == null || valueType == null)
+				Runtime.FatalError(scope $"BJSON found no key and value types for extension data field '{field.Name}'.");
+
+			code.Append("\tfor (let _kv in root)\n");
+			code.Append("\t{\n");
+
+			let knownNameCheck = scope String();
+			if (JsonCodeGenHelper.AppendKnownJsonNameCheck(knownNameCheck, type, "_kv.key"))
+			{
+				code.AppendF($"\t\tif ({knownNameCheck})\n");
+				code.Append("\t\t\tcontinue;\n");
+			}
+
+			EmitDictionaryValueDeserialization(code, field, valueType, "_kv.key", "_kv.value", "\t\t");
+
+			code.Append("\t}\n\n");
 		}
 	}
 

@@ -10,8 +10,8 @@ namespace BJSON.SchemaCodeGen;
 class FileWriter
 {
 	/// Writes one Beef file per object or enum type into outputDir, creating the directory when it
-	/// is missing. A node of any other kind is skipped, as is one TypeResolver suppressed because
-	/// a deriving type absorbed its properties.
+	/// is missing. A node of any other kind is skipped, as is an `allOf` member whose properties
+	/// were flattened into the deriving type, which SchemaParser marks with Emit false.
 	/// @param schemas The types to generate, in the order TypeResolver produced. Non owning: the
 	///                caller owns the list and the nodes.
 	/// @param config Generator options. Its Namespace string stays owned by the caller and MUST
@@ -33,7 +33,7 @@ class FileWriter
 
 		for (var schema in schemas)
 		{
-			if (!schema.Generate || (schema.Type != .Object && schema.Type != .Enum))
+			if (!schema.Emit || (schema.Type != .Object && schema.Type != .Enum))
 			{
 				continue;
 			}

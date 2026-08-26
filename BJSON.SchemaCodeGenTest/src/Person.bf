@@ -8,10 +8,12 @@ namespace BJSON.SchemaCodeGenTest;
 [JsonObject]
 class Person
 {
-	[JsonPropertyName("name")]
+	[JsonRequired]
 	public String Name = new .() ~ delete _;
 
-	[JsonPropertyName("age")]
 	public int64 Age;
+
+	[JsonRequired]
+	public Address Address = new .() ~ delete _;
 
 }

@@ -91,6 +91,55 @@ class GameData
 	};
 }
 
+/// Test class for unknown integer object properties
+[JsonObject]
+class ExtensionIntData
+{
+	public String Name = new .() ~ delete _;
+
+	[JsonExtensionData]
+	public Dictionary<String, int> AdditionalProperties = new .() ~ DeleteDictionaryAndKeys!(_);
+}
+
+/// Test class for unknown string object properties, with no declared property to skip
+[JsonObject]
+class ExtensionStringData
+{
+	[JsonExtensionData]
+	public Dictionary<String, String> Extra = new .() ~ DeleteDictionaryAndKeysAndValues!(_);
+}
+
+/// Test class for unknown object properties
+[JsonObject]
+class ExtensionObjectData
+{
+	public int Known;
+
+	[JsonExtensionData]
+	public Dictionary<String, NestedInfo> Extra = new .() ~ DeleteDictionaryAndKeysAndValues!(_);
+}
+
+/// Test class whose only declared property is renamed: the name the extension data field has to
+/// leave alone is the JSON one, not the field name.
+[JsonObject]
+class ExtensionRenamedData
+{
+	[JsonPropertyName("player_level")]
+	public int Level;
+
+	[JsonExtensionData]
+	public Dictionary<String, int> Extra = new .() ~ DeleteDictionaryAndKeys!(_);
+}
+
+/// Test class whose known properties come from a base type too, so an inherited property must
+/// not end up captured as an unknown one.
+[JsonObject]
+class ExtensionDerivedData : BaseClass
+{
+	[JsonExtensionData]
+	public Dictionary<String, int> Extra = new .() ~ DeleteDictionaryAndKeys!(_);
+}
+
 /// Date carried through JSON by the converter its own type names, with no attribute on the fields
 /// that use it and no [JsonObject] of its own.
 [JsonConverter(typeof(SimpleDateConverter))]
@@ -635,6 +684,168 @@ class ReflectTest
 			Test.Assert(val1.Description == "First config", "config1 description mismatch");
 			Test.Assert(val1.Value == 100, "config1 value mismatch");
 		}
+	}
+
+	[Test(Name = "Reflection: Extension Data Integers")]
+	public static void T_ExtensionDataIntegers()
+	{
+		let json = """
+			{
+				"Name": "Known",
+				"score": 42
+			}
+			""";
+
+		var result = Json.Deserialize(json);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let data = scope ExtensionIntData();
+		Test.Assert(data.JsonDeserialize(result.Value) case .Ok, "Deserialize failed");
+		Test.Assert(data.Name == "Known", scope $"Expected Name='Known', got '{data.Name}'");
+		Test.Assert(data.AdditionalProperties.Count == 1, scope $"Expected one extension entry, got {data.AdditionalProperties.Count}");
+		Test.Assert(data.AdditionalProperties.ContainsKeyAlt("score"), "Missing 'score' extension value");
+		if (data.AdditionalProperties.TryGetValueAlt("score", let score))
+			Test.Assert(score == 42, scope $"Expected score=42, got {score}");
+
+		data.AdditionalProperties.Add(new String("level"), 7);
+		data.AdditionalProperties.Add(new String("Name"), 999);
+
+		let buffer = scope String();
+		Test.Assert(Json.Serialize(data, buffer) case .Ok, "Serialize failed");
+		Test.Assert(buffer.Contains("\"level\":7"), scope $"Expected extension entry in output, got {buffer}");
+		Test.Assert(!buffer.Contains("\"Name\":999"), scope $"Declared property should win over an extension key of the same name, got {buffer}");
+
+		var serialized = Json.Deserialize(buffer);
+		defer serialized.Dispose();
+		Test.Assert(serialized case .Ok, scope $"Failed to parse serialized JSON: {buffer}");
+
+		let root = serialized.Value.AsObject().Value;
+		Test.Assert((StringView)root.GetValue("Name").Value == "Known", "Declared property lost its own value");
+		Test.Assert((int)root.GetValue("level").Value == 7, "Extension entry value mismatch");
+	}
+
+	[Test(Name = "Reflection: Extension Data Strings")]
+	public static void T_ExtensionDataStrings()
+	{
+		let json = """
+			{
+				"nickname": "Ace"
+			}
+			""";
+
+		var result = Json.Deserialize(json);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let data = scope ExtensionStringData();
+		Test.Assert(data.JsonDeserialize(result.Value) case .Ok, "Deserialize failed");
+		Test.Assert(data.Extra.Count == 1, scope $"Expected one extension entry, got {data.Extra.Count}");
+
+		if (data.Extra.TryGetValueAlt("nickname", let nickname))
+			Test.Assert(nickname == "Ace", scope $"Expected nickname='Ace', got '{nickname}'");
+		else
+			Test.Assert(false, "Missing 'nickname' extension value");
+
+		let buffer = scope String();
+		Test.Assert(Json.Serialize(data, buffer) case .Ok, "Serialize failed");
+		Test.Assert(buffer.Contains("\"nickname\":\"Ace\""), scope $"Expected string extension entry in output, got {buffer}");
+	}
+
+	[Test(Name = "Reflection: Extension Data Objects")]
+	public static void T_ExtensionDataObjects()
+	{
+		let json = """
+			{
+				"Known": 5,
+				"metadata": {
+					"Description": "extra object",
+					"Value": 123
+				}
+			}
+			""";
+
+		var result = Json.Deserialize(json);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let data = scope ExtensionObjectData();
+		Test.Assert(data.JsonDeserialize(result.Value) case .Ok, "Deserialize failed");
+		Test.Assert(data.Known == 5, scope $"Expected Known=5, got {data.Known}");
+		Test.Assert(data.Extra.Count == 1, scope $"Expected one extension entry, got {data.Extra.Count}");
+
+		if (data.Extra.TryGetValueAlt("metadata", let metadata))
+		{
+			Test.Assert(metadata.Description == "extra object", scope $"Expected extension object description='extra object', got '{metadata.Description}'");
+			Test.Assert(metadata.Value == 123, scope $"Expected extension object value=123, got {metadata.Value}");
+		}
+		else
+		{
+			Test.Assert(false, "Missing 'metadata' extension value");
+		}
+
+		let buffer = scope String();
+		Test.Assert(Json.Serialize(data, buffer) case .Ok, "Serialize failed");
+		Test.Assert(buffer.Contains("\"metadata\":{\"Description\":\"extra object\",\"Value\":123}"), scope $"Expected object extension entry in output, got {buffer}");
+	}
+
+	[Test(Name = "Reflection: Extension Data Skips Renamed Property")]
+	public static void T_ExtensionDataSkipsRenamedProperty()
+	{
+		let json = """
+			{
+				"player_level": 3,
+				"Level": 9
+			}
+			""";
+
+		var result = Json.Deserialize(json);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let data = scope ExtensionRenamedData();
+		Test.Assert(data.JsonDeserialize(result.Value) case .Ok, "Deserialize failed");
+		Test.Assert(data.Level == 3, scope $"Expected Level=3 from 'player_level', got {data.Level}");
+		Test.Assert(data.Extra.Count == 1, scope $"Expected only 'Level' captured, got {data.Extra.Count} entries");
+		Test.Assert(data.Extra.ContainsKeyAlt("Level"), "The field name is not a JSON property name, so 'Level' is unknown and belongs to the extension data");
+
+		let buffer = scope String();
+		Test.Assert(Json.Serialize(data, buffer) case .Ok, "Serialize failed");
+		Test.Assert(buffer.Contains("\"player_level\":3"), scope $"Expected renamed property in output, got {buffer}");
+		Test.Assert(buffer.Contains("\"Level\":9"), scope $"Expected extension entry in output, got {buffer}");
+	}
+
+	[Test(Name = "Reflection: Extension Data Skips Inherited Property")]
+	public static void T_ExtensionDataSkipsInheritedProperty()
+	{
+		let json = """
+			{
+				"BaseField": 11,
+				"extra": 22
+			}
+			""";
+
+		var result = Json.Deserialize(json);
+		defer result.Dispose();
+		Test.Assert(result case .Ok, "Parse failed");
+
+		let data = scope ExtensionDerivedData();
+		Test.Assert(data.JsonDeserialize(result.Value) case .Ok, "Deserialize failed");
+		Test.Assert(data.BaseField == 11, scope $"Expected BaseField=11, got {data.BaseField}");
+		Test.Assert(data.Extra.Count == 1, scope $"Expected only 'extra' captured, got {data.Extra.Count} entries");
+		Test.Assert(data.Extra.ContainsKeyAlt("extra"), "Missing 'extra' extension value");
+
+		let buffer = scope String();
+		Test.Assert(Json.Serialize(data, buffer) case .Ok, "Serialize failed");
+		Test.Assert(buffer.Contains("\"BaseField\":11"), scope $"Expected inherited property in output, got {buffer}");
+		Test.Assert(buffer.Contains("\"extra\":22"), scope $"Expected extension entry in output, got {buffer}");
+
+		var serialized = Json.Deserialize(buffer);
+		defer serialized.Dispose();
+		Test.Assert(serialized case .Ok, scope $"Failed to parse serialized JSON: {buffer}");
+
+		let root = serialized.Value.AsObject().Value;
+		Test.Assert(root.Count == 2, scope $"An inherited property must not be written twice, got {buffer}");
 	}
 
 	[Test(Name = "Reflection: Error on Missing Required Field")]

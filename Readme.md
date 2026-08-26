@@ -99,6 +99,7 @@ if (Json.Deserialize<Person>(json) case .Ok(let newPerson))
 - `[JsonPropertyName("name")]` - Custom JSON property name
 - `[JsonIgnore]` - Exclude field from serialization
 - `[JsonInclude]` - Include private fields
+- `[JsonExtensionData]` - Capture unknown object properties in one `Dictionary<String, T>` field
 
 ### JsonValue API
 

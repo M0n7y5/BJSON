@@ -6,12 +6,10 @@ using BJSON.Models;
 namespace BJSON.SchemaCodeGenTest;
 
 [JsonObject]
-class Person2
+class WarningSample
 {
-	[JsonPropertyName("name")]
 	public String Name = new .() ~ delete _;
 
-	[JsonPropertyName("age")]
-	public int64 Age;
+	public int64 Score;
 
 }

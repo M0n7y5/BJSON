@@ -6,38 +6,46 @@ using BJSON.Enums;
 
 namespace BJSON.SchemaCodeGen;
 
-/// Reads a JSON Schema document into a flat list of SchemaModel nodes.
-/// Supported keywords: `title`, `description`, `type`, `enum`, `properties`, `required`, `items`,
-/// `allOf`, `definitions`, `$defs` and `$ref`. A `$ref` is only recorded here. TypeResolver matches
-/// it against the recorded pointers and rejects one that leaves the document.
-/// Rejected here, each as .UnsupportedKeyword: a `type` union of more than one non null type, a
-/// type name JSON Schema does not define, an `enum` that is not a non empty array of strings,
-/// `properties` that is not an object, a property name holding neither a letter nor a digit, a
-/// property schema that is neither an object nor `true`, `required` that is not an array of
-/// strings, `items` holding a tuple or a boolean, an `allOf` that is not an array of object
-/// schemas, and `definitions` or `$defs` that is not an object of object schemas.
-/// Ignored without an error, so they never reach the generated code: `anyOf`, `oneOf`, `not`,
-/// `if`, `then`, `else`, `const`, `default`, `additionalProperties`, `patternProperties` and every
-/// validation keyword such as `minimum`, `maxLength`, `pattern` and `format`.
-/// Ownership: every node this parser allocates is handed to the caller's node list, which owns it.
-/// The parser holds no memory of its own between calls.
 class SchemaParser
 {
-	/// Node list of the current Parse call, owned by the caller of Parse. Non owning.
-	private List<SchemaModel> mNodes;
+	public List<String> Warnings = new List<String>() ~ DeleteContainerAndItems!(_);
 
-	/// Parses a JSON Schema document into SchemaModel nodes.
-	/// Every node is appended to outNodes, the root first, so the caller frees the whole graph
-	/// with one pass over that list, on the error path as well.
-	/// @param schemaJson The schema document.
-	/// @param rootName Type name for the root schema, already PascalCase.
-	/// @param preferTitle When true a `title` keyword replaces the derived name of a schema.
-	/// @param outNodes Caller owned list that receives every node this call allocates.
-	/// @returns .Ok when the document was parsed, .InvalidSchema when the document root is not a
-	///          JSON object, otherwise the first construct that failed.
-	public Result<void, SchemaError> Parse(StringView schemaJson, StringView rootName, bool preferTitle, List<SchemaModel> outNodes)
+	public Result<void, SchemaError> ExtractTitle(StringView schemaJson, String output)
 	{
-		mNodes = outNodes;
+		Result<JsonValue, JsonParsingError> parseResult = BJSON.Json.Deserialize(schemaJson);
+		defer parseResult.Dispose();
+
+		if (parseResult case .Err)
+		{
+			return .Err(.JsonError);
+		}
+
+		if (parseResult case .Ok(let jsonValue))
+		{
+			if (jsonValue.IsObject())
+			{
+				let obj = jsonValue.As<JsonObject>();
+				if (obj.TryGet("title") case .Ok(let titleVal))
+				{
+					if (titleVal.IsString())
+					{
+						NameMangler.ToPascalCase((StringView)titleVal, output);
+					}
+				}
+			}
+		}
+
+		return .Ok;
+	}
+
+	public Result<SchemaModel, SchemaError> Parse(StringView schemaJson, StringView rootName)
+	{
+		return Parse(schemaJson, rootName, default);
+	}
+
+	public Result<SchemaModel, SchemaError> Parse(StringView schemaJson, StringView rootName, StringView sourcePath)
+	{
+		ClearAndDeleteItems(Warnings);
 
 		Result<JsonValue, JsonParsingError> parseResult = BJSON.Json.Deserialize(schemaJson);
 		defer parseResult.Dispose();
@@ -49,51 +57,41 @@ class SchemaParser
 
 		if (parseResult case .Ok(let jsonValue))
 		{
-			if (!jsonValue.IsObject())
-			{
-				return .Err(.InvalidSchema);
-			}
-
-			if (ParseSchema(jsonValue, rootName, "#", preferTitle) case .Err(let err))
-			{
-				return .Err(err);
-			}
-
-			return .Ok;
+			return ParseSchema(jsonValue, rootName, sourcePath);
 		}
 
 		return .Err(.InvalidSchema);
 	}
 
-	/// Parses one schema into a new node.
-	/// @param json The schema value.
-	/// @param name Derived type name for the node.
-	/// @param pointer JSON Pointer of this schema, prefixed with '#'.
-	/// @param preferTitle When true a `title` keyword replaces name.
-	/// @returns The new node, owned by the node list of this Parse call.
-	private Result<SchemaModel, SchemaError> ParseSchema(JsonValue json, StringView name, StringView pointer, bool preferTitle)
+	private Result<SchemaModel, SchemaError> ParseSchema(JsonValue json, StringView name, StringView sourcePath)
 	{
-		var model = NewNode(name, pointer);
+		var model = new SchemaModel();
+		model.Name.Set(name);
+		model.SourcePath.Set(sourcePath);
 
-		if (preferTitle)
+		if (!json.IsObject())
 		{
-			Result<JsonValue, JsonPointerError> titleResult = json.GetByPointer("/title");
-			if (titleResult case .Ok(let title))
+			AddWarning(scope $"Schema '{name}' is not an object; using JsonValue fallback.");
+			model.Type = .Any;
+			return .Ok(model);
+		}
+
+		let obj = json.As<JsonObject>();
+
+		if (obj.TryGet("title") case .Ok(let titleVal))
+		{
+			if (titleVal.IsString())
 			{
-				if (title.IsString())
+				String titleName = scope String();
+				NameMangler.ToPascalCase((StringView)titleVal, titleName);
+				if (!titleName.IsEmpty)
 				{
-					String titleName = scope String();
-					NameMangler.ToPascalCase((StringView)title, titleName);
-					if (!titleName.IsEmpty)
-					{
-						model.Name.Set(titleName);
-					}
+					model.Name.Set(titleName);
 				}
 			}
 		}
 
-		Result<JsonValue, JsonPointerError> descResult = json.GetByPointer("/description");
-		if (descResult case .Ok(let desc))
+		if (obj.TryGet("description") case .Ok(let desc))
 		{
 			if (desc.IsString())
 			{
@@ -101,18 +99,37 @@ class SchemaParser
 			}
 		}
 
-		if (ParseDefinitions(json, "definitions", pointer) case .Err(let definitionsErr))
+		if (obj.TryGet("$id") case .Ok(let idVal))
 		{
-			return .Err(definitionsErr);
+			if (idVal.IsString())
+			{
+				model.Id.Set((StringView)idVal);
+			}
 		}
 
-		if (ParseDefinitions(json, "$defs", pointer) case .Err(let defsErr))
+		if (obj.TryGet("$anchor") case .Ok(let anchorVal))
 		{
+			if (anchorVal.IsString())
+			{
+				model.Anchor.Set((StringView)anchorVal);
+			}
+		}
+
+		AddUnsupportedWarnings(obj, model.Name);
+
+		if (ParseDefinitionMap(obj, "$defs", model.Defs, model.Name, sourcePath) case .Err(let defsErr))
+		{
+			delete model;
 			return .Err(defsErr);
 		}
 
-		Result<JsonValue, JsonPointerError> refResult = json.GetByPointer("/$ref");
-		if (refResult case .Ok(let refVal))
+		if (ParseDefinitionMap(obj, "definitions", model.Definitions, model.Name, sourcePath) case .Err(let definitionsErr))
+		{
+			delete model;
+			return .Err(definitionsErr);
+		}
+
+		if (obj.TryGet("$ref") case .Ok(let refVal))
 		{
 			if (refVal.IsString())
 			{
@@ -120,365 +137,388 @@ class SchemaParser
 				model.RefPath.Set((StringView)refVal);
 				return .Ok(model);
 			}
+
+			AddWarning(scope $"Schema '{model.Name}' has a non-string $ref; using JsonValue fallback.");
+			model.Type = .Any;
+			return .Ok(model);
 		}
 
-		Result<JsonValue, JsonPointerError> typeResult = json.GetByPointer("/type");
-		if (typeResult case .Ok(let typeVal))
+		if (obj.TryGet("type") case .Ok(let typeVal))
 		{
-			Try!(ParseType(typeVal, model));
+			ParseType(typeVal, model);
 		}
 		else
 		{
 			model.Type = .Any;
 		}
 
-		Result<JsonValue, JsonPointerError> enumResult = json.GetByPointer("/enum");
-		if (enumResult case .Ok(let enumVal))
+		if (obj.TryGet("enum") case .Ok(let enumVal))
 		{
-			if (!enumVal.IsArray())
+			if (enumVal.IsArray())
 			{
-				return .Err(.UnsupportedKeyword("enum", "must be an array"));
-			}
-
-			model.Type = .Enum;
-			for (var item in enumVal.As<JsonArray>())
-			{
-				if (!item.IsString())
+				bool hasStringValues = false;
+				for (var item in enumVal.As<JsonArray>())
 				{
-					return .Err(.UnsupportedKeyword("enum", "a Beef enum can only carry the string values of an enumeration"));
+					if (item.IsString())
+					{
+						model.EnumValues.Add(new String((StringView)item));
+						hasStringValues = true;
+					}
+					else
+					{
+						AddWarning(scope $"Schema '{model.Name}' has a non-string enum value; ignoring it.");
+					}
 				}
 
-				model.EnumValues.Add(new String((StringView)item));
+				if (hasStringValues)
+				{
+					model.Type = .Enum;
+				}
+				else
+				{
+					AddWarning(scope $"Schema '{model.Name}' has no string enum values; using JsonValue fallback.");
+				}
 			}
-
-			if (model.EnumValues.IsEmpty)
+			else
 			{
-				return .Err(.UnsupportedKeyword("enum", "must list at least one value"));
+				AddWarning(scope $"Schema '{model.Name}' has a non-array enum; using JsonValue fallback.");
 			}
 		}
 
-		Result<JsonValue, JsonPointerError> propsResult = json.GetByPointer("/properties");
-		if (propsResult case .Ok(let props))
+		if (obj.TryGet("properties") case .Ok(let props))
 		{
-			if (!props.IsObject())
+			if (props.IsObject())
 			{
-				return .Err(.UnsupportedKeyword("properties", "must be an object"));
-			}
-
-			var dict = props.As<JsonObject>();
-			for (var kvp in dict)
-			{
-				// The property joins its owner before it is filled in, so an error below frees it
-				// with the rest of the graph.
-				var propModel = new PropertyModel();
-				model.Properties.Add(propModel);
-
-				propModel.JsonName.Set(kvp.key);
-				NameMangler.ToPascalCase(kvp.key, propModel.Name);
-
-				if (propModel.Name.IsEmpty)
+				if (model.Type == .Any)
 				{
-					return .Err(.UnsupportedKeyword("properties", "a property name needs a letter or a digit to become a field name"));
+					model.Type = .Object;
 				}
 
-				String propPointer = scope String(pointer);
-				propPointer.Append("/properties/");
-				JsonPointer.Escape(kvp.key, propPointer);
-
-				String nestedName = scope String();
-				nestedName.Append(model.Name);
-				nestedName.Append(propModel.Name);
-
-				if (kvp.value.IsObject())
+				var dict = props.As<JsonObject>();
+				for (var kvp in dict)
 				{
-					var nestedResult = ParseSchema(kvp.value, nestedName, propPointer, true);
+					var propModel = new PropertyModel();
+					propModel.JsonName.Set(kvp.key);
+					NameMangler.ToPascalCase(kvp.key, propModel.Name);
+
+					String nestedName = scope String();
+					nestedName.Append(model.Name);
+					nestedName.Append(propModel.Name);
+
+					var nestedResult = ParseSchema(kvp.value, nestedName, sourcePath);
 					if (nestedResult case .Err(let nestedErr))
 					{
+						delete propModel;
+						delete model;
 						return .Err(nestedErr);
 					}
 
 					if (nestedResult case .Ok(let nestedSchema))
 					{
 						propModel.Schema = nestedSchema;
-					}
-				}
-				else if (kvp.value.IsBool())
-				{
-					// A boolean schema: `true` accepts every value, `false` accepts none.
-					if (!(bool)kvp.value)
-					{
-						return .Err(.UnsupportedKeyword("properties", "a `false` schema accepts no value, so the property cannot be generated"));
+						propModel.Description.Set(nestedSchema.Description);
 					}
 
-					var anySchema = NewNode(nestedName, propPointer);
-					anySchema.Type = .Any;
-					propModel.Schema = anySchema;
+					model.Properties.Add(propModel);
 				}
-				else
+			}
+			else
+			{
+				AddWarning(scope $"Schema '{model.Name}' has non-object properties; ignoring them.");
+			}
+		}
+
+		if (obj.TryGet("additionalProperties") case .Ok(let additionalVal))
+		{
+			if (additionalVal.IsObject())
+			{
+				if (model.Type == .Any)
 				{
-					return .Err(.UnsupportedKeyword("properties", "a property schema must be an object or a boolean"));
+					model.Type = .Object;
 				}
 
-				Result<JsonValue, JsonPointerError> propDescResult = kvp.value.GetByPointer("/description");
-				if (propDescResult case .Ok(let propDesc))
+				String additionalName = scope String();
+				additionalName.Append(model.Name);
+				additionalName.Append("AdditionalProperty");
+
+				var additionalResult = ParseSchema(additionalVal, additionalName, sourcePath);
+				if (additionalResult case .Err(let additionalErr))
 				{
-					if (propDesc.IsString())
-					{
-						propModel.Description.Set((StringView)propDesc);
-					}
+					delete model;
+					return .Err(additionalErr);
+				}
+
+				if (additionalResult case .Ok(let additionalSchema))
+				{
+					model.AdditionalProperties = additionalSchema;
 				}
 			}
 		}
 
-		Result<JsonValue, JsonPointerError> reqResult = json.GetByPointer("/required");
-		if (reqResult case .Ok(let reqVal))
+		if (obj.TryGet("required") case .Ok(let reqVal))
 		{
-			if (!reqVal.IsArray())
+			if (reqVal.IsArray())
 			{
-				return .Err(.UnsupportedKeyword("required", "must be an array"));
-			}
-
-			// TypeResolver applies these names once `allOf` members have been merged in, so a name
-			// that only a base class declares marks the property on that base class.
-			for (var item in reqVal.As<JsonArray>())
-			{
-				if (!item.IsString())
+				for (var item in reqVal.As<JsonArray>())
 				{
-					return .Err(.UnsupportedKeyword("required", "must list property names as strings"));
+					if (item.IsString())
+					{
+						StringView sv = (StringView)item;
+						model.Required.Add(new String(sv));
+						var prop = model.FindProperty(sv);
+						if (prop != null)
+						{
+							prop.IsRequired = true;
+						}
+					}
+					else
+					{
+						AddWarning(scope $"Schema '{model.Name}' has a non-string required entry; ignoring it.");
+					}
 				}
-
-				model.Required.Add(new String((StringView)item));
+			}
+			else
+			{
+				AddWarning(scope $"Schema '{model.Name}' has non-array required; ignoring it.");
 			}
 		}
 
-		Result<JsonValue, JsonPointerError> itemsResult = json.GetByPointer("/items");
-		if (itemsResult case .Ok(let items))
+		if (obj.TryGet("items") case .Ok(let items))
 		{
-			if (!items.IsObject())
+			if (model.Type == .Any)
 			{
-				return .Err(.UnsupportedKeyword("items", "only a single object schema is supported, not a tuple of schemas or a boolean"));
+				model.Type = .Array;
 			}
 
 			String itemName = scope String();
 			itemName.Append(model.Name);
 			itemName.Append("Item");
 
-			String itemPointer = scope String(pointer);
-			itemPointer.Append("/items");
-
-			model.Items = Try!(ParseSchema(items, itemName, itemPointer, true));
-		}
-
-		Result<JsonValue, JsonPointerError> allOfResult = json.GetByPointer("/allOf");
-		if (allOfResult case .Ok(let allOfVal))
-		{
-			if (!allOfVal.IsArray())
+			JsonValue itemSchema = items;
+			if (items.IsArray())
 			{
-				return .Err(.UnsupportedKeyword("allOf", "must be an array"));
+				AddWarning(scope $"Schema '{model.Name}' uses tuple array items; using the first item schema only.");
+				let itemsArray = items.As<JsonArray>();
+				if (itemsArray.Count > 0)
+				{
+					itemSchema = itemsArray[0];
+				}
 			}
 
-			int i = 0;
-			for (var item in allOfVal.As<JsonArray>())
+			var itemsParseResult = ParseSchema(itemSchema, itemName, sourcePath);
+			if (itemsParseResult case .Err(let itemsErr))
 			{
-				if (!item.IsObject())
+				delete model;
+				return .Err(itemsErr);
+			}
+
+			if (itemsParseResult case .Ok(let itemsModel))
+			{
+				model.Items = itemsModel;
+			}
+		}
+
+		if (obj.TryGet("allOf") case .Ok(let allOfVal))
+		{
+			if (allOfVal.IsArray())
+			{
+				if (model.Type == .Any)
 				{
-					return .Err(.UnsupportedKeyword("allOf", "every member must be an object schema"));
+					model.Type = .Object;
 				}
 
-				String subName = scope String();
-				subName.Append(model.Name);
-				subName.Append("Base");
-				subName.Append(i);
+				int i = 0;
+				for (var item in allOfVal.As<JsonArray>())
+				{
+					String subName = scope String();
+					subName.Append(model.Name);
+					subName.Append("Base");
+					subName.Append(i);
 
-				String subPointer = scope String(pointer);
-				subPointer.Append("/allOf/");
-				subPointer.Append(i);
+					var subResult = ParseSchema(item, subName, sourcePath);
+					if (subResult case .Err(let allOfErr))
+					{
+						delete model;
+						return .Err(allOfErr);
+					}
 
-				var subSchema = Try!(ParseSchema(item, subName, subPointer, true));
-				model.AllOf.Add(subSchema);
-				i++;
+					if (subResult case .Ok(let subModel))
+					{
+						subModel.Emit = false;
+						model.AllOf.Add(subModel);
+					}
+					i++;
+				}
 			}
-		}
-
-		// A schema that carries members but no `type` still describes a class or a list.
-		if (model.Type == .Any)
-		{
-			if (!model.Properties.IsEmpty || !model.AllOf.IsEmpty)
+			else
 			{
-				model.Type = .Object;
-			}
-			else if (model.Items != null)
-			{
-				model.Type = .Array;
+				AddWarning(scope $"Schema '{model.Name}' has non-array allOf; ignoring it.");
 			}
 		}
 
 		return .Ok(model);
 	}
 
-	/// Parses the members of `definitions` or `$defs` so that `$ref` can reach them. Runs for every
-	/// schema, so definitions nested below the root are reachable as well.
-	/// @param json The schema that declares the keyword.
-	/// @param keyword The keyword to read. MUST be a string literal: it reaches SchemaError
-	///                payloads, which outlive this call.
-	/// @param pointer JSON Pointer of json, prefixed with '#'.
-	private Result<void, SchemaError> ParseDefinitions(JsonValue json, StringView keyword, StringView pointer)
+	private Result<void, SchemaError> ParseDefinitionMap(JsonObject obj, StringView keyword, List<DefinitionModel> target, StringView ownerName, StringView sourcePath)
 	{
-		String keywordPointer = scope String("/");
-		keywordPointer.Append(keyword);
-
-		Result<JsonValue, JsonPointerError> defsResult = json.GetByPointer(keywordPointer);
-		if (defsResult case .Ok(let defs))
+		let defsResult = obj.TryGet(keyword);
+		if (defsResult case .Err)
 		{
-			if (!defs.IsObject())
+			return .Ok;
+		}
+
+		JsonValue defsVal = default;
+		if (defsResult case .Ok(let val))
+		{
+			defsVal = val;
+		}
+
+		if (!defsVal.IsObject())
+		{
+			AddWarning(scope $"Schema '{ownerName}' has non-object {keyword}; ignoring it.");
+			return .Ok;
+		}
+
+		let defsObj = defsVal.As<JsonObject>();
+		for (var kvp in defsObj)
+		{
+			String defName = scope String();
+			NameMangler.ToPascalCase(kvp.key, defName);
+			if (defName.IsEmpty)
 			{
-				return .Err(.UnsupportedKeyword(keyword, "must be an object"));
+				defName.Append(ownerName);
+				defName.Append("Definition");
 			}
 
-			for (var kvp in defs.As<JsonObject>())
+			var defResult = ParseSchema(kvp.value, defName, sourcePath);
+			if (defResult case .Err(let err))
 			{
-				if (!kvp.value.IsObject())
-				{
-					return .Err(.UnsupportedKeyword(keyword, "every member must be an object schema"));
-				}
+				return .Err(err);
+			}
 
-				String defName = scope String();
-				NameMangler.ToPascalCase(kvp.key, defName);
-
-				String defPointer = scope String(pointer);
-				defPointer.Append('/');
-				defPointer.Append(keyword);
-				defPointer.Append('/');
-				JsonPointer.Escape(kvp.key, defPointer);
-
-				if (ParseSchema(kvp.value, defName, defPointer, true) case .Err(let err))
-				{
-					return .Err(err);
-				}
+			if (defResult case .Ok(let defSchema))
+			{
+				var entry = new DefinitionModel();
+				entry.Key.Set(kvp.key);
+				entry.Schema = defSchema;
+				target.Add(entry);
 			}
 		}
 
 		return .Ok;
 	}
 
-	/// Allocates a node and hands it to the node list of this Parse call, which owns it.
-	private SchemaModel NewNode(StringView name, StringView pointer)
-	{
-		var model = new SchemaModel();
-		mNodes.Add(model);
-		model.Name.Set(name);
-		model.Pointer.Set(pointer);
-
-		return model;
-	}
-
-	private Result<void, SchemaError> ParseType(JsonValue typeVal, SchemaModel model)
+	private void ParseType(JsonValue typeVal, SchemaModel model)
 	{
 		if (typeVal.IsString())
 		{
-			return MapTypeName((StringView)typeVal, model);
+			StringView typeStr = (StringView)typeVal;
+			switch (typeStr)
+			{
+			case "string": model.Type = .String;
+			case "integer": model.Type = .Integer;
+			case "number": model.Type = .Number;
+			case "boolean": model.Type = .Boolean;
+			case "array": model.Type = .Array;
+			case "object": model.Type = .Object;
+			case "null": model.Type = .Any;
+			default:
+				model.Type = .Any;
+				AddWarning(scope $"Schema '{model.Name}' has unsupported type '{typeStr}'; using JsonValue fallback.");
+			}
 		}
-
-		if (typeVal.IsArray())
+		else if (typeVal.IsArray())
 		{
 			bool hasNull = false;
-			bool hasFirstType = false;
-			// An SSO string lives inside the JsonValue, so the name has to be copied out before
-			// the loop variable goes away.
-			String firstType = scope String();
+			StringView firstType = default;
+			int nonNullTypeCount = 0;
 
 			for (var item in typeVal.As<JsonArray>())
 			{
-				if (!item.IsString())
+				if (item.IsString())
 				{
-					return .Err(.UnsupportedKeyword("type", "must name types as strings"));
-				}
-
-				StringView s = (StringView)item;
-				if (s == "null")
-				{
-					hasNull = true;
-				}
-				else if (!hasFirstType)
-				{
-					firstType.Set(s);
-					hasFirstType = true;
-				}
-				else
-				{
-					return .Err(.UnsupportedKeyword("type", "a union of more than one non null type has no single Beef type"));
+					StringView s = (StringView)item;
+					if (s == "null")
+					{
+						hasNull = true;
+					}
+					else if (firstType.IsEmpty)
+					{
+						firstType = s;
+						nonNullTypeCount++;
+					}
+					else
+					{
+						nonNullTypeCount++;
+					}
 				}
 			}
 
 			model.IsNullable = hasNull;
 
-			if (!hasFirstType)
+			switch (firstType)
 			{
-				model.Type = .Any;
-				return .Ok;
+			case "string": model.Type = .String;
+			case "integer": model.Type = .Integer;
+			case "number": model.Type = .Number;
+			case "boolean": model.Type = .Boolean;
+			case "array": model.Type = .Array;
+			case "object": model.Type = .Object;
+			default: model.Type = .Any;
 			}
 
-			return MapTypeName(firstType, model);
+			if (nonNullTypeCount > 1)
+			{
+				AddWarning(scope $"Schema '{model.Name}' uses a multi-type union; using the first non-null type.");
+			}
 		}
-
-		return .Err(.UnsupportedKeyword("type", "must be a string or an array of strings"));
+		else
+		{
+			model.Type = .Any;
+			AddWarning(scope $"Schema '{model.Name}' has non-string type; using JsonValue fallback.");
+		}
 	}
 
-	private Result<void, SchemaError> MapTypeName(StringView typeName, SchemaModel model)
+	private void AddUnsupportedWarnings(JsonObject obj, StringView schemaName)
 	{
-		switch (typeName)
+		for (var kvp in obj)
 		{
-		case "string": model.Type = .String;
-		case "integer": model.Type = .Integer;
-		case "number": model.Type = .Number;
-		case "boolean": model.Type = .Boolean;
-		case "array": model.Type = .Array;
-		case "object": model.Type = .Object;
-		case "null": model.Type = .Any;
-		default:
-			return .Err(.UnsupportedKeyword("type", "names no JSON Schema type"));
+			switch (kvp.key)
+			{
+			case "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+				"minLength", "maxLength", "format", "pattern",
+				"minItems", "maxItems", "uniqueItems", "contains", "minContains", "maxContains",
+				"minProperties", "maxProperties", "patternProperties",
+				"propertyNames", "dependentSchemas", "dependentRequired", "dependencies",
+				"unevaluatedItems", "unevaluatedProperties":
+				AddWarning(scope $"Ignoring validation keyword '{kvp.key}' in schema '{schemaName}'.");
+			case "additionalProperties":
+				if (kvp.value.IsObject())
+				{
+					continue;
+				}
+				if (kvp.value.IsBool() && (bool)kvp.value)
+				{
+					continue;
+				}
+				AddWarning(scope $"Ignoring validation keyword '{kvp.key}' in schema '{schemaName}'.");
+			case "anyOf", "oneOf", "not", "if", "then", "else", "const", "$dynamicRef", "$dynamicAnchor":
+				AddWarning(scope $"Unsupported schema keyword '{kvp.key}' in schema '{schemaName}'; structural generation will ignore it.");
+			default:
+			}
 		}
+	}
 
-		return .Ok;
+	private void AddWarning(StringView message)
+	{
+		Warnings.Add(new String(message));
 	}
 }
 
-/// Why a schema document could not be turned into a model graph. SchemaParser reports the keyword
-/// failures, TypeResolver reports UnresolvedRef, CircularRef, UnnamedType and the `required`
-/// failure.
 enum SchemaError
 {
-	/// The document is not valid JSON.
 	case JsonError;
-	/// The document is not a schema object.
 	case InvalidSchema;
-	/// A `$ref` names a target the document does not define.
 	case UnresolvedRef;
-	/// `allOf` inheritance forms a cycle.
 	case CircularRef;
-	/// A keyword the generator cannot represent. Both payloads MUST be static text, string
-	/// literals in practice: an error outlives the call that produced it.
-	case UnsupportedKeyword(StringView keyword, StringView reason);
-	/// A generated type has no usable name.
-	case UnnamedType;
-
-	/// Appends the message for this error to a caller owned string.
-	public override void ToString(String string)
-	{
-		switch (this)
-		{
-		case JsonError:
-			string.Append("Schema document is not valid JSON.");
-		case InvalidSchema:
-			string.Append("Schema document is not a JSON object.");
-		case UnresolvedRef:
-			string.Append("A $ref names a target that the document does not define.");
-		case CircularRef:
-			string.Append("A $ref chain or allOf inheritance forms a cycle.");
-		case UnsupportedKeyword(let keyword, let reason):
-			string.AppendF("Unsupported schema keyword '{}': {}.", keyword, reason);
-		case UnnamedType:
-			string.Append("A generated type has no name: add a title to the schema or pass -c.");
-		}
-	}
 }

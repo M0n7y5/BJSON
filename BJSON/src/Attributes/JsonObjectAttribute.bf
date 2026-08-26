@@ -44,16 +44,37 @@ public struct JsonObjectAttribute : Attribute, IComptimeTypeApply
 	/// Rejects fields no emitter can handle, by asking JsonCodeGenHelper.Classify the same
 	/// question both emitters ask: anything it calls Unsupported aborts the build here, before a
 	/// method body that would silently skip the field lands in type.
+	/// An extension data field answers a different question, so it is checked against its own
+	/// rule instead: it needs no property name and no Classify kind, only a shape that can hold
+	/// captured properties.
 	/// Collection element and value types are not checked here: the emitters reject those by name
 	/// when they emit the element handling.
 	/// @param type The type being emitted.
 	[Comptime]
 	private void ValidateFields(Type type)
 	{
+		int extensionDataFieldCount = 0;
+
 		for (let field in type.GetFields())
 		{
 			if (!JsonCodeGenHelper.ShouldSerializeField(field, type))
 				continue;
+
+			if (JsonCodeGenHelper.IsExtensionDataField(field))
+			{
+				// Two of them would both capture every unknown property, so a read would fill
+				// both dictionaries and a write would emit every captured key twice.
+				extensionDataFieldCount++;
+				if (extensionDataFieldCount > 1)
+				{
+					String typeName = scope .();
+					type.GetFullName(typeName);
+					Runtime.FatalError(scope $"Type '{typeName}' has more than one [JsonExtensionData] field. Only one field can capture the properties no other field claims.");
+				}
+
+				JsonCodeGenHelper.ValidateExtensionDataField(field);
+				continue;
+			}
 
 			let fieldType = JsonCodeGenHelper.UnwrapNullable(field.FieldType);
 

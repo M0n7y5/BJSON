@@ -11,8 +11,9 @@ namespace BJSON.CodeGen;
 public class JsonSerializerCodeGen
 {
 	/// Emits both JsonSerialize overloads into type: the stream only overload that delegates
-	/// to the JsonWriterOptions overload, and that overload, which writes the object braces
-	/// and one property per included field.
+	/// to the JsonWriterOptions overload, and that overload, which writes the object braces,
+	/// one property per included field, and then one property per entry of the
+	/// [JsonExtensionData] field when the type has one.
 	/// @param type The [JsonObject] type receiving the method bodies.
 	[Comptime]
 	public static void EmitSerializeMethod(Type type)
@@ -40,6 +41,7 @@ public class JsonSerializerCodeGen
 			""");
 
 		EmitAllFieldsWithOptions(code, type);
+		EmitExtensionDataSerializationWithOptions(code, type);
 
 		// Append, not AppendF: this tail is not interpolated, so its braces stay single.
 		code.Append("""
@@ -56,6 +58,8 @@ public class JsonSerializerCodeGen
 	}
 
 	/// Emits the field writes for type and for every base type up to Object, base fields first.
+	/// The extension data field is not one of them: it carries no property name, so its entries
+	/// are written by EmitExtensionDataSerializationWithOptions after every declared property.
 	[Comptime]
 	private static void EmitAllFieldsWithOptions(String code, Type type)
 	{
@@ -74,7 +78,69 @@ public class JsonSerializerCodeGen
 			if (!JsonCodeGenHelper.ShouldSerializeField(field, type))
 				continue;
 
+			if (JsonCodeGenHelper.IsExtensionDataField(field))
+				continue;
+
 			EmitFieldSerializationWithOptions(code, field, type);
+		}
+	}
+
+	/// Emits the write of every entry of the [JsonExtensionData] field, when type has one.
+	/// GetFields() reports inherited fields too, so an extension data field a base type declares
+	/// is written here as well; ValidateFields already rejected a second one, so this loop emits
+	/// at most one walk.
+	/// An entry whose key names a declared property is dropped: the field already wrote that
+	/// property, and JSON has no room for it twice.
+	/// @param code Receives the emitted source.
+	/// @param type The type being emitted, which also supplies the known property names.
+	[Comptime]
+	private static void EmitExtensionDataSerializationWithOptions(String code, Type type)
+	{
+		for (let field in type.GetFields())
+		{
+			if (!JsonCodeGenHelper.ShouldSerializeField(field, type))
+				continue;
+
+			if (!JsonCodeGenHelper.IsExtensionDataField(field))
+				continue;
+
+			Type keyType, valueType;
+			JsonCodeGenHelper.GetDictionaryTypes(field.FieldType, out keyType, out valueType);
+			// ValidateExtensionDataField already required Dictionary<String, V>, so missing key
+			// or value types are a generator fault. Bailing would drop every captured property
+			// without a word, so it has to be fatal.
+			if (keyType == null || valueType == null)
+				Runtime.FatalError(scope $"BJSON found no key and value types for extension data field '{field.Name}'.");
+
+			// A dictionary that was never allocated contributes no properties. Every other
+			// reference this emitter writes is tested the same way before it is read.
+			code.AppendF($"\t\tif ({field.Name} != null)\n");
+			code.Append("\t\t{\n");
+			code.AppendF($"\t\t\tfor (let _kv in {field.Name})\n");
+			code.Append("\t\t\t{\n");
+
+			let knownNameCheck = scope String();
+			if (JsonCodeGenHelper.AppendKnownJsonNameCheck(knownNameCheck, type, "_kv.key"))
+			{
+				code.AppendF($"\t\t\t\tif ({knownNameCheck})\n");
+				code.Append("\t\t\t\t\tcontinue;\n");
+			}
+
+			// The same comma, depth and separator protocol every declared property follows, so a
+			// captured entry is indistinguishable from a field in the output.
+			code.Append("\t\t\t\tif (!_firstField) Try!(BJSON.JsonWriter.WriteChar(stream, ','));\n");
+			code.Append("\t\t\t\t_firstField = false;\n");
+			code.Append("\t\t\t\tif (_options.Indented) { Try!(BJSON.JsonWriter.WriteRaw(stream, _options.NewLine)); for (int _i = 0; _i <= _depth; _i++) Try!(BJSON.JsonWriter.WriteRaw(stream, _options.IndentString)); }\n");
+			// The key is runtime text, unlike a declared property name, so it is escaped as it
+			// is written instead of at generation time.
+			code.Append("\t\t\t\tTry!(BJSON.JsonWriter.WriteChar(stream, '\"'));\n");
+			code.Append("\t\t\t\tTry!(BJSON.JsonWriter.WriteEscaped(stream, _kv.key));\n");
+			code.Append("\t\t\t\tTry!(BJSON.JsonWriter.WriteRaw(stream, _options.Indented ? \"\\\": \" : \"\\\":\"));\n");
+
+			EmitValueSerializationWithOptions(code, field, valueType, "_kv.value", "\t\t\t\t");
+
+			code.Append("\t\t\t}\n");
+			code.Append("\t\t}\n");
 		}
 	}
 

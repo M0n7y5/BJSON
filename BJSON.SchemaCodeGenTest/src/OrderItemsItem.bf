@@ -11,7 +11,6 @@ class OrderItemsItem
 	[JsonPropertyName("product_id")]
 	public int64 ProductId;
 
-	[JsonPropertyName("quantity")]
 	public int64 Quantity;
 
 }

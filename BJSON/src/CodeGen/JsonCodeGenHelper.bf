@@ -65,6 +65,35 @@ public class JsonCodeGenHelper
 		return false;
 	}
 
+	/// Checks if a field carries [JsonExtensionData], which makes it capture every JSON
+	/// property no included field claims. Such a field has no property name of its own: both
+	/// emitters skip it in the normal field walk and handle its entries separately.
+	/// @param field The candidate field.
+	/// @returns True when the field is the extension data dictionary.
+	[Comptime]
+	public static bool IsExtensionDataField(FieldInfo field)
+	{
+		return field.HasCustomAttribute<JsonExtensionDataAttribute>();
+	}
+
+	/// Rejects an extension data field that cannot hold captured properties. JSON object keys
+	/// are always strings, so only Dictionary<String, V> can round trip them; the value type
+	/// itself is checked where the entries are emitted, by the same Classify both emitters use
+	/// for a declared dictionary value.
+	/// @param field The field carrying [JsonExtensionData].
+	[Comptime]
+	public static void ValidateExtensionDataField(FieldInfo field)
+	{
+		Type keyType, valueType;
+		GetDictionaryTypes(field.FieldType, out keyType, out valueType);
+		if (keyType == null || valueType == null || keyType != typeof(String))
+		{
+			let typeName = scope String();
+			field.FieldType.GetFullName(typeName);
+			Runtime.FatalError(scope $"Field '{field.Name}' carries [JsonExtensionData] but is of type '{typeName}'. An extension data field must be a Dictionary<String, V>.");
+		}
+	}
+
 	/// Gets the JSON property name for a field (uses [JsonPropertyName] if present).
 	/// The name is raw: callers MUST pass it through GetSourceLiteralName or
 	/// GetJsonLiteralName before it reaches emitted source.
@@ -157,6 +186,44 @@ public class JsonCodeGenHelper
 				outText.Append(c);
 			}
 		}
+	}
+
+	/// Appends the condition that tells, at runtime, whether a key names one of the included
+	/// fields of ownerType. Both emitters use it on the extension data path: the deserializer
+	/// to leave a declared property to its own field, the serializer to keep a captured entry
+	/// from writing a second property under a declared name.
+	/// The names are the ones the JSON carries, so [JsonPropertyName] wins over the field name,
+	/// and GetFields() reports inherited fields too, so a base type's properties are known here.
+	/// The compared literals get the source escape only: the key the emitted code holds is
+	/// already decoded text, so a JSON escape would compare against a key that never arrives.
+	/// @param code Receives the condition. Nothing is appended when ownerType has no included
+	/// field besides the extension data one.
+	/// @param ownerType The type being emitted.
+	/// @param keyExpr The emitted expression that yields the key.
+	/// @returns True when a condition was appended, which is when the caller must emit it.
+	[Comptime]
+	public static bool AppendKnownJsonNameCheck(String code, Type ownerType, StringView keyExpr)
+	{
+		bool hasKnownField = false;
+
+		for (let field in ownerType.GetFields())
+		{
+			if (!ShouldSerializeField(field, ownerType))
+				continue;
+
+			if (IsExtensionDataField(field))
+				continue;
+
+			if (hasKnownField)
+				code.Append(" || ");
+
+			let jsonName = scope String();
+			GetSourceLiteralName(field, jsonName);
+			code.AppendF($"{keyExpr} == \"{jsonName}\"");
+			hasKnownField = true;
+		}
+
+		return hasKnownField;
 	}
 
 	/// Unwraps Nullable<T> to get the underlying type T.

@@ -1,0 +1,7 @@
+FileVersion = 1
+Dependencies = {corlib = "*", BJSON = "*", "BJSON.SchemaCodeGen" = "*"}
+
+[Project]
+Name = "BJSON.SchemaCodeGen.Tests"
+TargetType = "BeefTest"
+StartupObject = "BJSON.SchemaCodeGen.Tests.Program"

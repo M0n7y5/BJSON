@@ -9,6 +9,7 @@ BJSON = {Path = "BJSON"}
 "BJSON.Example" = {Path = "BJSON.Example"}
 "BJSON.SchemaCodeGen" = {Path = "BJSON.SchemaCodeGen"}
 "BJSON.SchemaCodeGenTest" = {Path = "BJSON.SchemaCodeGenTest"}
+"BJSON.SchemaCodeGen.Tests" = {Path = "BJSON.SchemaCodeGen.Tests"}
 
 [Configs.Debug.Win64]
 BfSIMDSetting = "SSE41"

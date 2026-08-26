@@ -8,10 +8,8 @@ namespace BJSON.SchemaCodeGenTest;
 [JsonObject]
 class OrderCustomer
 {
-	[JsonPropertyName("name")]
 	public String Name = new .() ~ delete _;
 
-	[JsonPropertyName("address")]
 	public OrderCustomerAddress Address = new .() ~ delete _;
 
 }

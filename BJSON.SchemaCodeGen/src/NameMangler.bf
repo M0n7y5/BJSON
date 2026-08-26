@@ -49,22 +49,6 @@ static class NameMangler
 		}
 	}
 
-	/// Turns one `enum` value into a Beef enum member name. The value goes through ToPascalCase,
-	/// so a separator joins the words around it and "in_progress" becomes "InProgress", the enum
-	/// member spelling this repository uses. A value holding no letter and no digit has no name to
-	/// derive, so it becomes Unknown.
-	/// @param input The raw `enum` value.
-	/// @param output Caller owned buffer that receives the member name.
-	public static void ToEnumMemberName(StringView input, String output)
-	{
-		ToPascalCase(input, output);
-
-		if (output.IsEmpty)
-		{
-			output.Append("Unknown");
-		}
-	}
-
 	/// Appends name to output, adding a counter when usedNames already holds it: Status, Status2.
 	/// Two JSON names can mangle to one Beef name, and Beef rejects the second declaration, so
 	/// every name that shares a scope with another one is placed through here.

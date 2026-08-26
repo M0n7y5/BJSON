@@ -17,6 +17,10 @@
 - `Dictionary<String, TEnum>` fields and `String[N]` and `TEnum[N]` sized arrays now deserialize; an enum reads from either a string or a number, as an enum field already did
 - A `[JsonConverter]` on a type is now honoured on a plain field of that type. A field needs the attribute only to override the converter its own type declares
 - `BJSON.SchemaCodeGen` emits fields in the order the document declares them instead of in hash order, so a regenerated file is byte identical, and an inline `allOf` member whose properties the deriving type absorbed no longer gets a file of its own
+- Added `[JsonExtensionData]`: one `Dictionary<String, T>` field per type captures every JSON property that matches no declared field and writes its entries back on serialization
+- `BJSON.SchemaCodeGen` now resolves `$defs` and local file `$ref` targets, understands `$id` and `$anchor`, generates array types, and maps `additionalProperties` onto `[JsonExtensionData]`
+- Added a warnings-as-errors mode to `BJSON.SchemaCodeGen` for schemas that use keywords the generator does not support
+- Added the `BJSON.SchemaCodeGen.Tests` project, which exercises the generator against its schema corpus
 
 ### Bug Fixes
 

@@ -1,335 +1,1277 @@
 using System;
+using System.IO;
 using System.Collections;
+using BJSON;
 
 namespace BJSON.SchemaCodeGen;
 
-/// Second pass over the node graph: makes generated type names unique, resolves `$ref`, applies
-/// `allOf` inheritance and lists the types to generate.
-/// Rejected here, after SchemaParser accepted the document: a `$ref` that leaves the document
-/// (.UnsupportedKeyword), a `$ref` that names a location the document does not define
-/// (.UnresolvedRef), a `$ref` chain or an `allOf` chain that forms a cycle (.CircularRef), a
-/// `required` entry naming a property that neither the schema nor any of its bases declares
-/// (.UnsupportedKeyword), and an object or enum whose name is empty (.UnnamedType).
-/// Ownership: the resolver never allocates or frees a SchemaModel. The only allocations that
-/// outlive a Resolve call are the PropertyModel copies that `allOf` inheritance adds, and the
-/// SchemaModel that receives them owns them.
 class TypeResolver
 {
-	/// Every node of the schema graph, owned by the caller of Resolve. Non owning.
-	private List<SchemaModel> mAllSchemas;
+	private List<SchemaModel> mAllSchemas = new List<SchemaModel>() ~ delete _;
+	private HashSet<String> mUsedNames = new HashSet<String>() ~ delete _;
+	private Dictionary<String, SchemaModel> mRefTargets = new Dictionary<String, SchemaModel>() ~ delete _;
+	private Dictionary<String, SchemaModel> mDocuments = new Dictionary<String, SchemaModel>() ~ delete _;
+	private HashSet<SchemaModel> mResolvedSchemas = new HashSet<SchemaModel>() ~ delete _;
+	private List<SchemaModel> mGenerationOrder = new List<SchemaModel>() ~ delete _;
+	private SchemaModel mRootSchema;
 
-	/// Makes type names unique, resolves `$ref`, applies `allOf` inheritance and lists the types to
-	/// generate. A type follows its `$ref` target, its `allOf` bases and its element schema in that
-	/// list, while a type a property declares keeps document order and so follows the type that
-	/// declares it. Beef needs no declaration order, so the list only decides reading order.
-	/// @param allSchemas Every node SchemaParser.Parse produced. Stays owned by the caller.
-	/// @param outGenerationOrder Caller owned list that receives the nodes to generate. The
-	///                          entries alias allSchemas and must not be deleted through it.
-	/// @returns .Ok when the graph resolved, otherwise the construct that failed.
-	public Result<void, SchemaError> Resolve(List<SchemaModel> allSchemas, List<SchemaModel> outGenerationOrder)
+	public List<String> Warnings = new List<String>() ~ DeleteContainerAndItems!(_);
+	public List<String> Errors = new List<String>() ~ DeleteContainerAndItems!(_);
+
+	public Result<List<SchemaModel>, SchemaError> Resolve(SchemaModel rootSchema)
 	{
-		mAllSchemas = allSchemas;
+		mAllSchemas.Clear();
+		ClearUsedNames();
+		ClearRefTargets();
+		ClearDocuments();
+		mResolvedSchemas.Clear();
+		mGenerationOrder.Clear();
+		ClearAndDeleteItems(Warnings);
+		ClearAndDeleteItems(Errors);
+		mRootSchema = rootSchema;
 
-		Try!(AssignNames());
-		Try!(ResolveReferences());
-		Try!(ProcessInheritance());
-		BuildGenerationOrder(outGenerationOrder);
+		RegisterDocument(rootSchema, rootSchema.SourcePath);
 
-		return .Ok;
-	}
-
-	/// Gives every generated type a name no other generated type uses, appending a counter to
-	/// later duplicates: Address, Address2.
-	private Result<void, SchemaError> AssignNames()
-	{
-		HashSet<String> usedNames = scope HashSet<String>();
-		defer { ClearAndDeleteItems!(usedNames); }
-
-		for (var schema in mAllSchemas)
+		if (ResolveReferences(rootSchema) case .Err(let resolveErr))
 		{
-			if ((schema.Type != .Object) && (schema.Type != .Enum))
-			{
-				continue;
-			}
-
-			if (schema.Name.IsEmpty)
-			{
-				return .Err(.UnnamedType);
-			}
-
-			String uniqueName = scope String();
-			NameMangler.AppendUnique(schema.Name, usedNames, uniqueName);
-			schema.Name.Set(uniqueName);
+			return .Err(resolveErr);
 		}
 
-		return .Ok;
-	}
+		AssignNames();
 
-	private Result<void, SchemaError> ResolveReferences()
-	{
+		HashSet<SchemaModel> flattened = scope HashSet<SchemaModel>();
+		HashSet<SchemaModel> flattening = scope HashSet<SchemaModel>();
 		for (var schema in mAllSchemas)
 		{
-			if (schema.Type != .Ref)
+			if (FlattenAllOf(schema, flattened, flattening) case .Err(let flattenErr))
 			{
-				continue;
-			}
-
-			if (schema.RefPath.IsEmpty)
-			{
-				return .Err(.InvalidSchema);
-			}
-
-			if (!schema.RefPath.StartsWith("#"))
-			{
-				return .Err(.UnsupportedKeyword("$ref", "only references inside the same document are supported"));
-			}
-
-			schema.ReferencedSchema = FindByPointer(schema.RefPath);
-			if (schema.ReferencedSchema == null)
-			{
-				return .Err(.UnresolvedRef);
+				return .Err(flattenErr);
 			}
 		}
 
-		// A `$ref` may name another `$ref`, so follow the chain down to the schema that carries
-		// the type.
+		if (BuildGenerationOrder() case .Err(let orderErr))
+		{
+			return .Err(orderErr);
+		}
+
+		var result = new List<SchemaModel>();
+		for (var schema in mGenerationOrder)
+		{
+			result.Add(schema);
+		}
+
+		return .Ok(result);
+	}
+
+	public void Cleanup()
+	{
 		for (var schema in mAllSchemas)
 		{
-			if (schema.Type != .Ref)
-			{
-				continue;
-			}
+			delete schema;
+		}
+		mAllSchemas.Clear();
 
-			var target = schema.ReferencedSchema;
-			int hops = 0;
-			while (target.Type == .Ref)
+		ClearUsedNames();
+		ClearRefTargets();
+		ClearDocuments();
+		mResolvedSchemas.Clear();
+		mGenerationOrder.Clear();
+		mRootSchema = null;
+	}
+
+	private void ClearUsedNames()
+	{
+		for (var name in mUsedNames)
+		{
+			delete name;
+		}
+		mUsedNames.Clear();
+	}
+
+	private void ClearRefTargets()
+	{
+		for (var kvp in mRefTargets)
+		{
+			delete kvp.key;
+		}
+		mRefTargets.Clear();
+	}
+
+	private void ClearDocuments()
+	{
+		for (var kvp in mDocuments)
+		{
+			delete kvp.key;
+		}
+		mDocuments.Clear();
+	}
+
+	private void RegisterDocument(SchemaModel rootSchema, StringView sourcePath)
+	{
+		String normalizedPath = scope String();
+		NormalizeFilePath(sourcePath, normalizedPath);
+		SetSourcePath(rootSchema, normalizedPath);
+
+		if (!normalizedPath.IsEmpty)
+		{
+			SchemaModel existing;
+			if (!mDocuments.TryGetValueAlt(normalizedPath, out existing))
 			{
-				target = target.ReferencedSchema;
-				hops++;
-				if (hops > mAllSchemas.Count)
+				mDocuments.Add(new String(normalizedPath), rootSchema);
+			}
+		}
+
+		CollectAllSchemas(rootSchema);
+
+		String targetPrefix = scope String();
+		BuildDocumentRefPrefix(normalizedPath, targetPrefix);
+		RegisterRefTargets(rootSchema, targetPrefix);
+		RegisterUriTargets(rootSchema, normalizedPath, "");
+	}
+
+	private void SetSourcePath(SchemaModel schema, StringView sourcePath)
+	{
+		if (schema == null) return;
+
+		schema.SourcePath.Set(sourcePath);
+
+		for (var def in schema.Defs)
+		{
+			SetSourcePath(def.Schema, sourcePath);
+		}
+
+		for (var def in schema.Definitions)
+		{
+			SetSourcePath(def.Schema, sourcePath);
+		}
+
+		for (var prop in schema.Properties)
+		{
+			SetSourcePath(prop.Schema, sourcePath);
+		}
+
+		SetSourcePath(schema.AdditionalProperties, sourcePath);
+		SetSourcePath(schema.Items, sourcePath);
+
+		for (var baseSchema in schema.AllOf)
+		{
+			SetSourcePath(baseSchema, sourcePath);
+		}
+	}
+
+	private void CollectAllSchemas(SchemaModel schema)
+	{
+		if (schema == null) return;
+
+		if (!ContainsSchema(schema))
+		{
+			mAllSchemas.Add(schema);
+		}
+
+		for (var def in schema.Defs)
+		{
+			CollectAllSchemas(def.Schema);
+		}
+
+		for (var def in schema.Definitions)
+		{
+			CollectAllSchemas(def.Schema);
+		}
+
+		for (var prop in schema.Properties)
+		{
+			CollectAllSchemas(prop.Schema);
+		}
+
+		CollectAllSchemas(schema.AdditionalProperties);
+		CollectAllSchemas(schema.Items);
+
+		for (var baseSchema in schema.AllOf)
+		{
+			CollectAllSchemas(baseSchema);
+		}
+	}
+
+	private bool ContainsSchema(SchemaModel schema)
+	{
+		for (var existing in mAllSchemas)
+		{
+			if (existing == schema)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private void AssignNames()
+	{
+		for (var schema in mAllSchemas)
+		{
+			if (schema.Type == .Object || schema.Type == .Enum)
+			{
+				String baseName = scope String();
+				NameMangler.ToPascalCase(schema.Name, baseName);
+				if (baseName.IsEmpty)
 				{
-					return .Err(.CircularRef);
+					baseName.Append("GeneratedType");
 				}
+
+				String uniqueName = scope String();
+				NameMangler.AppendUnique(baseName, mUsedNames, uniqueName);
+				schema.Name.Set(uniqueName);
 			}
-
-			schema.ReferencedSchema = target;
-		}
-
-		return .Ok;
-	}
-
-	/// Finds the node whose recorded JSON Pointer matches, case sensitively.
-	/// @returns The node, or null when the document defines no such location.
-	private SchemaModel FindByPointer(StringView pointer)
-	{
-		for (var schema in mAllSchemas)
-		{
-			if (schema.Pointer.Equals(pointer, .Ordinal))
-			{
-				return schema;
-			}
-		}
-
-		return null;
-	}
-
-	private Result<void, SchemaError> ProcessInheritance()
-	{
-		HashSet<SchemaModel> merged = scope HashSet<SchemaModel>();
-		HashSet<SchemaModel> inProgress = scope HashSet<SchemaModel>();
-
-		for (var schema in mAllSchemas)
-		{
-			Try!(MergeSchema(schema, merged, inProgress));
-		}
-
-		return .Ok;
-	}
-
-	/// Applies the `allOf` members of schema: the first member that resolves to an object becomes
-	/// the Beef base class and keeps its properties where they are, every later object member has
-	/// its properties copied in and, when it is inline, loses its own file, then the schema's own
-	/// `required` list is applied.
-	/// @param merged Nodes already merged.
-	/// @param inProgress Nodes on the current chain, so a cycle is reported instead of recursing.
-	private Result<void, SchemaError> MergeSchema(SchemaModel schema, HashSet<SchemaModel> merged, HashSet<SchemaModel> inProgress)
-	{
-		if (merged.Contains(schema))
-		{
-			return .Ok;
-		}
-
-		if (!inProgress.Add(schema))
-		{
-			return .Err(.CircularRef);
-		}
-
-		bool baseClaimed = false;
-
-		for (var member in schema.AllOf)
-		{
-			var baseSchema = member.Resolved;
-			if (baseSchema.Type != .Object)
-			{
-				continue;
-			}
-
-			Try!(MergeSchema(baseSchema, merged, inProgress));
-
-			// The first object member becomes the Beef base class, so the generated type
-			// inherits its fields. Copying them in as well would shadow the base and emit
-			// every inherited key twice.
-			if (!baseClaimed)
-			{
-				baseClaimed = true;
-				schema.BaseTypeName.Set(baseSchema.Name);
-				continue;
-			}
-
-			InheritProperties(schema, baseSchema);
-
-			// An inline member carries no name in the document, so once its properties live on the
-			// deriving type nothing reads it, and a file for it would declare a class no generated
-			// type names. A member reached through `$ref` names a definition another schema may
-			// use as a property type, so that one keeps its file.
-			if ((member.Type != .Ref) && !IsRefTarget(baseSchema))
-			{
-				baseSchema.Generate = false;
-			}
-		}
-
-		Try!(ApplyRequired(schema));
-
-		inProgress.Remove(schema);
-		merged.Add(schema);
-
-		return .Ok;
-	}
-
-	/// Whether a `$ref` anywhere in the document resolves to this node.
-	private bool IsRefTarget(SchemaModel node)
-	{
-		for (var schema in mAllSchemas)
-		{
-			if ((schema.Type == .Ref) && (schema.ReferencedSchema == node))
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	/// Copies the base properties that schema does not declare itself, for an `allOf` member that
-	/// did not become the base class.
-	/// Ownership: each copy is a new PropertyModel with its own strings, owned by the Properties
-	/// list of schema. Its Schema pointer aliases the base property's node, which the node list
-	/// owns, so neither property frees it.
-	private void InheritProperties(SchemaModel schema, SchemaModel baseSchema)
-	{
-		for (var prop in baseSchema.Properties)
-		{
-			if (schema.FindProperty(prop.JsonName) != null)
-			{
-				continue;
-			}
-
-			var propCopy = new PropertyModel();
-			schema.Properties.Add(propCopy);
-
-			propCopy.Name.Set(prop.Name);
-			propCopy.JsonName.Set(prop.JsonName);
-			propCopy.Description.Set(prop.Description);
-			propCopy.IsRequired = prop.IsRequired;
-			propCopy.Schema = prop.Schema;
 		}
 	}
 
-	/// Marks the properties named by `required`, including the ones a base class declares.
-	private Result<void, SchemaError> ApplyRequired(SchemaModel schema)
+	private void RegisterRefTargets(SchemaModel schema, StringView pointer)
 	{
-		for (var name in schema.Required)
+		if (schema == null) return;
+
+		AddRefTarget(pointer, schema);
+
+		for (var def in schema.Defs)
 		{
-			var prop = schema.FindProperty(name);
-			if (prop != null)
-			{
-				prop.IsRequired = true;
-				continue;
-			}
-
-			if (MarkRequiredInBase(schema, name))
-			{
-				continue;
-			}
-
-			return .Err(.UnsupportedKeyword("required", "names a property that no schema in the document declares"));
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "$defs", childPointer);
+			AppendChildPointer(childPointer, def.Key, childPointer);
+			RegisterRefTargets(def.Schema, childPointer);
 		}
 
-		return .Ok;
-	}
-
-	private bool MarkRequiredInBase(SchemaModel schema, StringView name)
-	{
-		for (var member in schema.AllOf)
+		for (var def in schema.Definitions)
 		{
-			var baseSchema = member.Resolved;
-			if (baseSchema.Type != .Object)
-			{
-				continue;
-			}
-
-			var prop = baseSchema.FindProperty(name);
-			if (prop != null)
-			{
-				prop.IsRequired = true;
-				return true;
-			}
-
-			if (MarkRequiredInBase(baseSchema, name))
-			{
-				return true;
-			}
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "definitions", childPointer);
+			AppendChildPointer(childPointer, def.Key, childPointer);
+			RegisterRefTargets(def.Schema, childPointer);
 		}
 
-		return false;
-	}
-
-	private void BuildGenerationOrder(List<SchemaModel> outGenerationOrder)
-	{
-		HashSet<SchemaModel> processed = scope HashSet<SchemaModel>();
-
-		for (var schema in mAllSchemas)
+		for (var prop in schema.Properties)
 		{
-			AddToOrder(schema, processed, outGenerationOrder);
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "properties", childPointer);
+			AppendChildPointer(childPointer, prop.JsonName, childPointer);
+			RegisterRefTargets(prop.Schema, childPointer);
+		}
+
+		if (schema.Items != null)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "items", childPointer);
+			RegisterRefTargets(schema.Items, childPointer);
+		}
+
+		if (schema.AdditionalProperties != null)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "additionalProperties", childPointer);
+			RegisterRefTargets(schema.AdditionalProperties, childPointer);
+		}
+
+		for (int i = 0; i < schema.AllOf.Count; i++)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(pointer, "allOf", childPointer);
+			String index = scope String();
+			index.Append(i);
+			AppendChildPointer(childPointer, index, childPointer);
+			RegisterRefTargets(schema.AllOf[i], childPointer);
 		}
 	}
 
-	/// Adds schema after the types it needs: its `$ref` target, its `allOf` bases and its element
-	/// schema. A property's schema is not followed here, because the caller's pass over every node
-	/// reaches it. Only an object or an enum becomes a file, and only while it is still generated:
-	/// an `allOf` member the deriving type absorbed is not.
-	private void AddToOrder(SchemaModel schema, HashSet<SchemaModel> processed, List<SchemaModel> outGenerationOrder)
+	private void RegisterUriTargets(SchemaModel schema, StringView baseUri, StringView pointer)
 	{
-		if (schema == null || !processed.Add(schema))
+		if (schema == null) return;
+
+		String nextBase = scope String(baseUri);
+		schema.BaseUri.Set(nextBase);
+
+		String targetKey = scope String();
+		BuildRefTargetKey(nextBase, pointer, targetKey);
+		AddRefTarget(targetKey, schema);
+
+		bool hasId = !schema.Id.IsEmpty;
+		if (hasId)
+		{
+			ResolveSchemaUri(baseUri, schema.Id, nextBase);
+			schema.BaseUri.Set(nextBase);
+
+			String idTargetKey = scope String();
+			BuildRefTargetKey(nextBase, "", idTargetKey);
+			AddRefTarget(idTargetKey, schema);
+		}
+
+		if (!schema.Anchor.IsEmpty)
+		{
+			String anchorTargetKey = scope String();
+			BuildRefTargetKey(nextBase, schema.Anchor, anchorTargetKey);
+			AddRefTarget(anchorTargetKey, schema);
+		}
+
+		String childParentPointer = scope String();
+		if (!hasId)
+		{
+			childParentPointer.Set(pointer);
+		}
+
+		for (var def in schema.Defs)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "$defs", childPointer);
+			AppendChildPointer(childPointer, def.Key, childPointer);
+			RegisterUriTargets(def.Schema, nextBase, childPointer);
+		}
+
+		for (var def in schema.Definitions)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "definitions", childPointer);
+			AppendChildPointer(childPointer, def.Key, childPointer);
+			RegisterUriTargets(def.Schema, nextBase, childPointer);
+		}
+
+		for (var prop in schema.Properties)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "properties", childPointer);
+			AppendChildPointer(childPointer, prop.JsonName, childPointer);
+			RegisterUriTargets(prop.Schema, nextBase, childPointer);
+		}
+
+		if (schema.Items != null)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "items", childPointer);
+			RegisterUriTargets(schema.Items, nextBase, childPointer);
+		}
+
+		if (schema.AdditionalProperties != null)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "additionalProperties", childPointer);
+			RegisterUriTargets(schema.AdditionalProperties, nextBase, childPointer);
+		}
+
+		for (int i = 0; i < schema.AllOf.Count; i++)
+		{
+			String childPointer = scope String();
+			AppendChildPointer(childParentPointer, "allOf", childPointer);
+			String index = scope String();
+			index.Append(i);
+			AppendChildPointer(childPointer, index, childPointer);
+			RegisterUriTargets(schema.AllOf[i], nextBase, childPointer);
+		}
+	}
+
+	private void AddRefTarget(StringView pointer, SchemaModel schema)
+	{
+		SchemaModel existing;
+		if (mRefTargets.TryGetValueAlt(pointer, out existing))
 		{
 			return;
 		}
 
-		if (schema.ReferencedSchema != null)
+		mRefTargets.Add(new String(pointer), schema);
+	}
+
+	private void AppendChildPointer(StringView parent, StringView token, String output)
+	{
+		String original = scope String(parent);
+		output.Clear();
+		output.Append(original);
+		output.Append("/");
+		JsonPointer.Escape(token, output);
+	}
+
+	private Result<void, SchemaError> ResolveReferences(SchemaModel schema)
+	{
+		if (schema == null) return .Ok;
+		if (mResolvedSchemas.Contains(schema)) return .Ok;
+
+		if (schema.Type == .Ref && !schema.RefPath.IsEmpty)
 		{
-			AddToOrder(schema.ReferencedSchema, processed, outGenerationOrder);
+			if (ResolveReference(schema) case .Err(let refErr))
+			{
+				return .Err(refErr);
+			}
+		}
+
+		for (var def in schema.Defs)
+		{
+			if (ResolveReferences(def.Schema) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+
+		for (var def in schema.Definitions)
+		{
+			if (ResolveReferences(def.Schema) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+
+		for (var prop in schema.Properties)
+		{
+			if (ResolveReferences(prop.Schema) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+
+		if (ResolveReferences(schema.AdditionalProperties) case .Err(let additionalErr))
+		{
+			return .Err(additionalErr);
+		}
+
+		if (ResolveReferences(schema.Items) case .Err(let itemsErr))
+		{
+			return .Err(itemsErr);
 		}
 
 		for (var baseSchema in schema.AllOf)
 		{
-			AddToOrder(baseSchema, processed, outGenerationOrder);
+			if (ResolveReferences(baseSchema) case .Err(let allOfErr))
+			{
+				return .Err(allOfErr);
+			}
 		}
 
-		AddToOrder(schema.Items, processed, outGenerationOrder);
+		mResolvedSchemas.Add(schema);
+		return .Ok;
+	}
 
-		if (schema.Generate && ((schema.Type == .Object) || (schema.Type == .Enum)))
+	private Result<void, SchemaError> ResolveReference(SchemaModel schema)
+	{
+		if (IsUnsupportedRemoteRef(schema.RefPath))
 		{
-			outGenerationOrder.Add(schema);
+			AddWarning(scope $"Remote $ref '{schema.RefPath}' is not supported; using JsonValue fallback.");
+			schema.Type = .Any;
+			schema.RefPath.Clear();
+			return .Ok;
 		}
+
+		StringView docPart;
+		StringView fragment;
+		SplitRef(schema.RefPath, out docPart, out fragment);
+
+		String docUri = scope String();
+		if (docPart.IsEmpty)
+		{
+			docUri.Set(schema.BaseUri);
+		}
+		else
+		{
+			ResolveSchemaUri(schema.BaseUri, docPart, docUri);
+		}
+
+		String targetKey = scope String();
+		BuildRefTargetKey(docUri, fragment, targetKey);
+		SchemaModel target;
+		if (mRefTargets.TryGetValueAlt(targetKey, out target))
+		{
+			schema.ReferencedSchema = target;
+			return .Ok;
+		}
+
+		String docPath = scope String();
+		if (!docPart.IsEmpty && CanResolveAsLocalFile(docPart))
+		{
+			ResolveLocalRefPath(docPart, schema.SourcePath, docPath);
+			BuildRefTargetKey(docPath, fragment, targetKey);
+			if (mRefTargets.TryGetValueAlt(targetKey, out target))
+			{
+				schema.ReferencedSchema = target;
+				return .Ok;
+			}
+
+			if (LoadDocument(docPath) case .Err(let loadErr))
+			{
+				return .Err(loadErr);
+			}
+
+			if (mRefTargets.TryGetValueAlt(targetKey, out target))
+			{
+				schema.ReferencedSchema = target;
+				return .Ok;
+			}
+		}
+
+		if (docPart.IsEmpty)
+		{
+			AddError(scope $"Unresolved internal $ref '{schema.RefPath}'.");
+		}
+		else
+		{
+			AddError(scope $"Unresolved local $ref '{schema.RefPath}' in '{schema.SourcePath}'. Missing target '{targetKey}'.");
+		}
+		return .Err(.UnresolvedRef);
+	}
+
+	private Result<SchemaModel, SchemaError> LoadDocument(StringView docPath)
+	{
+		SchemaModel cached;
+		if (mDocuments.TryGetValueAlt(docPath, out cached))
+		{
+			return .Ok(cached);
+		}
+
+		if (!File.Exists(docPath))
+		{
+			AddError(scope $"Referenced schema file not found: {docPath}");
+			return .Err(.UnresolvedRef);
+		}
+
+		String schemaContent = scope String();
+		let readResult = File.ReadAllText(docPath, schemaContent);
+		if (readResult case .Err(let fileErr))
+		{
+			AddError(scope $"Failed to read referenced schema file '{docPath}': {fileErr}");
+			return .Err(.UnresolvedRef);
+		}
+
+		String rootName = scope String();
+		BuildRootName(docPath, rootName);
+
+		let parser = scope SchemaParser();
+		let parseResult = parser.Parse(schemaContent, rootName, docPath);
+		for (var warning in parser.Warnings)
+		{
+			AddWarning(warning);
+		}
+
+		if (parseResult case .Err)
+		{
+			AddError(scope $"Referenced schema file is not valid JSON Schema: {docPath}");
+			return .Err(.UnresolvedRef);
+		}
+
+		if (parseResult case .Ok(let externalRoot))
+		{
+			RegisterDocument(externalRoot, docPath);
+			if (ResolveReferences(externalRoot) case .Err(let resolveErr))
+			{
+				return .Err(resolveErr);
+			}
+			return .Ok(externalRoot);
+		}
+
+		AddError(scope $"Referenced schema file is not valid JSON Schema: {docPath}");
+		return .Err(.UnresolvedRef);
+	}
+
+	private void SplitRef(StringView reference, out StringView docPart, out StringView fragment)
+	{
+		int hashIndex = reference.IndexOf('#');
+		if (hashIndex == -1)
+		{
+			docPart = reference;
+			fragment = "";
+			return;
+		}
+
+		docPart = reference.Substring(0, hashIndex);
+		fragment = reference.Substring(hashIndex + 1);
+	}
+
+	private void ResolveLocalRefPath(StringView docPart, StringView sourcePath, String output)
+	{
+		output.Clear();
+
+		String localPath = scope String();
+		if (StartsWithIgnoreCase(docPart, "file://"))
+		{
+			FileUriToPath(docPart, localPath);
+		}
+		else
+		{
+			localPath.Append(docPart);
+		}
+
+		if (IsAbsolutePath(localPath))
+		{
+			NormalizeFilePath(localPath, output);
+			return;
+		}
+
+		String baseDir = scope String();
+		if (!sourcePath.IsEmpty)
+		{
+			if (Path.GetDirectoryPath(sourcePath, baseDir) case .Err)
+			{
+				GetContainingDirectory(sourcePath, baseDir);
+			}
+		}
+		if (baseDir.IsEmpty)
+		{
+			NormalizeFilePath(localPath, output);
+			return;
+		}
+
+		String combined = scope String(baseDir);
+		if (!combined.EndsWith("\\") && !combined.EndsWith("/"))
+		{
+			combined.Append(Path.DirectorySeparatorChar);
+		}
+		combined.Append(localPath);
+		NormalizeFilePath(combined, output);
+	}
+
+	private void ResolveSchemaUri(StringView baseUri, StringView reference, String output)
+	{
+		output.Clear();
+		if (reference.IsEmpty)
+		{
+			output.Append(baseUri);
+			return;
+		}
+
+		if (reference.Length > 0 && reference[0] == '#')
+		{
+			output.Append(baseUri);
+			output.Append(reference);
+			return;
+		}
+
+		if (StartsWithIgnoreCase(reference, "file://"))
+		{
+			String filePath = scope String();
+			FileUriToPath(reference, filePath);
+			NormalizeFilePath(filePath, output);
+			return;
+		}
+
+		if (IsAbsolutePath(reference))
+		{
+			NormalizeFilePath(reference, output);
+			return;
+		}
+
+		if (IsAbsoluteUri(reference))
+		{
+			output.Append(reference);
+			return;
+		}
+
+		if (baseUri.IsEmpty)
+		{
+			NormalizeFilePath(reference, output);
+			return;
+		}
+
+		if (IsLocalBaseUri(baseUri))
+		{
+			String baseDir = scope String();
+			if (Path.GetDirectoryPath(baseUri, baseDir) case .Err)
+			{
+				GetContainingDirectory(baseUri, baseDir);
+			}
+
+			if (baseDir.IsEmpty)
+			{
+				NormalizeFilePath(reference, output);
+				return;
+			}
+
+			String combined = scope String(baseDir);
+			if (!combined.EndsWith("\\") && !combined.EndsWith("/"))
+			{
+				combined.Append(Path.DirectorySeparatorChar);
+			}
+			combined.Append(reference);
+			NormalizeFilePath(combined, output);
+			return;
+		}
+
+		AppendUriPath(baseUri, reference, output);
+	}
+
+	private void NormalizeFilePath(StringView filePath, String output)
+	{
+		output.Clear();
+		if (filePath.IsEmpty)
+		{
+			return;
+		}
+
+		if (IsAbsolutePath(filePath))
+		{
+			NormalizePathSegments(filePath, output);
+			return;
+		}
+
+		String currentDirectory = scope String();
+		Directory.GetCurrentDirectory(currentDirectory);
+
+		String combined = scope String(currentDirectory);
+		if (!combined.EndsWith("\\") && !combined.EndsWith("/"))
+		{
+			combined.Append(Path.DirectorySeparatorChar);
+		}
+		combined.Append(filePath);
+		NormalizePathSegments(combined, output);
+	}
+
+	private void GetContainingDirectory(StringView filePath, String output)
+	{
+		output.Clear();
+		int lastSeparator = -1;
+		for (int i = 0; i < filePath.Length; i++)
+		{
+			if (IsPathSeparator(filePath[i]))
+			{
+				lastSeparator = i;
+			}
+		}
+
+		if (lastSeparator > 0)
+		{
+			output.Append(filePath, 0, lastSeparator);
+		}
+		else if (lastSeparator == 0)
+		{
+			output.Append(filePath, 0, 1);
+		}
+	}
+
+	private int GetRootLength(StringView path)
+	{
+		if (path.Length >= 2 && path[1] == ':')
+		{
+			if (path.Length >= 3 && IsPathSeparator(path[2]))
+			{
+				return 3;
+			}
+			return 2;
+		}
+
+		if (path.Length >= 1 && IsPathSeparator(path[0]))
+		{
+			return 1;
+		}
+
+		return 0;
+	}
+
+	private void NormalizePathSegments(StringView filePath, String output)
+	{
+		output.Clear();
+		if (filePath.IsEmpty)
+		{
+			return;
+		}
+
+		int rootLength = GetRootLength(filePath);
+		if (rootLength > 0)
+		{
+			output.Append(filePath, 0, rootLength);
+			NormalizePathSeparators(output);
+		}
+
+		int segmentStart = rootLength;
+		for (int i = rootLength; i <= filePath.Length; i++)
+		{
+			if (i == filePath.Length || IsPathSeparator(filePath[i]))
+			{
+				let segment = filePath.Substring(segmentStart, i - segmentStart);
+				if (segment == "" || segment == ".")
+				{
+				}
+				else if (segment == "..")
+				{
+					RemoveLastPathSegment(output);
+				}
+				else
+				{
+					AppendPathSegment(output, segment);
+				}
+
+				segmentStart = i + 1;
+			}
+		}
+	}
+
+	private void NormalizePathSeparators(String path)
+	{
+		for (int i = 0; i < path.Length; i++)
+		{
+			if (IsPathSeparator(path[i]))
+			{
+				path[i] = Path.DirectorySeparatorChar;
+			}
+		}
+	}
+
+	private void AppendPathSegment(String output, StringView segment)
+	{
+		if (!output.IsEmpty && !IsPathSeparator(output[output.Length - 1]) && !(output.Length == 2 && output[1] == ':'))
+		{
+			output.Append(Path.DirectorySeparatorChar);
+		}
+
+		output.Append(segment);
+	}
+
+	private void RemoveLastPathSegment(String output)
+	{
+		int rootLength = GetRootLength(output);
+		if (output.Length <= rootLength)
+		{
+			return;
+		}
+
+		int removeStart = output.Length;
+		while (removeStart > rootLength && !IsPathSeparator(output[removeStart - 1]))
+		{
+			removeStart--;
+		}
+
+		if (removeStart > rootLength)
+		{
+			removeStart--;
+		}
+
+		output.Remove(removeStart, output.Length - removeStart);
+	}
+
+	private bool IsPathSeparator(char8 c)
+	{
+		return c == '/' || c == '\\';
+	}
+
+	private void BuildDocumentRefPrefix(StringView docPath, String output)
+	{
+		output.Clear();
+		if (!docPath.IsEmpty)
+		{
+			output.Append(docPath);
+		}
+		output.Append("#");
+	}
+
+	private void BuildRefTargetKey(StringView docPath, StringView fragment, String output)
+	{
+		BuildDocumentRefPrefix(docPath, output);
+		output.Append(fragment);
+	}
+
+	private void BuildRootName(StringView docPath, String output)
+	{
+		output.Clear();
+
+		String fileName = scope String();
+		Path.GetFileNameWithoutExtension(docPath, fileName);
+		output.Append(fileName);
+
+		int dotIndex = output.IndexOf('.');
+		if (dotIndex >= 0)
+		{
+			output.RemoveToEnd(dotIndex);
+		}
+
+		String typeName = scope String();
+		NameMangler.ToPascalCase(output, typeName);
+		output.Set(typeName);
+		if (output.IsEmpty)
+		{
+			output.Append("GeneratedType");
+		}
+	}
+
+	private void FileUriToPath(StringView uri, String output)
+	{
+		output.Clear();
+		var path = uri.Substring(7);
+		if (path.Length >= 3 && path[0] == '/' && path[2] == ':')
+		{
+			path = path.Substring(1);
+		}
+		output.Append(path);
+	}
+
+	private bool IsUnsupportedRemoteRef(StringView refPath)
+	{
+		return StartsWithIgnoreCase(refPath, "http://") || StartsWithIgnoreCase(refPath, "https://");
+	}
+
+	private bool CanResolveAsLocalFile(StringView docPart)
+	{
+		if (StartsWithIgnoreCase(docPart, "file://"))
+		{
+			return true;
+		}
+
+		if (IsAbsoluteUri(docPart))
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	private bool IsLocalBaseUri(StringView uri)
+	{
+		if (StartsWithIgnoreCase(uri, "file://"))
+		{
+			return true;
+		}
+
+		return !IsAbsoluteUri(uri);
+	}
+
+	private bool IsAbsoluteUri(StringView uri)
+	{
+		if (IsWindowsAbsolutePath(uri))
+		{
+			return false;
+		}
+
+		for (int i = 0; i < uri.Length; i++)
+		{
+			char8 c = uri[i];
+			if (c == ':')
+			{
+				return true;
+			}
+			if (IsPathSeparator(c))
+			{
+				return false;
+			}
+		}
+
+		return false;
+	}
+
+	private bool IsAbsolutePath(StringView path)
+	{
+		if (path.Length >= 1 && IsPathSeparator(path[0]))
+		{
+			return true;
+		}
+
+		return IsWindowsAbsolutePath(path);
+	}
+
+	private void AppendUriPath(StringView baseUri, StringView relative, String output)
+	{
+		output.Clear();
+		String baseNoFragment = scope String();
+		StringView baseDoc;
+		StringView baseFragment;
+		SplitRef(baseUri, out baseDoc, out baseFragment);
+		baseNoFragment.Append(baseDoc);
+
+		String baseDir = scope String();
+		GetContainingDirectory(baseNoFragment, baseDir);
+		if (baseDir.IsEmpty)
+		{
+			output.Append(relative);
+			return;
+		}
+
+		output.Append(baseDir);
+		if (!baseDir.EndsWith("/") && !baseDir.EndsWith("\\"))
+		{
+			output.Append("/");
+		}
+		output.Append(relative);
+	}
+
+	private bool IsWindowsAbsolutePath(StringView path)
+	{
+		if (path.Length < 2 || path[1] != ':')
+		{
+			return false;
+		}
+
+		char8 drive = path[0];
+		return (drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z');
+	}
+
+	private bool StartsWithIgnoreCase(StringView text, StringView prefix)
+	{
+		if (prefix.Length > text.Length)
+		{
+			return false;
+		}
+
+		for (int i = 0; i < prefix.Length; i++)
+		{
+			if (ToLower(text[i]) != ToLower(prefix[i]))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private char8 ToLower(char8 c)
+	{
+		if (c >= 'A' && c <= 'Z')
+		{
+			return (char8)(c + 32);
+		}
+
+		return c;
+	}
+
+	private Result<void, SchemaError> FlattenAllOf(SchemaModel schema, HashSet<SchemaModel> processed, HashSet<SchemaModel> visiting)
+	{
+		if (schema == null) return .Ok;
+		if (processed.Contains(schema)) return .Ok;
+
+		if (visiting.Contains(schema))
+		{
+			AddError(scope $"Circular allOf reference involving '{schema.Name}'.");
+			return .Err(.CircularRef);
+		}
+
+		visiting.Add(schema);
+
+		for (var baseSchema in schema.AllOf)
+		{
+			SchemaModel resolvedBase = ResolveAlias(baseSchema);
+			if (resolvedBase == null)
+			{
+				continue;
+			}
+
+			if (FlattenAllOf(resolvedBase, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
+
+			if (resolvedBase.Type == .Object)
+			{
+				CopyObjectProperties(schema, resolvedBase);
+			}
+			else if (resolvedBase.Type != .Any)
+			{
+				AddWarning(scope $"Schema '{schema.Name}' has a non-object allOf member; ignoring it for structural generation.");
+			}
+		}
+
+		ApplyRequired(schema);
+
+		for (var def in schema.Defs)
+		{
+			if (FlattenAllOf(def.Schema, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+
+		for (var def in schema.Definitions)
+		{
+			if (FlattenAllOf(def.Schema, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+
+		for (var prop in schema.Properties)
+		{
+			if (FlattenAllOf(prop.Schema, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+
+		if (FlattenAllOf(schema.AdditionalProperties, processed, visiting) case .Err(let additionalErr))
+		{
+			return .Err(additionalErr);
+		}
+
+		if (FlattenAllOf(schema.Items, processed, visiting) case .Err(let itemsErr))
+		{
+			return .Err(itemsErr);
+		}
+
+		visiting.Remove(schema);
+		processed.Add(schema);
+		return .Ok;
+	}
+
+	private SchemaModel ResolveAlias(SchemaModel schema)
+	{
+		if (schema == null) return null;
+
+		if (schema.Type == .Ref && schema.ReferencedSchema != null)
+		{
+			return schema.ReferencedSchema;
+		}
+
+		return schema;
+	}
+
+	private void CopyObjectProperties(SchemaModel target, SchemaModel source)
+	{
+		for (var prop in source.Properties)
+		{
+			var existingProp = target.FindProperty(prop.JsonName);
+			if (existingProp != null)
+			{
+				if (prop.IsRequired)
+				{
+					existingProp.IsRequired = true;
+					AddRequired(target, prop.JsonName);
+				}
+				AddWarning(scope $"Schema '{target.Name}' already has property '{prop.JsonName}' while flattening allOf; keeping the existing field.");
+				continue;
+			}
+
+			var propCopy = new PropertyModel();
+			propCopy.Name.Set(prop.Name);
+			propCopy.JsonName.Set(prop.JsonName);
+			propCopy.Schema = prop.Schema;
+			propCopy.IsRequired = prop.IsRequired;
+			propCopy.Description.Set(prop.Description);
+
+			target.Properties.Add(propCopy);
+
+			if (propCopy.IsRequired)
+			{
+				AddRequired(target, prop.JsonName);
+			}
+		}
+
+		if (source.AdditionalProperties != null)
+		{
+			if (target.AdditionalProperties == null)
+			{
+				target.AdditionalProperties = source.AdditionalProperties;
+			}
+			else if (target.AdditionalProperties != source.AdditionalProperties)
+			{
+				AddWarning(scope $"Schema '{target.Name}' already has additionalProperties while flattening allOf; keeping the existing field.");
+			}
+		}
+	}
+
+	private void ApplyRequired(SchemaModel schema)
+	{
+		for (var req in schema.Required)
+		{
+			var prop = schema.FindProperty(req);
+			if (prop != null)
+			{
+				prop.IsRequired = true;
+			}
+		}
+	}
+
+	private void AddRequired(SchemaModel schema, StringView name)
+	{
+		for (var req in schema.Required)
+		{
+			if (req == name)
+			{
+				return;
+			}
+		}
+
+		schema.Required.Add(new String(name));
+	}
+
+	private Result<void, SchemaError> BuildGenerationOrder()
+	{
+		HashSet<SchemaModel> processed = scope HashSet<SchemaModel>();
+		HashSet<SchemaModel> visiting = scope HashSet<SchemaModel>();
+
+		for (var schema in mAllSchemas)
+		{
+			if (AddToOrder(schema, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+
+		return .Ok;
+	}
+
+	private Result<void, SchemaError> AddToOrder(SchemaModel schema, HashSet<SchemaModel> processed, HashSet<SchemaModel> visiting)
+	{
+		if (schema == null || processed.Contains(schema)) return .Ok;
+
+		if (visiting.Contains(schema))
+		{
+			AddError(scope $"Circular schema reference involving '{schema.Name}'.");
+			return .Err(.CircularRef);
+		}
+
+		visiting.Add(schema);
+
+		if (schema.Type == .Ref && schema.ReferencedSchema != null)
+		{
+			if (AddToOrder(schema.ReferencedSchema, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+
+		for (var baseSchema in schema.AllOf)
+		{
+			if (AddToOrder(ResolveAlias(baseSchema), processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+
+		for (var prop in schema.Properties)
+		{
+			if (AddToOrder(prop.Schema, processed, visiting) case .Err(let err))
+			{
+				return .Err(err);
+			}
+		}
+
+		if (AddToOrder(schema.AdditionalProperties, processed, visiting) case .Err(let additionalErr))
+		{
+			return .Err(additionalErr);
+		}
+
+		if (AddToOrder(schema.Items, processed, visiting) case .Err(let itemsErr))
+		{
+			return .Err(itemsErr);
+		}
+
+		for (var def in schema.Defs)
+		{
+			if (AddToOrder(def.Schema, processed, visiting) case .Err(let defsErr))
+			{
+				return .Err(defsErr);
+			}
+		}
+
+		for (var def in schema.Definitions)
+		{
+			if (AddToOrder(def.Schema, processed, visiting) case .Err(let definitionsErr))
+			{
+				return .Err(definitionsErr);
+			}
+		}
+
+		visiting.Remove(schema);
+		processed.Add(schema);
+
+		if (schema.Emit && (schema.Type == .Enum || schema.Type == .Object))
+		{
+			mGenerationOrder.Add(schema);
+		}
+
+		return .Ok;
+	}
+
+	private void AddWarning(StringView message)
+	{
+		Warnings.Add(new String(message));
+	}
+
+	private void AddError(StringView message)
+	{
+		Errors.Add(new String(message));
 	}
 }
