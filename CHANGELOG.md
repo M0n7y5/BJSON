@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.3.1
+
+### Bug Fixes
+
+- Fixed `GetOrDefault<StringView>()` on objects returning a dangling view for SSO strings: the value was copied out of the dictionary, so the view referenced a dead temporary
+- Fixed `GetByPointerOrDefault<StringView>()` returning a dangling view for SSO strings: pointer resolution now walks to the stored value instead of copying it
+- Fixed `BJSON.SchemaCodeGen` failing to compile: `FileWriteError` was ambiguous with `System.IO.FileWriteError`
+
+### Known Limitations
+
+- `GetByPointerOrDefault<StringView>("")` still aliases a temporary. Use the non-generic overload to request the whole document
+
+---
+
 ## v1.3.0
 
 ### New Features

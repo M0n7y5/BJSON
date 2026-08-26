@@ -194,6 +194,36 @@ namespace BJSON.Models
 			return this.As<JsonArray>().TryGet(index);
 		}
 
+		/// Tries to get a pointer to the stored value for a key (for objects).
+		/// Prefer this over TryGet when the result feeds a StringView: SSO strings live inline
+		/// in the stored JsonValue, so a copy would leave the view dangling.
+		/// @param key The key to look up.
+		/// @returns A pointer to the stored value, or .Err if this is not an object or the key is absent.
+		public Result<JsonValue*> TryGetRef(StringView key)
+		{
+			if (type != .OBJECT)
+				return .Err;
+
+			if (data.object.TryGetRefAlt(key, ?, let valPtr))
+				return .Ok(valPtr);
+
+			return .Err;
+		}
+
+		/// Tries to get a pointer to the stored value at an index (for arrays).
+		/// @param index The index to look up.
+		/// @returns A pointer to the stored value, or .Err if this is not an array or the index is out of bounds.
+		public Result<JsonValue*> TryGetRef(int index)
+		{
+			if (type != .ARRAY)
+				return .Err;
+
+			if (index < 0 || index >= data.array.Count)
+				return .Err;
+
+			return .Ok(&data.array[index]);
+		}
+
 		/// Gets a value by key, or returns a default value if not found or not an object.
 		/// @param key The key to look up.
 		/// @param defaultValue The value to return if key doesn't exist or this is not an object.
@@ -266,6 +296,9 @@ namespace BJSON.Models
 		/// @param pointer The JSON Pointer string (e.g., "/users/0/name").
 		/// @param defaultValue The value to return if resolution fails.
 		/// @returns The resolved value converted to T, or defaultValue if the pointer is invalid or path doesn't exist.
+		/// @remarks A StringView result aliases the document. The empty pointer is the exception:
+		/// it names this value, which reaches JsonPointer only as a copy, so request the whole
+		/// document with the non-generic overload instead.
 		public T GetByPointerOrDefault<T>(StringView pointer, T defaultValue) where T : var
 		{
 			return JsonPointer.ResolveOrDefault<T>(this, pointer, defaultValue);
@@ -641,9 +674,11 @@ namespace BJSON.Models
 		/// @returns The value converted to T if found, or defaultValue otherwise.
 		public new T GetOrDefault<T>(StringView key, T defaultValue) where T : var
 		{
-			if (data.object.TryGetValueAlt(key, let val))
+			// SSO strings live inline in the JsonValue, so the conversion must reference the
+			// stored value. A local copy dies on return and leaves the StringView dangling.
+			if (data.object.TryGetRefAlt(key, ?, let valPtr))
 			{
-				return (T)val;
+				return (T)(*valPtr);
 			}
 
 			return defaultValue;

@@ -208,6 +208,8 @@ namespace BJSON.Example
 	{
 		public static int Main(String[] args)
 		{
+			int lol = 46484;
+
 			// ============================================
 			// Attribute-based Serialization/Deserialization
 			// ============================================

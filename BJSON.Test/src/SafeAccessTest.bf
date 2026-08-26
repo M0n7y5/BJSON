@@ -324,6 +324,26 @@ class SafeAccessTest
 			Debug.WriteLine("  Test 17 (Generic GetByPointerOrDefault<T>): PASSED");
 		}
 
+		// Test 18: SSO views survive a later call that reuses the same stack frame.
+		// Catches the regression where pointer resolution returned the target by value, so the
+		// StringView aliased the callee frame and the next call overwrote it.
+		{
+			var result = Json.Deserialize("{\"a\":{\"s\":\"Alpha\"},\"b\":{\"s\":\"Bravo\"}}");
+			defer result.Dispose();
+
+			Test.Assert(result case .Ok, "Parse should succeed");
+			if (result case .Ok(let json))
+			{
+				StringView first = json.GetByPointerOrDefault<StringView>("/a/s", "Unknown");
+				StringView second = json.GetByPointerOrDefault<StringView>("/b/s", "Unknown");
+
+				Test.Assert(first == "Alpha", scope $"First view clobbered. Got: {first}");
+				Test.Assert(second == "Bravo", scope $"Second view wrong. Got: {second}");
+			}
+
+			Debug.WriteLine("  Test 18 (SSO view survives frame reuse): PASSED");
+		}
+
 		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
 	}
 }

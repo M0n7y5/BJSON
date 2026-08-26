@@ -48,6 +48,23 @@ namespace BJSON
 	{
 		public static Result<JsonValue, JsonPointerError> Resolve(JsonValue root, StringView pointer)
 		{
+			var root;
+			switch (ResolveRef(&root, pointer))
+			{
+			case .Ok(let val):
+				return .Ok(*val);
+			case .Err(let err):
+				return .Err(err);
+			}
+		}
+
+		/// Walks a pointer and yields the address of the stored value.
+		/// Containers own their children, so the result stays valid while the document does.
+		/// @param root Address of the value to walk from.
+		/// @param pointer The RFC 6901 pointer.
+		/// @returns A pointer to the resolved value, or the reason the walk failed.
+		private static Result<JsonValue*, JsonPointerError> ResolveRef(JsonValue* root, StringView pointer)
+		{
 			if (pointer.IsEmpty)
 				return .Ok(root);
 
@@ -79,7 +96,7 @@ namespace BJSON
 
 				if (current.IsObject())
 				{
-					if (current.TryGet(unescaped) case .Ok(let val))
+					if (current.TryGetRef(unescaped) case .Ok(let val))
 						current = val;
 					else
 						return .Err(.KeyNotFound(token));
@@ -93,7 +110,7 @@ namespace BJSON
 					if (index case .Err)
 						return .Err(.InvalidArrayIndex(token));
 
-					if (current.TryGet(index.Value) case .Ok(let val))
+					if (current.TryGetRef(index.Value) case .Ok(let val))
 						current = val;
 					else
 						return .Err(.IndexOutOfBounds(index.Value));
@@ -114,10 +131,17 @@ namespace BJSON
 			return defaultValue;
 		}
 
+		/// Resolves a pointer and converts the target to T, or returns a default value.
+		/// A StringView result aliases the document, so root must outlive the returned view.
+		/// @param root The value to walk from.
+		/// @param pointer The RFC 6901 pointer.
+		/// @param defaultValue The value to return if the pointer does not resolve.
+		/// @returns The resolved value converted to T, or defaultValue.
 		public static T ResolveOrDefault<T>(JsonValue root, StringView pointer, T defaultValue) where T : var
 		{
-			if (Resolve(root, pointer) case .Ok(let val))
-				return (T)val;
+			var root;
+			if (ResolveRef(&root, pointer) case .Ok(let val))
+				return (T)(*val);
 			return defaultValue;
 		}
 

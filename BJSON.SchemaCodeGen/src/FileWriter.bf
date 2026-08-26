@@ -6,7 +6,7 @@ namespace BJSON.SchemaCodeGen;
 
 class FileWriter
 {
-	public Result<void, FileWriteError> WriteFiles(List<SchemaModel> schemas, GeneratorConfig config, StringView outputDir)
+	public Result<void, BJSON.SchemaCodeGen.FileWriteError> WriteFiles(List<SchemaModel> schemas, GeneratorConfig config, StringView outputDir)
 	{
 		var generator = scope CodeGenerator(config);
 		
