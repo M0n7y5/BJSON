@@ -4,7 +4,6 @@ namespace BJSON.Enums
 	enum JsonParsingError
 	{
 		case InputStreamIsNull;
-		case DocumentIsEmpty;
 		case InvalidDocument;
 		case MaximumDepthReached;
 		case NumberTooLong(uint line, uint column);
@@ -14,7 +13,6 @@ namespace BJSON.Enums
 		case InvalidUnicodeHexEscape(uint line, uint column);
 		case InvalidStringSurrogate(uint line, uint column);
 		case InvalidEscapeToken(uint line, uint column);
-		case MissingQuotationMark(uint line, uint column);
 		case InvalidEncoding(uint line, uint column);
 
 		public override void ToString(String string)
@@ -29,8 +27,6 @@ namespace BJSON.Enums
 			string.Append("Reached maximum supported depth for nested structures! More than 200 levels.");
 		case NumberTooLong(let line, let column):
 			string.AppendF("Number exceeds maximum length of 1024 characters! Line {}, Column {}.", line, column);
-			case DocumentIsEmpty:
-				string.Append("Attempt to parse empty string!");
 			case UnableToRead(let line, let column):
 				string.AppendF("Unable to read from Stream! Line {}, Column {}.", line, column);
 			case InvalidValue(let line, let column):
@@ -46,10 +42,8 @@ namespace BJSON.Enums
 				string.AppendF("Invalid String Surrogate! Line {}, Column {}.", line, column);
 			case InvalidEscapeToken(let line, let column):
 				string.AppendF("Invalid Escape Token! Line {}, Column {}.", line, column);
-			case MissingQuotationMark(let line, let column):
-				string.AppendF("Missing Quotation Mark! Line {}, Column {}.", line, column);
 			case InvalidEncoding(let line, let column):
-				string.AppendF("Invalid Encoding! Line {}, Column {}.", line, column);
+				string.AppendF("Invalid UTF-8 encoding! Line {}, Column {}.", line, column);
 			}
 		}
 	}

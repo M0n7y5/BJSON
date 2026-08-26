@@ -328,4 +328,75 @@ class Utf8Test
 
 		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
 	}
+
+	[Test(Name = "UTF-8 Validation - Invalid Byte Sequences")]
+	public static void T_InvalidUtf8IsRejected()
+	{
+		Debug.WriteLine("UTF-8 validation tests ...");
+
+		static void AssertRejected(StringView rawBytes, StringView description)
+		{
+			let json = scope String();
+			json.Append("\"");
+			json.Append(rawBytes);
+			json.Append("\"");
+
+			var result = Json.Deserialize(json);
+			defer result.Dispose();
+
+			if (result case .Err(let err))
+				Test.Assert(err case .InvalidEncoding, scope $"{description} should report InvalidEncoding, got {err}");
+			else
+				Test.Assert(false, scope $"{description} should be rejected");
+		}
+
+		// Test 1: Lone continuation byte
+		{
+			let raw = scope String();
+			raw.Append((char8)0x80);
+			AssertRejected(raw, "Lone continuation byte 0x80");
+			Debug.WriteLine("  Test 1 (lone continuation byte): PASSED");
+		}
+
+		// Test 2: Overlong encoding of U+0000
+		{
+			let raw = scope String();
+			raw.Append((char8)0xC0);
+			raw.Append((char8)0x80);
+			AssertRejected(raw, "Overlong NUL 0xC0 0x80");
+			Debug.WriteLine("  Test 2 (overlong NUL): PASSED");
+		}
+
+		// Test 3: Three byte sequence cut short by the closing quote
+		{
+			let raw = scope String();
+			raw.Append((char8)0xE2);
+			raw.Append((char8)0x82);
+			AssertRejected(raw, "Truncated 3 byte sequence 0xE2 0x82");
+			Debug.WriteLine("  Test 3 (truncated 3 byte sequence): PASSED");
+		}
+
+		// Test 4: Lead byte that encodes a code point above U+10FFFF
+		{
+			let raw = scope String();
+			raw.Append((char8)0xF5);
+			raw.Append((char8)0x80);
+			raw.Append((char8)0x80);
+			raw.Append((char8)0x80);
+			AssertRejected(raw, "Out of range lead byte 0xF5");
+			Debug.WriteLine("  Test 4 (out of range lead byte): PASSED");
+		}
+
+		// Test 5: Surrogate half encoded as raw bytes instead of an escape
+		{
+			let raw = scope String();
+			raw.Append((char8)0xED);
+			raw.Append((char8)0xA0);
+			raw.Append((char8)0x80);
+			AssertRejected(raw, "Raw surrogate U+D800");
+			Debug.WriteLine("  Test 5 (raw surrogate): PASSED");
+		}
+
+		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+	}
 }

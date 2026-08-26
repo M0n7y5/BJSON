@@ -298,4 +298,49 @@ class ErrorHandlingTest
 
 		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
 	}
+
+	[Test(Name = "Number Parsing - int64 Minimum")]
+	public static void T_Int64MinimumBoundary()
+	{
+		Debug.WriteLine("Number Parsing - int64 minimum ...");
+
+		var result = Json.Deserialize("-9223372036854775808");
+		defer result.Dispose();
+
+		if (result case .Ok(let json))
+		{
+			Test.Assert(json.type == .NUMBER_SIGNED, scope $"Expected a signed integer, got {json.type}");
+
+			int64 value = json;
+			Test.Assert(value == int64.MinValue, scope $"Expected {int64.MinValue}, got {value}");
+		}
+		else
+		{
+			Test.Assert(false, "int64 minimum should parse");
+		}
+
+		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+	}
+
+	[Test(Name = "Number Parsing - Negative Zero")]
+	public static void T_NegativeZeroKeepsSign()
+	{
+		Debug.WriteLine("Number Parsing - negative zero ...");
+
+		var result = Json.Deserialize("-0");
+		defer result.Dispose();
+
+		if (result case .Ok(let json))
+		{
+			double value = json;
+			Test.Assert(value == 0.0, scope $"Expected zero, got {value}");
+			Test.Assert(value.IsNegative, "Bare -0 should keep its sign");
+		}
+		else
+		{
+			Test.Assert(false, "-0 should parse");
+		}
+
+		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
+	}
 }

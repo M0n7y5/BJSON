@@ -323,6 +323,31 @@ class CommentTest
 			Debug.WriteLine("  Test 18 (complex nested): PASSED");
 		}
 
+		// Test 19: Unterminated multi-line comment reports the missing terminator
+		{
+			let jsonWithComments = "/* x";
+
+			var config = DeserializerConfig() { EnableComments = true };
+			var deserializer = scope Deserializer(config);
+			var result = deserializer.Deserialize(jsonWithComments);
+			defer result.Dispose();
+
+			if (result case .Err(let err))
+			{
+				if (err case .UnexpectedToken(let errLine, let errColumn, let expected))
+				{
+					Test.Assert(expected == "closing */", scope $"Expected 'closing */', got '{expected}'");
+					Test.Assert(errLine == 1, scope $"Expected line 1, got {errLine}");
+					Test.Assert(errColumn == 5, scope $"Expected column 5, got {errColumn}");
+				}
+				else
+					Test.Assert(false, scope $"Unterminated comment should report the missing closing, got {err}");
+			}
+			else
+				Test.Assert(false, "Unterminated multi-line comment should fail");
+			Debug.WriteLine("  Test 19 (unterminated comment payload): PASSED");
+		}
+
 		Debug.WriteLine("TEST COMPLETED SUCCESSFULLY!");
 	}
 }
