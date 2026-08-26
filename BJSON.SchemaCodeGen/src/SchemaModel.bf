@@ -32,7 +32,7 @@ enum SchemaType
 
 /// One schema of the parsed document.
 /// Ownership: the node list that SchemaParser.Parse fills owns every SchemaModel, and the caller
-/// of Parse owns that list. A node owns only its own strings, the keys and PropertyModel values of
+/// of Parse owns that list. A node owns only its own strings, the PropertyModel entries of
 /// Properties, the strings in Required and EnumValues, and the AllOf list container. Items, the
 /// AllOf entries and ReferencedSchema are non owning pointers to other nodes of that same list, so
 /// nothing frees a node through them.
@@ -47,8 +47,9 @@ class SchemaModel
 	public SchemaType Type;
 	/// Whether `type` listed "null" beside the type, which makes a value type field nullable.
 	public bool IsNullable;
-	/// Object properties keyed by the raw JSON key. Owns both the keys and the values.
-	public Dictionary<String, PropertyModel> Properties = new .() ~ DeleteDictionaryAndKeysAndValues!(_);
+	/// Object properties in the order the document declares them, which is the order the generated
+	/// fields keep. Owns them. FindProperty looks one up by its raw JSON key.
+	public List<PropertyModel> Properties = new .() ~ DeleteContainerAndItems!(_);
 	/// Raw JSON keys listed by `required`. Owns the strings.
 	public List<String> Required = new .() ~ DeleteContainerAndItems!(_);
 	/// Values listed by `enum`. Owns the strings.
@@ -59,6 +60,13 @@ class SchemaModel
 	/// The first entry that resolves to an object becomes the Beef base class, and TypeResolver
 	/// copies the properties of the later entries into this node.
 	public List<SchemaModel> AllOf = new .() ~ delete _;
+	/// Name of the Beef base class, filled by TypeResolver from the first `allOf` member that
+	/// resolves to an object. Empty when the type has no base.
+	public String BaseTypeName = new String() ~ delete _;
+	/// Whether this node becomes a generated file. TypeResolver clears it for an inline `allOf`
+	/// member whose properties it copied into the deriving type: the copies leave that member with
+	/// no reader, so a file for it would declare a class nothing names.
+	public bool Generate = true;
 	/// Target of `$ref`, filled by TypeResolver.Resolve. Non owning: the node list owns it.
 	public SchemaModel ReferencedSchema;
 	/// Raw `$ref` text, empty unless Type is .Ref.
@@ -70,15 +78,33 @@ class SchemaModel
 	/// The schema this node stands for: a `$ref` with a resolved target reports the target, every
 	/// other node reports itself. Non owning.
 	public SchemaModel Resolved => ((this.Type == .Ref) && (this.ReferencedSchema != null)) ? this.ReferencedSchema : this;
+
+	/// Finds the property declaring a raw JSON key, compared case sensitively.
+	/// @param jsonName The raw JSON key.
+	/// @returns The property, or null when this schema does not declare it. Non owning: the
+	///          Properties list owns it.
+	public PropertyModel FindProperty(StringView jsonName)
+	{
+		for (var prop in this.Properties)
+		{
+			if (prop.JsonName.Equals(jsonName, .Ordinal))
+			{
+				return prop;
+			}
+		}
+
+		return null;
+	}
 }
 
-/// One property of an object schema. Owned by the Properties dictionary that holds it, so it is
-/// freed with the SchemaModel that owns that dictionary. Owns its own strings.
+/// One property of an object schema. Owned by the Properties list that holds it, so it is freed
+/// with the SchemaModel that owns that list. Owns its own strings.
 class PropertyModel
 {
-	/// Beef field name.
+	/// Beef field name derived from the JSON key. CodeGenerator numbers it when another property of
+	/// the same type already took that name.
 	public String Name = new String() ~ delete _;
-	/// Raw JSON key, emitted as [JsonPropertyName] when it differs from Name.
+	/// Raw JSON key, emitted as [JsonPropertyName] when it differs from the field name.
 	public String JsonName = new String() ~ delete _;
 	/// Schema of the property value. Non owning: the node list owns it. A property that
 	/// TypeResolver copied in from a further `allOf` member is a separate PropertyModel pointing at
@@ -87,9 +113,6 @@ class PropertyModel
 	/// Whether `required` names this property, emitted as [JsonRequired]. A `required` entry on a
 	/// derived schema instead marks the property on the base schema that declares it.
 	public bool IsRequired;
-	/// Reserved for a `default` keyword. The parser never fills it and the generator never reads
-	/// it, so it is always empty.
-	public String DefaultValue = new String() ~ delete _;
 	/// Property `description`, emitted as a doc comment unless --skip-docs.
 	public String Description = new String() ~ delete _;
 }

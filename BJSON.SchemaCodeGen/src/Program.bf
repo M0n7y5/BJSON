@@ -12,6 +12,9 @@ namespace BJSON.SchemaCodeGen;
 /// name, which beats the schema `title`), --integer-type <int32|int64>, --number-type
 /// <float|double>, --skip-docs, and -h or --help. Every option is rejected when it repeats, and
 /// every option that takes a value is rejected when the value is missing or empty.
+/// A -n value has to spell a Beef namespace, identifiers joined by '.', and the root type name a
+/// -c value or the schema file name derives has to hold a letter or a digit. Neither reaches the
+/// generated source unchecked.
 /// The exit code names the stage that failed:
 /// 0, the files were written, or --help was asked for.
 /// 1, the arguments are unusable, or the schema file is missing or unreadable.
@@ -58,6 +61,13 @@ class Program
 			return 1;
 		}
 		
+		if (!IsNamespace(options.Namespace))
+		{
+			ReportError(scope $"Error: {options.Namespace} is not a namespace. Expected Beef identifiers joined by '.', for example MyApp.Models.\n");
+			PrintUsage();
+			return 1;
+		}
+		
 		if (!File.Exists(options.SchemaFile))
 		{
 			ReportError(scope $"Error: schema file not found: {options.SchemaFile}");
@@ -75,7 +85,7 @@ class Program
 		String rootName = scope String();
 		if (!options.RootClassName.IsEmpty)
 		{
-			ToPascalCase(options.RootClassName, rootName);
+			NameMangler.ToPascalCase(options.RootClassName, rootName);
 		}
 		else
 		{
@@ -86,7 +96,13 @@ class Program
 			{
 				fileName.RemoveToEnd(dotIndex);
 			}
-			ToPascalCase(fileName, rootName);
+			NameMangler.ToPascalCase(fileName, rootName);
+		}
+		
+		if (!NameMangler.IsIdentifier(rootName))
+		{
+			ReportError("Error: the root type name holds no letter and no digit. Pass -c with a name that starts a Beef identifier.");
+			return 1;
 		}
 		
 		Console.WriteLine(scope $"Parsing schema: {options.SchemaFile}");
@@ -296,43 +312,20 @@ class Program
 		Console.WriteLine("  BJSON.SchemaCodeGen schema.json -n MyApp -c ApiResponse");
 	}
 	
-	/// Turns a name into a Beef identifier the same way SchemaParser does: every character that
-	/// cannot appear in one acts as a word separator, and a leading digit gets an underscore in
-	/// front of it.
-	private static void ToPascalCase(StringView input, String output)
+	/// Whether text spells a Beef namespace: one or more identifiers joined by '.'.
+	/// @param text The -n value.
+	/// @returns true when text can be interpolated into a `namespace` declaration.
+	private static bool IsNamespace(StringView text)
 	{
-		bool nextUpper = true;
-		for (int i = 0; i < input.Length; i++)
+		for (var segment in text.Split('.'))
 		{
-			char8 c = input[i];
-			bool isLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-			bool isDigit = c >= '0' && c <= '9';
-			if (!isLetter && !isDigit)
+			if (!NameMangler.IsIdentifier(segment))
 			{
-				nextUpper = true;
-			}
-			else if (nextUpper)
-			{
-				if (output.IsEmpty && isDigit)
-				{
-					output.Append('_');
-				}
-				
-				if (c >= 'a' && c <= 'z')
-				{
-					output.Append((char8)(c - 32));
-				}
-				else
-				{
-					output.Append(c);
-				}
-				nextUpper = false;
-			}
-			else
-			{
-				output.Append(c);
+				return false;
 			}
 		}
+		
+		return true;
 	}
 }
 

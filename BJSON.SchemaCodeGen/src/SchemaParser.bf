@@ -83,7 +83,7 @@ class SchemaParser
 				if (title.IsString())
 				{
 					String titleName = scope String();
-					ToPascalCase((StringView)title, titleName);
+					NameMangler.ToPascalCase((StringView)title, titleName);
 					if (!titleName.IsEmpty)
 					{
 						model.Name.Set(titleName);
@@ -171,10 +171,10 @@ class SchemaParser
 				// The property joins its owner before it is filled in, so an error below frees it
 				// with the rest of the graph.
 				var propModel = new PropertyModel();
-				model.Properties.Add(new String(kvp.key), propModel);
+				model.Properties.Add(propModel);
 
 				propModel.JsonName.Set(kvp.key);
-				ToPascalCase(kvp.key, propModel.Name);
+				NameMangler.ToPascalCase(kvp.key, propModel.Name);
 
 				if (propModel.Name.IsEmpty)
 				{
@@ -183,7 +183,7 @@ class SchemaParser
 
 				String propPointer = scope String(pointer);
 				propPointer.Append("/properties/");
-				AppendPointerToken(kvp.key, propPointer);
+				JsonPointer.Escape(kvp.key, propPointer);
 
 				String nestedName = scope String();
 				nestedName.Append(model.Name);
@@ -343,13 +343,13 @@ class SchemaParser
 				}
 
 				String defName = scope String();
-				ToPascalCase(kvp.key, defName);
+				NameMangler.ToPascalCase(kvp.key, defName);
 
 				String defPointer = scope String(pointer);
 				defPointer.Append('/');
 				defPointer.Append(keyword);
 				defPointer.Append('/');
-				AppendPointerToken(kvp.key, defPointer);
+				JsonPointer.Escape(kvp.key, defPointer);
 
 				if (ParseSchema(kvp.value, defName, defPointer, true) case .Err(let err))
 				{
@@ -440,66 +440,6 @@ class SchemaParser
 		}
 
 		return .Ok;
-	}
-
-	/// Appends one RFC 6901 reference token, escaping '~' as "~0" and '/' as "~1".
-	private void AppendPointerToken(StringView token, String output)
-	{
-		for (int i = 0; i < token.Length; i++)
-		{
-			char8 c = token[i];
-			if (c == '~')
-			{
-				output.Append("~0");
-			}
-			else if (c == '/')
-			{
-				output.Append("~1");
-			}
-			else
-			{
-				output.Append(c);
-			}
-		}
-	}
-
-	/// Turns a JSON name into a Beef identifier: every character that cannot appear in one acts as
-	/// a word separator, and a leading digit gets an underscore in front of it.
-	/// The result is empty when the name carries no letter and no digit.
-	private void ToPascalCase(StringView input, String output)
-	{
-		bool nextUpper = true;
-		for (int i = 0; i < input.Length; i++)
-		{
-			char8 c = input[i];
-			bool isLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-			bool isDigit = c >= '0' && c <= '9';
-			if (!isLetter && !isDigit)
-			{
-				nextUpper = true;
-			}
-			else if (nextUpper)
-			{
-				if (output.IsEmpty && isDigit)
-				{
-					output.Append('_');
-				}
-				
-				if (c >= 'a' && c <= 'z')
-				{
-					output.Append((char8)(c - 32));
-				}
-				else
-				{
-					output.Append(c);
-				}
-				nextUpper = false;
-			}
-			else
-			{
-				output.Append(c);
-			}
-		}
 	}
 }
 

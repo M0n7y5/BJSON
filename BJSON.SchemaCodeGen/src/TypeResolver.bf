@@ -11,8 +11,8 @@ namespace BJSON.SchemaCodeGen;
 /// `required` entry naming a property that neither the schema nor any of its bases declares
 /// (.UnsupportedKeyword), and an object or enum whose name is empty (.UnnamedType).
 /// Ownership: the resolver never allocates or frees a SchemaModel. The only allocations that
-/// outlive a Resolve call are the PropertyModel copies and dictionary keys that `allOf`
-/// inheritance adds, and the SchemaModel that receives them owns them.
+/// outlive a Resolve call are the PropertyModel copies that `allOf` inheritance adds, and the
+/// SchemaModel that receives them owns them.
 class TypeResolver
 {
 	/// Every node of the schema graph, owned by the caller of Resolve. Non owning.
@@ -57,17 +57,8 @@ class TypeResolver
 				return .Err(.UnnamedType);
 			}
 
-			String uniqueName = scope String(schema.Name);
-			int suffix = 1;
-			while (usedNames.Contains(uniqueName))
-			{
-				uniqueName.Set(schema.Name);
-				uniqueName.Append(++suffix);
-			}
-
-			// The set owns its strings: a scope allocated name would leave it hashing freed stack
-			// memory after this iteration.
-			usedNames.Add(new String(uniqueName));
+			String uniqueName = scope String();
+			NameMangler.AppendUnique(schema.Name, usedNames, uniqueName);
 			schema.Name.Set(uniqueName);
 		}
 
@@ -157,7 +148,8 @@ class TypeResolver
 
 	/// Applies the `allOf` members of schema: the first member that resolves to an object becomes
 	/// the Beef base class and keeps its properties where they are, every later object member has
-	/// its properties copied in, then the schema's own `required` list is applied.
+	/// its properties copied in and, when it is inline, loses its own file, then the schema's own
+	/// `required` list is applied.
 	/// @param merged Nodes already merged.
 	/// @param inProgress Nodes on the current chain, so a cycle is reported instead of recursing.
 	private Result<void, SchemaError> MergeSchema(SchemaModel schema, HashSet<SchemaModel> merged, HashSet<SchemaModel> inProgress)
@@ -190,10 +182,20 @@ class TypeResolver
 			if (!baseClaimed)
 			{
 				baseClaimed = true;
+				schema.BaseTypeName.Set(baseSchema.Name);
 				continue;
 			}
 
 			InheritProperties(schema, baseSchema);
+
+			// An inline member carries no name in the document, so once its properties live on the
+			// deriving type nothing reads it, and a file for it would declare a class no generated
+			// type names. A member reached through `$ref` names a definition another schema may
+			// use as a property type, so that one keeps its file.
+			if ((member.Type != .Ref) && !IsRefTarget(baseSchema))
+			{
+				baseSchema.Generate = false;
+			}
 		}
 
 		Try!(ApplyRequired(schema));
@@ -204,29 +206,42 @@ class TypeResolver
 		return .Ok;
 	}
 
+	/// Whether a `$ref` anywhere in the document resolves to this node.
+	private bool IsRefTarget(SchemaModel node)
+	{
+		for (var schema in mAllSchemas)
+		{
+			if ((schema.Type == .Ref) && (schema.ReferencedSchema == node))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	/// Copies the base properties that schema does not declare itself, for an `allOf` member that
 	/// did not become the base class.
 	/// Ownership: each copy is a new PropertyModel with its own strings, owned by the Properties
-	/// dictionary of schema. Its Schema pointer aliases the base property's node, which the node
-	/// list owns, so neither property frees it.
+	/// list of schema. Its Schema pointer aliases the base property's node, which the node list
+	/// owns, so neither property frees it.
 	private void InheritProperties(SchemaModel schema, SchemaModel baseSchema)
 	{
-		for (var kvp in baseSchema.Properties)
+		for (var prop in baseSchema.Properties)
 		{
-			if (schema.Properties.ContainsKey(kvp.key))
+			if (schema.FindProperty(prop.JsonName) != null)
 			{
 				continue;
 			}
 
 			var propCopy = new PropertyModel();
-			schema.Properties.Add(new String(kvp.key), propCopy);
+			schema.Properties.Add(propCopy);
 
-			propCopy.Name.Set(kvp.value.Name);
-			propCopy.JsonName.Set(kvp.value.JsonName);
-			propCopy.Description.Set(kvp.value.Description);
-			propCopy.DefaultValue.Set(kvp.value.DefaultValue);
-			propCopy.IsRequired = kvp.value.IsRequired;
-			propCopy.Schema = kvp.value.Schema;
+			propCopy.Name.Set(prop.Name);
+			propCopy.JsonName.Set(prop.JsonName);
+			propCopy.Description.Set(prop.Description);
+			propCopy.IsRequired = prop.IsRequired;
+			propCopy.Schema = prop.Schema;
 		}
 	}
 
@@ -235,7 +250,8 @@ class TypeResolver
 	{
 		for (var name in schema.Required)
 		{
-			if (schema.Properties.TryGetValue(name, let prop))
+			var prop = schema.FindProperty(name);
+			if (prop != null)
 			{
 				prop.IsRequired = true;
 				continue;
@@ -262,7 +278,8 @@ class TypeResolver
 				continue;
 			}
 
-			if (baseSchema.Properties.TryGetValue(scope String(name), let prop))
+			var prop = baseSchema.FindProperty(name);
+			if (prop != null)
 			{
 				prop.IsRequired = true;
 				return true;
@@ -289,7 +306,8 @@ class TypeResolver
 
 	/// Adds schema after the types it needs: its `$ref` target, its `allOf` bases and its element
 	/// schema. A property's schema is not followed here, because the caller's pass over every node
-	/// reaches it. Only objects and enums become files.
+	/// reaches it. Only an object or an enum becomes a file, and only while it is still generated:
+	/// an `allOf` member the deriving type absorbed is not.
 	private void AddToOrder(SchemaModel schema, HashSet<SchemaModel> processed, List<SchemaModel> outGenerationOrder)
 	{
 		if (schema == null || !processed.Add(schema))
@@ -309,7 +327,7 @@ class TypeResolver
 
 		AddToOrder(schema.Items, processed, outGenerationOrder);
 
-		if ((schema.Type == .Object) || (schema.Type == .Enum))
+		if (schema.Generate && ((schema.Type == .Object) || (schema.Type == .Enum)))
 		{
 			outGenerationOrder.Add(schema);
 		}

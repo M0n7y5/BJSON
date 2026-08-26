@@ -53,38 +53,44 @@ class CodeGenerator
 	{
 		if (!schema.Description.IsEmpty && !mConfig.SkipDocs)
 		{
-			sb.AppendF($"/// {schema.Description}\n");
+			AppendDocComment(sb, "", schema.Description);
 		}
 		
 		sb.Append("[JsonObject]\n");
 		sb.AppendF($"class {schema.Name}");
 		
-		for (var member in schema.AllOf)
+		// TypeResolver picked the `allOf` member that becomes the base class, so the name is read
+		// here instead of derived a second time.
+		if (!schema.BaseTypeName.IsEmpty)
 		{
-			// A `$ref` member names the base class through its target.
-			var baseSchema = member.Resolved;
-			if (baseSchema.Type == .Object)
-			{
-				sb.AppendF($" : {baseSchema.Name}");
-				break;
-			}
+			sb.AppendF($" : {schema.BaseTypeName}");
 		}
 		
 		sb.Append("\n{\n");
 		
-		for (var kvp in schema.Properties)
+		// Two JSON keys can mangle to one field name, which Beef rejects as a duplicate, so a
+		// repeat is numbered inside the type that declares it.
+		HashSet<String> usedNames = scope HashSet<String>();
+		defer { ClearAndDeleteItems!(usedNames); }
+		
+		for (var prop in schema.Properties)
 		{
-			GenerateField(sb, kvp.value);
+			String fieldName = scope String();
+			NameMangler.AppendUnique(prop.Name, usedNames, fieldName);
+			GenerateField(sb, prop, fieldName);
 		}
 		
 		sb.Append("}\n");
 	}
 	
-	private void GenerateField(String sb, PropertyModel prop)
+	/// Renders one property as a field with its attributes and its initializer.
+	/// @param prop The property to render. Non owning.
+	/// @param fieldName Beef name of the field, already unique inside the declaring type.
+	private void GenerateField(String sb, PropertyModel prop, StringView fieldName)
 	{
 		if (!prop.Description.IsEmpty && !mConfig.SkipDocs)
 		{
-			sb.AppendF($"\t/// {prop.Description}\n");
+			AppendDocComment(sb, "\t", prop.Description);
 		}
 		
 		if (prop.IsRequired)
@@ -94,7 +100,7 @@ class CodeGenerator
 		
 		// BJSON looks keys up case sensitively, so a rename that only changes case still needs
 		// the attribute.
-		if (!prop.JsonName.IsEmpty && !prop.Name.Equals(prop.JsonName, .Ordinal))
+		if (!prop.JsonName.IsEmpty && !prop.JsonName.Equals(fieldName, .Ordinal))
 		{
 			String literal = scope String();
 			AppendSourceLiteral(prop.JsonName, literal);
@@ -107,7 +113,7 @@ class CodeGenerator
 		GetBeefType(prop.Schema, typeName);
 		sb.Append(typeName);
 		
-		sb.AppendF($" {prop.Name}");
+		sb.AppendF($" {fieldName}");
 		
 		String init = scope String();
 		GetInitializer(prop.Schema, init);
@@ -121,6 +127,19 @@ class CodeGenerator
 		}
 		
 		sb.Append("\n\n");
+	}
+	
+	/// Emits a schema `description` as a doc comment on one line. A newline inside the text would
+	/// end the comment and leave the rest of it in the generated file as code.
+	/// @param indent Leading whitespace of the comment line, empty for a type.
+	/// @param description The `description` text.
+	private void AppendDocComment(String sb, StringView indent, StringView description)
+	{
+		String oneLine = scope String(description);
+		oneLine.Replace('\r', ' ');
+		oneLine.Replace('\n', ' ');
+		
+		sb.AppendF($"{indent}/// {oneLine}\n");
 	}
 	
 	/// Escapes a JSON key for a Beef source string literal, so a key holding a quote or a
@@ -145,12 +164,17 @@ class CodeGenerator
 	{
 		if (!schema.Description.IsEmpty && !mConfig.SkipDocs)
 		{
-			sb.AppendF($"/// {schema.Description}\n");
+			AppendDocComment(sb, "", schema.Description);
 		}
 		
 		// BJSON serializes enums natively, and [JsonObject] is not valid on one.
 		sb.AppendF($"enum {schema.Name}\n");
 		sb.Append("{\n");
+		
+		// Two `enum` values can mangle to one member name, which Beef rejects as a duplicate, so a
+		// repeat is numbered inside the enum that lists it.
+		HashSet<String> usedNames = scope HashSet<String>();
+		defer { ClearAndDeleteItems!(usedNames); }
 		
 		bool first = true;
 		for (var val in schema.EnumValues)
@@ -158,9 +182,12 @@ class CodeGenerator
 			if (!first) sb.Append(",\n");
 			first = false;
 			
-			String enumName = scope String();
-			ToValidEnumName(val, enumName);
-			sb.AppendF($"\t{enumName}");
+			String memberName = scope String();
+			NameMangler.ToEnumMemberName(val, memberName);
+			
+			String uniqueName = scope String();
+			NameMangler.AppendUnique(memberName, usedNames, uniqueName);
+			sb.AppendF($"\t{uniqueName}");
 		}
 		
 		sb.Append("\n}\n");
@@ -267,50 +294,6 @@ class CodeGenerator
 			return true;
 		default:
 			return false;
-		}
-	}
-	
-	private void ToValidEnumName(StringView input, String output)
-	{
-		if (input.IsEmpty)
-		{
-			output.Append("Unknown");
-			return;
-		}
-		
-		bool first = true;
-		for (int i = 0; i < input.Length; i++)
-		{
-			char8 c = input[i];
-			bool isLetterOrDigit = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
-			if (isLetterOrDigit)
-			{
-				if (first)
-				{
-					if (c >= 'a' && c <= 'z')
-					{
-						output.Append((char8)(c - 32));
-					}
-					else
-					{
-						output.Append(c);
-					}
-					first = false;
-				}
-				else
-				{
-					output.Append(c);
-				}
-			}
-			else
-			{
-				output.Append('_');
-			}
-		}
-		
-		if (output.IsEmpty)
-		{
-			output.Append("Unknown");
 		}
 	}
 }
