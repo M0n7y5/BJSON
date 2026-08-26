@@ -81,6 +81,25 @@ class AwkwardNames
 	public int Second = 2;
 }
 
+[JsonObject]
+class GeneratedBase
+{
+	[JsonRequired]
+	[JsonPropertyName("name")]
+	public String Name = new .() ~ delete _;
+
+	[JsonPropertyName("age")]
+	public int64 Age;
+}
+
+[JsonObject]
+class GeneratedDerived : GeneratedBase
+{
+	[JsonRequired]
+	[JsonPropertyName("employee_id")]
+	public int64 EmployeeId;
+}
+
 class RegressionTest
 {
 	[Test(Name = "Regression: shortest round-trip for a 17 digit negative double")]
@@ -265,5 +284,30 @@ class RegressionTest
 		var count = root.TryGetRef("count").Value;
 		Test.Assert(count.AsNumber() case .Ok(let number) && (number == 7), "count must read as 7");
 		Test.Assert(count.AsBool() case .Err, "a number must not read as a bool");
+	}
+
+	[Test(Name = "Regression: inherited fields appear once and required base fields are enforced")]
+	public static void T_GeneratedInheritanceShape()
+	{
+		let derived = scope GeneratedDerived();
+		derived.Name.Set("Ada");
+		derived.Age = 36;
+		derived.EmployeeId = 7;
+
+		let output = scope String();
+		Test.Assert(Json.Serialize(derived, output) case .Ok, "serialize must succeed");
+		let firstName = output.IndexOf("\"name\"");
+		Test.Assert(firstName >= 0, scope $"name missing: '{output}'");
+		Test.Assert(output.IndexOf("\"name\"", firstName + 1) == -1, scope $"name emitted twice: '{output}'");
+
+		let restored = scope GeneratedDerived();
+		var stream = scope StringStream(output, .Reference);
+		Test.Assert(Json.Deserialize<GeneratedDerived>(stream, restored) case .Ok, "round-trip must succeed");
+		Test.Assert(restored.Name == "Ada", scope $"got '{restored.Name}'");
+		Test.Assert(restored.EmployeeId == 7, scope $"got {restored.EmployeeId}");
+
+		let missingBase = scope GeneratedDerived();
+		var missingStream = scope StringStream("{\"employee_id\":7}", .Reference);
+		Test.Assert(Json.Deserialize<GeneratedDerived>(missingStream, missingBase) case .Err, "a missing required base field must fail");
 	}
 }

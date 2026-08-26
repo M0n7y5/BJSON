@@ -16,7 +16,7 @@ class Program
 			return 1;
 		}
 		
-		if (options.ShowHelp || args.Count == 0)
+		if (options.ShowHelp)
 		{
 			PrintUsage();
 			return 0;
@@ -24,128 +24,109 @@ class Program
 		
 		if (options.SchemaFile.IsEmpty)
 		{
-			Console.Error.WriteLine("Error: Schema file is required.\n");
+			ReportError("Error: a schema file is required.\n");
 			PrintUsage();
 			return 1;
 		}
 		
 		if (options.Namespace.IsEmpty)
 		{
-			Console.Error.WriteLine("Error: Namespace is required. Use -n or --namespace.\n");
+			ReportError("Error: a namespace is required. Use -n or --namespace.\n");
 			PrintUsage();
 			return 1;
 		}
 		
 		if (!File.Exists(options.SchemaFile))
 		{
-			Console.Error.WriteLine(scope $"Error: Schema file not found: {options.SchemaFile}\n");
+			ReportError(scope $"Error: schema file not found: {options.SchemaFile}");
 			return 1;
 		}
 		
 		String schemaContent = scope String();
-		var readResult = File.ReadAllText(options.SchemaFile, schemaContent);
-		if (readResult case .Err(let fileErr))
+		if (File.ReadAllText(options.SchemaFile, schemaContent) case .Err(let fileErr))
 		{
-			Console.Error.WriteLine(scope $"Error: Failed to read schema file: {fileErr}\n");
+			ReportError(scope $"Error: cannot read schema file {options.SchemaFile}: {fileErr}");
 			return 1;
 		}
 		
+		// -c wins over a `title` in the document, so the parser only reads `title` without it.
 		String rootName = scope String();
 		if (!options.RootClassName.IsEmpty)
 		{
-			rootName.Append(options.RootClassName);
+			ToPascalCase(options.RootClassName, rootName);
 		}
 		else
 		{
 			String fileName = scope String();
 			Path.GetFileNameWithoutExtension(options.SchemaFile, fileName);
-			rootName.Append(fileName);
-			int dotIndex = rootName.IndexOf('.');
+			int dotIndex = fileName.IndexOf('.');
 			if (dotIndex >= 0)
 			{
-				rootName.RemoveToEnd(dotIndex);
+				fileName.RemoveToEnd(dotIndex);
 			}
+			ToPascalCase(fileName, rootName);
 		}
-		String pascalRootName = scope String();
-		ToPascalCase(rootName, pascalRootName);
-		rootName.Set(pascalRootName);
 		
 		Console.WriteLine(scope $"Parsing schema: {options.SchemaFile}");
 		
-		var parser = scope SchemaParser();
-		var parseResult = parser.Parse(schemaContent, rootName);
+		// The node list owns every schema of the run, so one pass frees the whole graph.
+		List<SchemaModel> schemaNodes = scope List<SchemaModel>();
+		defer { ClearAndDeleteItems!(schemaNodes); }
 		
-		if (parseResult case .Err(let parseErr))
+		var parser = scope SchemaParser();
+		if (parser.Parse(schemaContent, rootName, options.RootClassName.IsEmpty, schemaNodes) case .Err(let parseErr))
 		{
-			Console.Error.Write("Error: Failed to parse schema: ");
-			switch (parseErr)
-			{
-			case .JsonError:
-				Console.Error.WriteLine("JSON parse error");
-			case .InvalidSchema:
-				Console.Error.WriteLine("Invalid schema structure");
-			default:
-				Console.Error.WriteLine("Unknown error");
-			}
+			ReportError(scope $"Error: failed to parse schema: {parseErr}");
 			return 2;
 		}
 		
-		if (parseResult case .Ok(let rootSchema))
+		Console.WriteLine("Resolving types...");
+		
+		var resolver = scope TypeResolver();
+		List<SchemaModel> generationOrder = scope List<SchemaModel>();
+		if (resolver.Resolve(schemaNodes, generationOrder) case .Err(let resolveErr))
 		{
-			Console.WriteLine("Resolving types...");
-			
-			var resolver = scope TypeResolver();
-			var resolveResult = resolver.Resolve(rootSchema);
-			
-			if (resolveResult case .Err)
-			{
-				Console.Error.WriteLine("Error: Type resolution failed");
-				delete rootSchema;
-				return 3;
-			}
-			
-			if (resolveResult case .Ok(let schemas))
-			{
-				Console.WriteLine(scope $"Found {schemas.Count} types to generate");
-				
-				GeneratorConfig config = .();
-				config.Namespace = options.Namespace;
-				config.IntegerType = options.IntegerType;
-				config.NumberType = options.NumberType;
-				config.SkipDocs = options.SkipDocs;
-				
-				var writer = scope FileWriter();
-				var writeResult = writer.WriteFiles(schemas, config, options.OutputDir);
-				
-				if (writeResult case .Err(let writeErr))
-				{
-					switch (writeErr)
-					{
-					case .CreateDirectoryFailed(let msg):
-						Console.Error.WriteLine(scope $"Error: {msg}");
-					case .WriteFailed(let msg):
-						Console.Error.WriteLine(scope $"Error: {msg}");
-					}
-					delete schemas;
-					resolver.Cleanup();
-					return 4;
-				}
-				
-				Console.WriteLine(scope $"\nSuccessfully generated code in: {options.OutputDir}");
-				
-				// Delete the list but not the items (TypeResolver will clean them up)
-				delete schemas;
-			}
-			
-			// TypeResolver cleanup deletes all schemas including rootSchema
-			resolver.Cleanup();
+			ReportError(scope $"Error: type resolution failed: {resolveErr}");
+			return 3;
 		}
+		
+		if (generationOrder.IsEmpty)
+		{
+			ReportError("Error: the schema declares no object or enum type, so there is nothing to generate.");
+			return 2;
+		}
+		
+		Console.WriteLine(scope $"Found {generationOrder.Count} types to generate");
+		
+		GeneratorConfig config = .();
+		config.Namespace = options.Namespace;
+		config.IntegerType = options.IntegerType;
+		config.NumberType = options.NumberType;
+		config.SkipDocs = options.SkipDocs;
+		
+		var writer = scope FileWriter();
+		if (writer.WriteFiles(generationOrder, config, options.OutputDir) case .Err(let writeErr))
+		{
+			ReportError(scope $"Error: {writeErr}. Output directory: {options.OutputDir}");
+			return 4;
+		}
+		
+		Console.WriteLine(scope $"\nSuccessfully generated code in: {options.OutputDir}");
 		
 		return 0;
 	}
 	
+	/// Fills options from the command line, reporting the first unusable argument.
+	/// @returns false when the caller should print usage and fail.
 	private static bool ParseArguments(String[] args, CommandLineOptions options)
 	{
+		bool sawOutput = false;
+		bool sawNamespace = false;
+		bool sawClass = false;
+		bool sawIntegerType = false;
+		bool sawNumberType = false;
+		bool sawSkipDocs = false;
+		
 		for (int i = 0; i < args.Count; i++)
 		{
 			StringView arg = args[i];
@@ -157,56 +138,120 @@ class Program
 			}
 			else if (arg == "-o" || arg == "--output")
 			{
-				if (++i >= args.Count) return false;
-				options.OutputDir.Set(args[i]);
+				if (!TakeValue(args, ref i, arg, ref sawOutput, options.OutputDir))
+					return false;
 			}
 			else if (arg == "-n" || arg == "--namespace")
 			{
-				if (++i >= args.Count) return false;
-				options.Namespace.Set(args[i]);
+				if (!TakeValue(args, ref i, arg, ref sawNamespace, options.Namespace))
+					return false;
 			}
 			else if (arg == "-c" || arg == "--class")
 			{
-				if (++i >= args.Count) return false;
-				options.RootClassName.Set(args[i]);
+				if (!TakeValue(args, ref i, arg, ref sawClass, options.RootClassName))
+					return false;
 			}
 			else if (arg == "--integer-type")
 			{
-				if (++i >= args.Count) return false;
-				StringView type = args[i];
+				String type = scope String();
+				if (!TakeValue(args, ref i, arg, ref sawIntegerType, type))
+					return false;
+				
 				if (type == "int32")
 					options.IntegerType = .Int32;
 				else if (type == "int64")
 					options.IntegerType = .Int64;
+				else
+				{
+					ReportError(scope $"Error: unknown --integer-type value: {type}. Expected int32 or int64.\n");
+					return false;
+				}
 			}
 			else if (arg == "--number-type")
 			{
-				if (++i >= args.Count) return false;
-				StringView type = args[i];
+				String type = scope String();
+				if (!TakeValue(args, ref i, arg, ref sawNumberType, type))
+					return false;
+				
 				if (type == "float")
 					options.NumberType = .Float;
 				else if (type == "double")
 					options.NumberType = .Double;
+				else
+				{
+					ReportError(scope $"Error: unknown --number-type value: {type}. Expected float or double.\n");
+					return false;
+				}
 			}
 			else if (arg == "--skip-docs")
 			{
+				if (sawSkipDocs)
+				{
+					ReportError(scope $"Error: option {arg} was given more than once.\n");
+					return false;
+				}
+				
+				sawSkipDocs = true;
 				options.SkipDocs = true;
 			}
 			else if (!arg.StartsWith("-"))
 			{
 				if (!options.SchemaFile.IsEmpty)
 				{
+					ReportError(scope $"Error: only one schema file is accepted, got a second one: {arg}\n");
 					return false;
 				}
+				
 				options.SchemaFile.Set(arg);
 			}
 			else
 			{
+				ReportError(scope $"Error: unknown option: {arg}\n");
 				return false;
 			}
 		}
 		
 		return true;
+	}
+	
+	/// Reads the value that follows a flag.
+	/// @param i Index of the flag, advanced past the value it consumed.
+	/// @param flag The flag as the user spelled it, for the message.
+	/// @param seen Whether the flag already appeared. Set once the value is taken.
+	/// @param output Caller owned buffer that receives the value.
+	/// @returns false after reporting a repeated flag, a missing value or an empty value.
+	private static bool TakeValue(String[] args, ref int i, StringView flag, ref bool seen, String output)
+	{
+		if (seen)
+		{
+			ReportError(scope $"Error: option {flag} was given more than once.\n");
+			return false;
+		}
+		
+		if (i + 1 >= args.Count)
+		{
+			ReportError(scope $"Error: option {flag} requires a value.\n");
+			return false;
+		}
+		
+		i++;
+		if (args[i].IsEmpty)
+		{
+			ReportError(scope $"Error: option {flag} requires a value that is not empty.\n");
+			return false;
+		}
+		
+		seen = true;
+		output.Set(args[i]);
+		
+		return true;
+	}
+	
+	/// Reports a message on stderr. A failed diagnostic write cannot be acted on, so its result
+	/// is dropped on purpose.
+	private static void ReportError(StringView message)
+	{
+		Console.Error.WriteLine(message).IgnoreError();
 	}
 	
 	private static void PrintUsage()
@@ -218,7 +263,7 @@ class Program
 		Console.WriteLine("Options:");
 		Console.WriteLine("  -o, --output <dir>      Output directory (default: ./generated)");
 		Console.WriteLine("  -n, --namespace <name>  Namespace for classes (required)");
-		Console.WriteLine("  -c, --class <name>      Root class name override");
+		Console.WriteLine("  -c, --class <name>      Root class name override (wins over the schema title)");
 		Console.WriteLine("  --integer-type <type>   Integer type: int32, int64 (default: int64)");
 		Console.WriteLine("  --number-type <type>    Number type: float, double (default: double)");
 		Console.WriteLine("  --skip-docs             Skip documentation comments");
@@ -229,18 +274,28 @@ class Program
 		Console.WriteLine("  BJSON.SchemaCodeGen schema.json -n MyApp -c ApiResponse");
 	}
 	
+	/// Turns a name into a Beef identifier the same way SchemaParser does: every character that
+	/// cannot appear in one acts as a word separator, and a leading digit gets an underscore in
+	/// front of it.
 	private static void ToPascalCase(StringView input, String output)
 	{
 		bool nextUpper = true;
 		for (int i = 0; i < input.Length; i++)
 		{
 			char8 c = input[i];
-			if (c == '_' || c == '-' || c == ' ')
+			bool isLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+			bool isDigit = c >= '0' && c <= '9';
+			if (!isLetter && !isDigit)
 			{
 				nextUpper = true;
 			}
 			else if (nextUpper)
 			{
+				if (output.IsEmpty && isDigit)
+				{
+					output.Append('_');
+				}
+				
 				if (c >= 'a' && c <= 'z')
 				{
 					output.Append((char8)(c - 32));

@@ -6,10 +6,12 @@ using BJSON.Models;
 namespace BJSON.SchemaCodeGenTest;
 
 [JsonObject]
-class NestedObjectsCustomer
+class OrderCustomer
 {
+	[JsonPropertyName("name")]
 	public String Name = new .() ~ delete _;
 
-	public NestedObjectsCustomerAddress Address = new .() ~ delete _;
+	[JsonPropertyName("address")]
+	public OrderCustomerAddress Address = new .() ~ delete _;
 
 }

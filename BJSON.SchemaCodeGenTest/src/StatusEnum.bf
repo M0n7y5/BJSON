@@ -5,11 +5,10 @@ using BJSON.Models;
 
 namespace BJSON.SchemaCodeGenTest;
 
-[JsonObject]
-class InheritanceBase0
+enum StatusEnum
 {
-	public String Name = new .() ~ delete _;
-
-	public int64 Age;
-
+	Pending,
+	Processing,
+	Completed,
+	Cancelled
 }

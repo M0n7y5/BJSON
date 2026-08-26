@@ -19,6 +19,19 @@
 - Fixed unsupported collection element types emitting invalid JSON such as `[,,]` or `{"key":}` while reporting success. The generator now fails the build with the offending type name
 - Fixed `[JsonPropertyName]` values being spliced into emitted code unescaped: a name holding a quote broke compilation, and a backslash corrupted the key and produced invalid JSON. Names are now escaped for both the emitted source and the JSON output, and a name holding a control character other than tab, newline, or carriage return fails generation
 - Fixed `JsonPointer` rejecting array indexes above 2147483647 as malformed, and reduced the per token stack growth of pointer resolution to a single buffer
+- Fixed the parser accepting invalid UTF-8: lone continuation bytes, overlong forms, truncated sequences, raw surrogate halves, and code points above U+10FFFF were copied into the document and re-emitted. They now fail with `InvalidEncoding`, as RFC 8259 section 8.1 requires
+- Fixed `-9223372036854775808` overflowing at the negation, which aborted builds with arithmetic checks enabled, and fixed a bare `-0` losing its sign
+- Fixed an unterminated block comment reporting a generic `UnableToRead` instead of naming the missing `closing */`, including from inside objects and arrays
+- Fixed a lone carriage return not counting as a line break and a `\uXXXX` escape undercounting its column, so error positions are accurate
+- Fixed an escape sequence cut short by end of input being accepted with a truncated code point
+- Fixed `SchemaValidationResult.Errors` leaking on every failed validation, including the errors collected before an aborted validation
+- Fixed a recursive `$ref` reporting `RefCycleDetected` once the instance nested two levels. A `$ref` that reaches itself without consuming instance is still reported
+- Fixed a `$ref` naming an `$id` embedded in an already loaded schema being handed to the file resolver instead of resolving in memory
+- Fixed `minLength` and `maxLength` counting UTF-8 bytes instead of Unicode code points
+- Fixed `const`, `enum`, and `uniqueItems` comparing integers through `double`, which made values above 2^53 compare equal
+- Fixed five ownership defects in `BJSON.SchemaCodeGen` that freed schema nodes twice or freed stack memory, and the CLI now reports a distinct non zero exit code for argument, schema, resolution, and output failures
+- Fixed the generator omitting `[JsonPropertyName]` when a schema key differed from the field name only by case, which made every generated class look up keys that cannot match
+- Fixed the generator copying `allOf` base properties into the derived class while also deriving from it, so generated types shadowed their base and serialized the inherited keys twice. `required` naming an inherited property now marks it on the base
 
 ### API Changes
 
@@ -28,6 +41,10 @@
 - Added `JsonSerializationError.StreamWriteFailed` and `JsonSerializationError.MaximumDepthReached`. Serializing a tree nested deeper than 200 levels now returns an error instead of overflowing the stack
 - `JsonObject` and `JsonArray` no longer preallocate 32 dictionary slots and 16 list slots per container, which cut the cost of a small document by roughly an order of magnitude
 - Trailing data now reports the real line number and names `end of document` as the expected token
+- `JsonSchema.Validate` transfers ownership of the returned `SchemaValidationResult`, which now has a `Dispose`. Existing callers must dispose it
+- The schema validator implements `multipleOf`, `contains`, `minContains`, `maxContains`, and `propertyNames`, which were silently ignored
+- Removed the unreachable `JsonParsingError.DocumentIsEmpty` and `MissingQuotationMark` cases. An unescaped control character in a string now reports `UnexpectedToken` with `escaped control character`, and `InvalidEncoding` is reserved for UTF-8 validation
+- `BJSON.SchemaCodeGen` names types from `title`, parses `definitions` and `$defs`, and rejects unsupported constructs by name instead of silently generating a type that does not represent the schema. Generated file names change accordingly
 
 ### Known Limitations
 

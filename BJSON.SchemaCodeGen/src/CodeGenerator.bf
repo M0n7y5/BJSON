@@ -49,13 +49,13 @@ class CodeGenerator
 		sb.Append("[JsonObject]\n");
 		sb.AppendF($"class {schema.Name}");
 		
-		bool hasBaseClass = false;
-		for (var baseSchema in schema.AllOf)
+		for (var member in schema.AllOf)
 		{
+			// A `$ref` member names the base class through its target.
+			var baseSchema = member.Resolved;
 			if (baseSchema.Type == .Object)
 			{
 				sb.AppendF($" : {baseSchema.Name}");
-				hasBaseClass = true;
 				break;
 			}
 		}
@@ -82,9 +82,13 @@ class CodeGenerator
 			sb.Append("\t[JsonRequired]\n");
 		}
 		
-		if (!prop.JsonName.IsEmpty && !prop.Name.Equals(prop.JsonName, .OrdinalIgnoreCase))
+		// BJSON looks keys up case sensitively, so a rename that only changes case still needs
+		// the attribute.
+		if (!prop.JsonName.IsEmpty && !prop.Name.Equals(prop.JsonName, .Ordinal))
 		{
-			sb.AppendF($"\t[JsonPropertyName(\"{prop.JsonName}\")]\n");
+			String literal = scope String();
+			AppendSourceLiteral(prop.JsonName, literal);
+			sb.AppendF($"\t[JsonPropertyName(\"{literal}\")]\n");
 		}
 		
 		sb.AppendF($"\tpublic ");
@@ -107,6 +111,24 @@ class CodeGenerator
 		}
 		
 		sb.Append("\n\n");
+	}
+	
+	/// Escapes a JSON key for a Beef source string literal, so a key holding a quote or a
+	/// backslash cannot break or alter the generated code.
+	private void AppendSourceLiteral(StringView text, String outText)
+	{
+		for (let c in text)
+		{
+			switch (c)
+			{
+			case '"': outText.Append("\\\"");
+			case '\\': outText.Append("\\\\");
+			case '\n': outText.Append("\\n");
+			case '\r': outText.Append("\\r");
+			case '\t': outText.Append("\\t");
+			default: outText.Append(c);
+			}
+		}
 	}
 	
 	private void GenerateEnum(String sb, SchemaModel schema)
@@ -137,18 +159,15 @@ class CodeGenerator
 	
 	private void GetBeefType(SchemaModel schema, String output)
 	{
-		if (schema.Type == .Ref && schema.ReferencedSchema != null)
-		{
-			output.Append(schema.ReferencedSchema.Name);
-			return;
-		}
+		// A `$ref` carries the type of its target.
+		var resolved = schema.Resolved;
 		
-		switch (schema.Type)
+		switch (resolved.Type)
 		{
 		case .String:
 			output.Append("String");
 		case .Integer:
-			if (schema.IsNullable)
+			if (resolved.IsNullable)
 			{
 				output.Append(mConfig.IntegerType == .Int32 ? "int32?" : "int64?");
 			}
@@ -157,7 +176,7 @@ class CodeGenerator
 				output.Append(mConfig.IntegerType == .Int32 ? "int32" : "int64");
 			}
 		case .Number:
-			if (schema.IsNullable)
+			if (resolved.IsNullable)
 			{
 				output.Append(mConfig.NumberType == .Float ? "float?" : "double?");
 			}
@@ -166,7 +185,7 @@ class CodeGenerator
 				output.Append(mConfig.NumberType == .Float ? "float" : "double");
 			}
 		case .Boolean:
-			if (schema.IsNullable)
+			if (resolved.IsNullable)
 			{
 				output.Append("bool?");
 			}
@@ -176,9 +195,9 @@ class CodeGenerator
 			}
 		case .Array:
 			output.Append("List<");
-			if (schema.Items != null)
+			if (resolved.Items != null)
 			{
-				GetBeefType(schema.Items, output);
+				GetBeefType(resolved.Items, output);
 			}
 			else
 			{
@@ -186,14 +205,14 @@ class CodeGenerator
 			}
 			output.Append(">");
 		case .Object:
-			output.Append(schema.Name);
+			output.Append(resolved.Name);
 		case .Enum:
-			output.Append(schema.Name);
+			output.Append(resolved.Name);
 		default:
 			// Fallback for unrecognized types
 			// If it's nullable, use nullable int64 as a sensible default
 			// Otherwise use JsonValue
-			if (schema.IsNullable)
+			if (resolved.IsNullable)
 			{
 				output.Append(mConfig.IntegerType == .Int32 ? "int32?" : "int64?");
 			}
@@ -206,24 +225,43 @@ class CodeGenerator
 	
 	private void GetInitializer(SchemaModel schema, String output)
 	{
-		if (schema.Type == .Ref && schema.ReferencedSchema != null)
-		{
-			output.Append(" = new .() ~ delete _;");
-			return;
-		}
+		var resolved = schema.Resolved;
 		
-		switch (schema.Type)
+		switch (resolved.Type)
 		{
 		case .String:
 			output.Append(" = new .() ~ delete _;");
-		case .Integer, .Number, .Boolean:
-			output.Clear();
 		case .Array:
-			output.Append(" = new .() ~ DeleteContainerAndItems!(_);");
+			// Only a list of heap objects may delete its items.
+			if (OwnsListItems(resolved.Items))
+			{
+				output.Append(" = new .() ~ DeleteContainerAndItems!(_);");
+			}
+			else
+			{
+				output.Append(" = new .() ~ delete _;");
+			}
 		case .Object:
 			output.Append(" = new .() ~ delete _;");
 		default:
 			output.Clear();
+		}
+	}
+	
+	/// Whether a List of this element schema holds objects the destructor has to delete.
+	private bool OwnsListItems(SchemaModel items)
+	{
+		if (items == null)
+		{
+			return false;
+		}
+		
+		switch (items.Resolved.Type)
+		{
+		case .String, .Object, .Array:
+			return true;
+		default:
+			return false;
 		}
 	}
 	
