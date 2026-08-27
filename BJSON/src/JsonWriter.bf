@@ -16,8 +16,8 @@ namespace BJSON
 		private const int cMaximumDepth = 200;
 
 		private JsonWriterOptions options;
-		private int depth = 0;
-		private int nesting = 0;
+		// One level per open array or object: it bounds the recursion and sets the indent width.
+		private int mDepth = 0;
 		private Stream stream;
 
 		/// Creates a writer with default, unindented formatting.
@@ -193,8 +193,7 @@ namespace BJSON
 		public Result<void, JsonSerializationError> Write(JsonValue json, Stream stream, JsonWriterOptions options)
 		{
 			this.options = options;
-			this.depth = 0;
-			this.nesting = 0;
+			this.mDepth = 0;
 			this.stream = stream;
 			defer { this.stream = null; }
 
@@ -210,11 +209,11 @@ namespace BJSON
 			case .BOOL:
 				return WriteBoolean(json);
 			case .NUMBER:
-				return WriteNumber(json);
+				return WriteFloat(stream, json.data.number);
 			case .NUMBER_SIGNED:
-				return WriteNumber(json);
+				return WriteRaw(stream, json.data.signedNumber.ToString(.. scope .()));
 			case .NUMBER_UNSIGNED:
-				return WriteNumber(json);
+				return WriteRaw(stream, json.data.unsignedNumber.ToString(.. scope .()));
 			case .STRING:
 				return WriteString(json);
 			case .ARRAY:
@@ -229,12 +228,12 @@ namespace BJSON
 		}
 
 		[Inline]
-		private Result<void, JsonSerializationError> WriteIndent()
+		private Result<void, JsonSerializationError> WriteIndent(int level)
 		{
 			if (!options.Indented)
 				return .Ok;
 
-			for (int i = 0; i < depth; i++)
+			for (int i = 0; i < level; i++)
 			{
 				Try!(WriteRaw(stream, options.IndentString));
 			}
@@ -263,21 +262,6 @@ namespace BJSON
 			return WriteRaw(stream, boolean ? TrueLiteral : FalseLiteral);
 		}
 
-		Result<void, JsonSerializationError> WriteNumber(JsonValue value)
-		{
-			switch (value.type)
-			{
-			case .NUMBER_UNSIGNED:
-				return WriteRaw(stream, value.data.unsignedNumber.ToString(.. scope .()));
-			case .NUMBER_SIGNED:
-				return WriteRaw(stream, value.data.signedNumber.ToString(.. scope .()));
-			case .NUMBER:
-				return WriteFloat(stream, value.data.number);
-			default:
-				return .Err(.InvalidNumber);
-			}
-		}
-
 		Result<void, JsonSerializationError> WriteString(JsonValue value)
 		{
 			StringView string = value;
@@ -287,10 +271,10 @@ namespace BJSON
 
 		Result<void, JsonSerializationError> WriteArray(JsonValue value)
 		{
-			nesting++;
-			defer { nesting--; }
+			mDepth++;
+			defer { mDepth--; }
 
-			if (nesting > cMaximumDepth)
+			if (mDepth > cMaximumDepth)
 				return .Err(.MaximumDepthReached);
 
 			let array = value.AsArray().Value;
@@ -300,7 +284,6 @@ namespace BJSON
 			if (array.Count > 0 && options.Indented)
 			{
 				Try!(WriteNewLine());
-				depth++;
 			}
 
 			bool first = true;
@@ -313,15 +296,14 @@ namespace BJSON
 				}
 				first = false;
 
-				Try!(WriteIndent());
+				Try!(WriteIndent(mDepth));
 				Try!(WriteInternal(item));
 			}
 
 			if (array.Count > 0 && options.Indented)
 			{
 				Try!(WriteNewLine());
-				depth--;
-				Try!(WriteIndent());
+				Try!(WriteIndent(mDepth - 1));
 			}
 
 			return WriteChar(stream, (char8)JsonToken.RIGHT_SQUARE_BRACKET);
@@ -329,10 +311,10 @@ namespace BJSON
 
 		Result<void, JsonSerializationError> WriteObject(JsonValue value)
 		{
-			nesting++;
-			defer { nesting--; }
+			mDepth++;
+			defer { mDepth--; }
 
-			if (nesting > cMaximumDepth)
+			if (mDepth > cMaximumDepth)
 				return .Err(.MaximumDepthReached);
 
 			let obj = value.AsObject().Value;
@@ -342,7 +324,6 @@ namespace BJSON
 			if (obj.Count > 0 && options.Indented)
 			{
 				Try!(WriteNewLine());
-				depth++;
 			}
 
 			bool first = true;
@@ -355,7 +336,7 @@ namespace BJSON
 				}
 				first = false;
 
-				Try!(WriteIndent());
+				Try!(WriteIndent(mDepth));
 
 				Try!(WriteChar(stream, '"'));
 				Try!(WriteEscaped(stream, item.key));
@@ -367,8 +348,7 @@ namespace BJSON
 			if (obj.Count > 0 && options.Indented)
 			{
 				Try!(WriteNewLine());
-				depth--;
-				Try!(WriteIndent());
+				Try!(WriteIndent(mDepth - 1));
 			}
 
 			return WriteChar(stream, (char8)JsonToken.RIGHT_CURLY_BRACKET);

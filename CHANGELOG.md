@@ -9,6 +9,7 @@
 - `JsonDeserializationError` is now the error the emitted code raises, and every payload is a literal baked in at emit time: `TypeMismatch(path, expected, actual)`, `MissingRequiredField(path, fieldName)`, `InvalidEnumValue(path, enumType)`, `ConverterFailed(path)`, and `ParseError(inner)`. `path` is `/jsonName` on the type that reported the error, so an error from a nested `[JsonObject]` field is relative to that type. `NullNotAllowed` and `UnknownField` are removed, since a JSON null leaves a field untouched by design and there is no strict unknown field mode, and `InvalidEnumValue` and `ConverterFailed` dropped the payloads that would have aliased the parsed document
 - `IJsonSerializable.JsonSerialize` and the four typed `Json.Serialize<T>` overloads (`Stream` and `String` buffer, each with and without `JsonWriterOptions`) return `Result<void, JsonSerializationError>` instead of a bare `Result<void>`, so a typed write reports the detail the DOM writer already reported. Types carrying an emitted serializer only need a rebuild; a hand written implementation has to widen its signature. The DOM `Json.Serialize` overloads are unchanged
 - Added `JsonSerializationError.ConverterFailed`, which the emitted serializer returns when an `IJsonConverter.WriteJson` refuses the value it was handed. `IJsonConverter` still reports no reason of its own, so its `WriteJson` and `ReadJson` signatures are unchanged
+- Removed the never referenced `JsonToken.COLON` and the unused named cases of `JsonEscapes`, which is now the static lookup class its two call sites always treated it as
 
 ### New Features
 
@@ -21,6 +22,7 @@
 - `BJSON.SchemaCodeGen` now resolves `$defs` and local file `$ref` targets, understands `$id` and `$anchor`, generates array types, and maps `additionalProperties` onto `[JsonExtensionData]`
 - Added a warnings-as-errors mode to `BJSON.SchemaCodeGen` for schemas that use keywords the generator does not support
 - Added the `BJSON.SchemaCodeGen.Tests` project, which exercises the generator against its schema corpus
+- `JsonValue` and `JsonObject` key indexers take `StringView`, so a lookup no longer forces an allocated `String`. Writes still copy the key into a `String` the object owns, and existing `String` call sites compile unchanged
 
 ### Bug Fixes
 
@@ -31,6 +33,8 @@
 - Fixed a multi line schema `description` breaking the generated file it was written into
 - Removed the orphaned `EmployeeBase1.bf` from the checked in generated output
 - Fixed `BJSON.Example` discarding `Result` values, which traps at runtime in a Beef build with checks enabled
+- Fixed an `IHandler` refusal being reported as two different errors depending on the callback: every handler refusal now surfaces as `InvalidValue` at the token's position, while grammar faults keep their specific errors
+- Fixed `BJSON.SchemaCodeGen` ignoring `-c` whenever the schema declares a `title`; an explicit `-c` now outranks the title, which stays the default
 
 ---
 

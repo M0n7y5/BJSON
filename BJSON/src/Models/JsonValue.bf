@@ -194,7 +194,7 @@ namespace BJSON.Models
 			}
 		}
 
-		public JsonValue this[String key]
+		public JsonValue this[StringView key]
 		{
 			get
 			{
@@ -639,19 +639,22 @@ namespace BJSON.Models
 			}
 		}
 
-		/// Reads or writes a value by key. The object copies the key and owns the copy,
-		/// and a write disposes the value it replaces. Reading a key the object does not hold
+		/// Reads or writes a value by key. A write copies the key into a String the object owns,
+		/// and disposes the value it replaces. Reading a key the object does not hold
 		/// is a fatal error, so use TryGet or GetOrDefault on untrusted input.
-		public JsonValue this[String key]
+		public JsonValue this[StringView key]
 		{
 			get
 			{
-				return data.object[key];
+				if (data.object.TryGetRefAlt(key, ?, let valPtr))
+					return *valPtr;
+
+				Runtime.FatalError("Key not found");
 			}
 
 			set
 			{
-				if (data.object.TryGetRefAlt(StringView(key), ?, let valPtr))
+				if (data.object.TryGetRefAlt(key, ?, let valPtr))
 				{
 					JsonValue.DisposeChild(*valPtr);
 					*valPtr = value;
