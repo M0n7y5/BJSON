@@ -47,7 +47,7 @@ class NumberTest
 	}
 
 	[Test(Name = "Regression: shortest round-trip for a 17 digit negative double")]
-	public static void T_DtoaWorstCaseBuffer()
+	public static void T_ShortestRoundTripWorstCase()
 	{
 		let value = -1.2551272886980567e-06;
 		var json = JsonNumber(value);
@@ -55,7 +55,7 @@ class NumberTest
 
 		let output = scope String();
 		Test.Assert(Json.Serialize(json, output) case .Ok, "serialize must succeed");
-		Test.Assert(output == "-0.0000012551272886980567", scope $"got '{output}'");
+		Test.Assert(output == "-1.2551272886980567e-06", scope $"got '{output}'");
 
 		let reparsed = Json.Deserialize(output);
 		Test.Assert(reparsed case .Ok(let val), "round-trip parse must succeed");

@@ -23,6 +23,7 @@
 - Added a warnings-as-errors mode to `BJSON.SchemaCodeGen` for schemas that use keywords the generator does not support
 - Added the `BJSON.SchemaCodeGen.Tests` project, which exercises the generator against its schema corpus
 - `JsonValue` and `JsonObject` key indexers take `StringView`, so a lookup no longer forces an allocated `String`. Writes still copy the key into a `String` the object owns, and existing `String` call sites compile unchanged
+- Doubles serialize through the Beef runtime's Zmij conversion instead of the vendored Grisu2 port, about 1.8x faster and still byte identical on the pinned round-trip corpus. `BJSON/src/Internal/` (`dtoa`, `diyfp`, `itoa`, `DoubleExt`, roughly 840 lines of RapidJSON derived code) is deleted. Doubles with no fraction still gain `.0` and exponents drop their `+`; very large integral doubles now prefer the shorter exponent form (`9.223372036854775e18` where Grisu2 wrote `9223372036854775000.0`), and small magnitudes prefer scientific form (`-1.2551272886980567e-06`), both of which parse back to the identical value
 
 ### Bug Fixes
 

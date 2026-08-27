@@ -158,7 +158,8 @@ namespace BJSON
 		}
 
 		/// Writes a floating-point value to a stream.
-		/// Emitted serializers call this for floating-point fields.
+		/// Emitted serializers call this for floating-point fields. Conversion runs in the Beef
+		/// runtime (Zmij, shortest round-trip); the text is then shaped for JSON.
 		/// @param stream The stream to write to.
 		/// @param value The floating-point value.
 		/// @returns Ok, Err if value is NaN or Infinity, or Err if the write failed.
@@ -169,10 +170,39 @@ namespace BJSON
 			if (value.IsInfinity)
 				return .Err(.InfinityNotAllowed);
 
-			char8[32] buff;
-			let end = BJSON.Internal.dtoa(value, &buff);
+			var text = scope String(32);
+			value.ToString(text);
+			NormalizeNumberText(text);
 
-			return WriteRaw(stream, StringView(&buff, end - &buff));
+			return WriteRaw(stream, text);
+		}
+
+		/// Shapes the runtime's shortest round-trip text for JSON: a bare integer gains ".0" so a
+		/// re-parse keeps the double tag, and an exponent loses the '+' the runtime writes.
+		private static void NormalizeNumberText(String text)
+		{
+			char8* ptr = text.Ptr;
+			let length = text.Length;
+			bool hasDotOrExp = false;
+
+			for (int i = 0; i < length; i++)
+			{
+				let c = ptr[i];
+				if (c == '.')
+				{
+					hasDotOrExp = true;
+				}
+				else if (c == 'e' || c == 'E')
+				{
+					hasDotOrExp = true;
+					if (i + 1 < length && ptr[i + 1] == '+')
+						text.Remove(i + 1);
+					break;
+				}
+			}
+
+			if (!hasDotOrExp)
+				text.Append(".0");
 		}
 
 		/// Writes a JsonValue tree to a stream using this writer's options.

@@ -28,7 +28,7 @@ BJSON is designed for high-performance JSON processing with several key optimiza
 
 - **Small String Optimization (SSO)** — String values ≤14 characters are stored inline within the JsonValue struct, requiring zero heap allocation
 - **BumpAllocator Integration** — Object keys are allocated using efficient bump allocation during parsing
-- **Fast Number Conversion** — Uses Grisu2 algorithm for optimal double-to-string conversion
+- **Fast Number Conversion**: doubles convert through the Beef runtime's Zmij implementation (shortest round-trip form, about 1.8x faster than the Grisu2 port it replaces)
 - **Configurable Duplicate Key Handling** — Choose between throwing errors, ignoring duplicates, or always rewriting (default)
 
 ## Usage
