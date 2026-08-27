@@ -61,8 +61,9 @@ class Program
 		String schemaSourcePath = scope String();
 		Path.GetFullPath(options.SchemaFile, schemaSourcePath);
 
+		bool rootNameIsExplicit = !options.RootClassName.IsEmpty;
 		String rootName = scope String();
-		if (!options.RootClassName.IsEmpty)
+		if (rootNameIsExplicit)
 		{
 			rootName.Append(options.RootClassName);
 		}
@@ -98,7 +99,7 @@ class Program
 
 		Console.WriteLine(scope $"Parsing schema: {options.SchemaFile}");
 
-		var parseResult = parser.Parse(schemaContent, rootName, schemaSourcePath);
+		var parseResult = parser.Parse(schemaContent, rootName, schemaSourcePath, rootNameIsExplicit);
 
 		if (parseResult case .Err(let parseErr))
 		{
@@ -248,23 +249,32 @@ class Program
 
 	private static void PrintUsage()
 	{
-		Console.WriteLine("BJSON.SchemaCodeGen - JSON Schema to Beef Code Generator\n");
-		Console.WriteLine("Usage: BJSON.SchemaCodeGen [options] <schema.json>\n");
-		Console.WriteLine("Arguments:");
-		Console.WriteLine("  schema.json    Input JSON Schema file (required)\n");
-		Console.WriteLine("Options:");
-		Console.WriteLine("  -o, --output <dir>      Output directory (default: ./generated)");
-		Console.WriteLine("  -n, --namespace <name>  Namespace for classes (required)");
-		Console.WriteLine("  -c, --class <name>      Root class name override");
-		Console.WriteLine("  --integer-type <type>   Integer type: int32, int64 (default: int64)");
-		Console.WriteLine("  --number-type <type>    Number type: float, double (default: double)");
-		Console.WriteLine("  --skip-docs             Skip documentation comments");
-		Console.WriteLine("  --warnings-as-errors    Exit with code 5 instead of writing files when warnings are emitted");
-		Console.WriteLine("  -h, --help              Show this help\n");
-		Console.WriteLine("Examples:");
-		Console.WriteLine("  BJSON.SchemaCodeGen user.schema.json -n MyApp.Models");
-		Console.WriteLine("  BJSON.SchemaCodeGen api.schema.json -o ./src/Models -n Api.Models");
-		Console.WriteLine("  BJSON.SchemaCodeGen schema.json -n MyApp -c ApiResponse");
+		String usage = scope String();
+		AppendUsage(usage);
+		Console.Write((StringView)usage);
+	}
+
+	/// Appends the CLI usage text, which states that `-c` outranks the schema `title`.
+	/// @param output Caller owned string that receives the text.
+	public static void AppendUsage(String output)
+	{
+		output.Append("BJSON.SchemaCodeGen - JSON Schema to Beef Code Generator\n\n");
+		output.Append("Usage: BJSON.SchemaCodeGen [options] <schema.json>\n\n");
+		output.Append("Arguments:\n");
+		output.Append("  schema.json    Input JSON Schema file (required)\n\n");
+		output.Append("Options:\n");
+		output.Append("  -o, --output <dir>      Output directory (default: ./generated)\n");
+		output.Append("  -n, --namespace <name>  Namespace for classes (required)\n");
+		output.Append("  -c, --class <name>      Root class name; outranks the schema title (default: schema title, then file name)\n");
+		output.Append("  --integer-type <type>   Integer type: int32, int64 (default: int64)\n");
+		output.Append("  --number-type <type>    Number type: float, double (default: double)\n");
+		output.Append("  --skip-docs             Skip documentation comments\n");
+		output.Append("  --warnings-as-errors    Exit with code 5 instead of writing files when warnings are emitted\n");
+		output.Append("  -h, --help              Show this help\n\n");
+		output.Append("Examples:\n");
+		output.Append("  BJSON.SchemaCodeGen user.schema.json -n MyApp.Models\n");
+		output.Append("  BJSON.SchemaCodeGen api.schema.json -o ./src/Models -n Api.Models\n");
+		output.Append("  BJSON.SchemaCodeGen schema.json -n MyApp -c ApiResponse\n");
 	}
 
 	private static void PrintWarnings(List<String> warnings)

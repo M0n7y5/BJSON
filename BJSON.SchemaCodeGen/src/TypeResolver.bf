@@ -13,7 +13,6 @@ class TypeResolver
 	private Dictionary<String, SchemaModel> mDocuments = new Dictionary<String, SchemaModel>() ~ delete _;
 	private HashSet<SchemaModel> mResolvedSchemas = new HashSet<SchemaModel>() ~ delete _;
 	private List<SchemaModel> mGenerationOrder = new List<SchemaModel>() ~ delete _;
-	private SchemaModel mRootSchema;
 
 	public List<String> Warnings = new List<String>() ~ DeleteContainerAndItems!(_);
 	public List<String> Errors = new List<String>() ~ DeleteContainerAndItems!(_);
@@ -28,7 +27,6 @@ class TypeResolver
 		mGenerationOrder.Clear();
 		ClearAndDeleteItems(Warnings);
 		ClearAndDeleteItems(Errors);
-		mRootSchema = rootSchema;
 
 		RegisterDocument(rootSchema, rootSchema.SourcePath);
 
@@ -76,7 +74,6 @@ class TypeResolver
 		ClearDocuments();
 		mResolvedSchemas.Clear();
 		mGenerationOrder.Clear();
-		mRootSchema = null;
 	}
 
 	private void ClearUsedNames()

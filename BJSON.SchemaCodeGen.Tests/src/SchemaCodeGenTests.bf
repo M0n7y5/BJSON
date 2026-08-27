@@ -1049,6 +1049,74 @@ class SchemaCodeGenTests
 		}
 	}
 
+	[Test(Name = "SchemaCodeGen -c outranks the schema title")]
+	public static void T_RootClassNameOutranksTitle()
+	{
+		String tempDir = scope String();
+		CreateTempDirectory(tempDir);
+		defer { CleanupDirectory(tempDir); }
+
+		String schemaPath = scope String();
+		BuildOutputFilePath(tempDir, "payload.schema.json", schemaPath);
+		let schemaText = "{\"title\":\"TitleSample\",\"type\":\"object\",\"properties\":{\"detail\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}}";
+		Test.Assert(File.WriteAllText(schemaPath, schemaText) case .Ok, "Expected schema fixture write");
+
+		String overrideDir = scope String();
+		BuildOutputFilePath(tempDir, "override", overrideDir);
+		String[] overrideArgs = scope .(
+			schemaPath,
+			"-n",
+			"BJSON.SchemaCodeGen.Tests.Generated",
+			"-o",
+			overrideDir,
+			"-c",
+			"OverrideSample"
+		);
+		let overrideExitCode = Program.Main(overrideArgs);
+		Test.Assert(overrideExitCode == 0, scope $"Expected -c generation to return 0, got {overrideExitCode}");
+
+		String overrideRootFile = scope String();
+		BuildOutputFilePath(overrideDir, "OverrideSample.bf", overrideRootFile);
+		Test.Assert(File.Exists(overrideRootFile), scope $"Expected -c root file: {overrideRootFile}");
+
+		String overrideNestedFile = scope String();
+		BuildOutputFilePath(overrideDir, "OverrideSampleDetail.bf", overrideNestedFile);
+		Test.Assert(File.Exists(overrideNestedFile), scope $"Expected nested type named from the -c root: {overrideNestedFile}");
+
+		String titleFileUnderOverride = scope String();
+		BuildOutputFilePath(overrideDir, "TitleSample.bf", titleFileUnderOverride);
+		Test.Assert(!File.Exists(titleFileUnderOverride), scope $"Title must not outrank -c: {titleFileUnderOverride}");
+
+		String titleDir = scope String();
+		BuildOutputFilePath(tempDir, "title", titleDir);
+		String[] titleArgs = scope .(
+			schemaPath,
+			"-n",
+			"BJSON.SchemaCodeGen.Tests.Generated",
+			"-o",
+			titleDir
+		);
+		let titleExitCode = Program.Main(titleArgs);
+		Test.Assert(titleExitCode == 0, scope $"Expected title-named generation to return 0, got {titleExitCode}");
+
+		String titleRootFile = scope String();
+		BuildOutputFilePath(titleDir, "TitleSample.bf", titleRootFile);
+		Test.Assert(File.Exists(titleRootFile), scope $"Expected title root file: {titleRootFile}");
+
+		String titleNestedFile = scope String();
+		BuildOutputFilePath(titleDir, "TitleSampleDetail.bf", titleNestedFile);
+		Test.Assert(File.Exists(titleNestedFile), scope $"Expected nested type named from the title root: {titleNestedFile}");
+	}
+
+	[Test(Name = "SchemaCodeGen usage states -c outranks title")]
+	public static void T_UsageStatesRootClassPrecedence()
+	{
+		String usage = scope String();
+		Program.AppendUsage(usage);
+
+		Test.Assert(usage.Contains("-c, --class <name>      Root class name; outranks the schema title"), scope $"Expected -c precedence in usage. Usage:\n{usage}");
+	}
+
 	private static void CleanupDirectory(StringView path)
 	{
 		if (Directory.Exists(path))

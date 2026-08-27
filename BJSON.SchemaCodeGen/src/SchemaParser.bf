@@ -43,7 +43,11 @@ class SchemaParser
 		return Parse(schemaJson, rootName, default);
 	}
 
-	public Result<SchemaModel, SchemaError> Parse(StringView schemaJson, StringView rootName, StringView sourcePath)
+	/// Parses a schema document into models.
+	/// @param rootNameIsExplicit true when the caller named the root type (`-c`), which outranks the
+	///                           document `title`. Nested and definition names keep deriving from
+	///                           their own `title` or key.
+	public Result<SchemaModel, SchemaError> Parse(StringView schemaJson, StringView rootName, StringView sourcePath, bool rootNameIsExplicit = false)
 	{
 		ClearAndDeleteItems(Warnings);
 
@@ -57,13 +61,13 @@ class SchemaParser
 
 		if (parseResult case .Ok(let jsonValue))
 		{
-			return ParseSchema(jsonValue, rootName, sourcePath);
+			return ParseSchema(jsonValue, rootName, sourcePath, !rootNameIsExplicit);
 		}
 
 		return .Err(.InvalidSchema);
 	}
 
-	private Result<SchemaModel, SchemaError> ParseSchema(JsonValue json, StringView name, StringView sourcePath)
+	private Result<SchemaModel, SchemaError> ParseSchema(JsonValue json, StringView name, StringView sourcePath, bool applyTitleName = true)
 	{
 		var model = new SchemaModel();
 		model.Name.Set(name);
@@ -78,15 +82,18 @@ class SchemaParser
 
 		let obj = json.As<JsonObject>();
 
-		if (obj.TryGet("title") case .Ok(let titleVal))
+		if (applyTitleName)
 		{
-			if (titleVal.IsString())
+			if (obj.TryGet("title") case .Ok(let titleVal))
 			{
-				String titleName = scope String();
-				NameMangler.ToPascalCase((StringView)titleVal, titleName);
-				if (!titleName.IsEmpty)
+				if (titleVal.IsString())
 				{
-					model.Name.Set(titleName);
+					String titleName = scope String();
+					NameMangler.ToPascalCase((StringView)titleVal, titleName);
+					if (!titleName.IsEmpty)
+					{
+						model.Name.Set(titleName);
+					}
 				}
 			}
 		}
