@@ -13,10 +13,16 @@ class RecordingHandler : IHandler
 	/// Makes every Number callback refuse its value, which aborts the parse.
 	public bool RefuseNumbers = false;
 
+	/// Makes the Null callback refuse the literal, which aborts the parse.
+	public bool RefuseNull = false;
+
+	/// Makes the StartObject callback refuse the container, which aborts the parse.
+	public bool RefuseStartObject = false;
+
 	public bool Null()
 	{
 		Record("Null");
-		return true;
+		return !RefuseNull;
 	}
 
 	public bool Bool(bool b)
@@ -52,7 +58,7 @@ class RecordingHandler : IHandler
 	public bool StartObject()
 	{
 		Record("StartObject");
-		return true;
+		return !RefuseStartObject;
 	}
 
 	public bool Key(StringView str, bool copy)
@@ -141,5 +147,33 @@ class HandlerTest
 
 		Test.Assert(defaulted.Parse(scope StringStream(json, .Reference)) case .Err, "The default config should reject comments");
 		Test.Assert(rejecting.Events.IsEmpty, scope $"Nothing should reach the handler, got '{rejecting.Events}'");
+	}
+
+	[Test(Name = "Handler: Refused Null Reports InvalidValue")]
+	public static void T_RefusedNullReportsInvalidValue()
+	{
+		let handler = scope RecordingHandler();
+		handler.RefuseNull = true;
+
+		let reader = scope JsonReader(handler);
+		let result = reader.Parse(scope StringStream("null", .Reference));
+
+		Test.Assert(result case .Err(.InvalidValue(let line, let column)), "A refused null should report InvalidValue, not UnexpectedToken");
+		Test.Assert(line == 1 && column == 5, scope $"Expected line=1 column=5, got line={line} column={column}");
+		Test.Assert(handler.Events == "Null", scope $"Only the refused call should be recorded, got '{handler.Events}'");
+	}
+
+	[Test(Name = "Handler: Refused StartObject Reports InvalidValue")]
+	public static void T_RefusedStartObjectReportsInvalidValue()
+	{
+		let handler = scope RecordingHandler();
+		handler.RefuseStartObject = true;
+
+		let reader = scope JsonReader(handler);
+		let result = reader.Parse(scope StringStream("{\"a\": 1}", .Reference));
+
+		Test.Assert(result case .Err(.InvalidValue(let line, let column)), "A refused StartObject should report InvalidValue, not UnexpectedToken");
+		Test.Assert(line == 1 && column == 2, scope $"Expected line=1 column=2, got line={line} column={column}");
+		Test.Assert(handler.Events == "StartObject", scope $"Parse should stop at the refusal, got '{handler.Events}'");
 	}
 }

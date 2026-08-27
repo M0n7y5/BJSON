@@ -125,108 +125,88 @@ namespace BJSON
 				{
 					stream.Skip(1);
 					column++;
-
-					while (stream.Peek<char8>() case .Ok(let c))
-					{
-						stream.Skip(1);
-						if (c == '\n')
-						{
-							line++;
-							column = 1;
-							break;
-						}
-						else if (c == '\r')
-						{
-							column++;
-							if (stream.Peek<char8>() case .Ok('\n'))
-							{
-								stream.Skip(1);
-								line++;
-								column = 1;
-								break;
-							}
-							else
-							{
-								line++;
-								column = 1;
-								break;
-							}
-						}
-						else
-						{
-							column++;
-						}
-					}
+					SkipLineComment(stream);
 					return .Ok;
 				}
-				else if (nextChar == '*')
+
+				if (nextChar == '*')
 				{
 					stream.Skip(1);
 					column++;
-
-					bool foundClosing = false;
-					while (stream.Peek<char8>() case .Ok(let c))
-					{
-						stream.Skip(1);
-
-						if (c == '\n')
-						{
-							line++;
-							column = 1;
-						}
-						else if (c == '\r')
-						{
-							column++;
-							if (stream.Peek<char8>() case .Ok('\n'))
-							{
-								stream.Skip(1);
-								line++;
-								column = 1;
-							}
-							else
-							{
-								line++;
-								column = 1;
-							}
-							continue;
-						}
-						else if (c == '*')
-						{
-							column++;
-							if (stream.Peek<char8>() case .Ok('/'))
-							{
-								stream.Skip(1);
-								column++;
-								foundClosing = true;
-								break;
-							}
-						}
-						else
-						{
-							column++;
-						}
-					}
-
-					if (!foundClosing)
-					{
-						return .Err(.UnexpectedToken(line, column, "closing */"));
-					}
-
-					return .Ok;
+					return SkipBlockComment(stream);
 				}
-				else
-				{
-					stream.Position = pos;
-					column--;
-					return .Err(.UnexpectedToken(line, column, "// or /* to start comment"));
-				}
-			}
-			else
-			{
+
 				stream.Position = pos;
 				column--;
-				return .Err(.UnableToRead(line, column));
+				return .Err(.UnexpectedToken(line, column, "// or /* to start comment"));
 			}
+
+			stream.Position = pos;
+			column--;
+			return .Err(.UnableToRead(line, column));
+		}
+
+		/// Scans the body of a line comment, whose "//" the caller has consumed. The line break
+		/// that ends it is consumed and counted. End of input ends it too, so this cannot fail.
+		void SkipLineComment(Stream stream)
+		{
+			while (stream.Peek<char8>() case .Ok(let c))
+			{
+				stream.Skip(1);
+
+				if (c == '\n' || c == '\r')
+				{
+					CountLineBreak(stream, c);
+					return;
+				}
+
+				column++;
+			}
+		}
+
+		/// Scans the body of a block comment, whose "/*" the caller has consumed, counting the
+		/// lines it spans. End of input is not an end of comment: an unterminated block is an error.
+		Result<void, JsonParsingError> SkipBlockComment(Stream stream)
+		{
+			while (stream.Peek<char8>() case .Ok(let c))
+			{
+				stream.Skip(1);
+
+				if (c == '\n' || c == '\r')
+				{
+					CountLineBreak(stream, c);
+					continue;
+				}
+
+				column++;
+
+				if (c == '*')
+				{
+					if (stream.Peek<char8>() case .Ok('/'))
+					{
+						stream.Skip(1);
+						column++;
+						return .Ok;
+					}
+				}
+			}
+
+			return .Err(.UnexpectedToken(line, column, "closing */"));
+		}
+
+		/// Counts the line break starting with c, which the caller has consumed. A lone '\r', a
+		/// "\r\n" pair and a '\n' each end one line, so the '\n' of a pair is consumed here.
+		[Inline]
+		void CountLineBreak(Stream stream, char8 c)
+		{
+			if (c == '\r')
+			{
+				if (stream.Peek<char8>() case .Ok('\n'))
+					stream.Skip(1);
+			}
+
+			line++;
+			column = 1;
 		}
 
 		[Inline]
@@ -256,10 +236,10 @@ namespace BJSON
 
 		Result<void, JsonParsingError> ParseNull(Stream stream)
 		{
-			Try!(ConsumeLiteral(stream, "null"));
+			Try!(ConsumeLiteral(stream, NullLiteral));
 
 			if (!mHandler.Null())
-				return .Err(.UnexpectedToken(line, column, "null"));
+				return .Err(.InvalidValue(line, column));
 
 			return .Ok;
 		}
@@ -271,14 +251,14 @@ namespace BJSON
 				switch (c)
 				{
 				case 't':
-					Try!(ConsumeLiteral(stream, "true"));
+					Try!(ConsumeLiteral(stream, TrueLiteral));
 
 					if (!mHandler.Bool(true))
 						return .Err(.InvalidValue(line, column));
 					return .Ok;
 
 				case 'f':
-					Try!(ConsumeLiteral(stream, "false"));
+					Try!(ConsumeLiteral(stream, FalseLiteral));
 
 					if (!mHandler.Bool(false))
 						return .Err(.InvalidValue(line, column));
@@ -347,51 +327,8 @@ namespace BJSON
 					{
 						stream.Skip(1);
 						column++;
-						if (let e = stream.Peek<char8>())
-						{
-							if (e == 'u')
-							{
-								stream.Skip(1);
-								column++;
 
-								var codepoint = Try!(ParseHex4(stream));
-								if (codepoint >= 0xD800 && codepoint <= 0xDFFF)
-								{
-									// D800 to DBFF is a high surrogate: a low surrogate escape must follow it.
-									if (codepoint <= 0xDBFF)
-									{
-										if (ConsumeChar(stream, '\\') case .Err)
-											return .Err(.InvalidStringSurrogate(line, column));
-
-										if (ConsumeChar(stream, 'u') case .Err)
-											return .Err(.InvalidStringSurrogate(line, column));
-
-										let codepoint2 = Try!(ParseHex4(stream));
-										if (codepoint2 < 0xDC00 || codepoint2 > 0xDFFF)
-										{
-							return .Err(.InvalidStringSurrogate(line, column));
-										}
-										codepoint = (((codepoint - 0xD800) << 10) | (codepoint2 - 0xDC00)) + 0x10000;
-									}
-									else
-									{
-										return .Err(.InvalidStringSurrogate(line, column));
-									}
-								}
-
-								str.Append((char32)codepoint);
-							}
-							else if (let e2 = JsonEscapes.Escape(e))
-							{
-								str.Append(e2);
-								stream.Skip(1);
-								column++;
-							}
-							else
-								return .Err(.InvalidEscapeToken(line, column));
-						}
-						else
-							return .Err(.UnableToRead(line, column));
+						Try!(AppendEscape(stream, str));
 					}
 					else if (c == '"')
 					{
@@ -423,6 +360,66 @@ namespace BJSON
 				else
 					return .Err(.UnableToRead(line, column));
 			}
+		}
+
+		/// Decodes the escape sequence whose backslash the caller has consumed, and appends the
+		/// character it stands for to str.
+		Result<void, JsonParsingError> AppendEscape(Stream stream, String str)
+		{
+			if (let e = stream.Peek<char8>())
+			{
+				if (e == 'u')
+				{
+					stream.Skip(1);
+					column++;
+
+					return AppendUnicodeEscape(stream, str);
+				}
+
+				if (let unescaped = JsonEscapes.Escape(e))
+				{
+					str.Append(unescaped);
+					stream.Skip(1);
+					column++;
+
+					return .Ok;
+				}
+
+				return .Err(.InvalidEscapeToken(line, column));
+			}
+
+			return .Err(.UnableToRead(line, column));
+		}
+
+		/// Decodes a \u escape whose "u" the caller has consumed, and appends its code point to
+		/// str as UTF-8.
+		Result<void, JsonParsingError> AppendUnicodeEscape(Stream stream, String str)
+		{
+			var codepoint = Try!(ParseHex4(stream));
+
+			if (codepoint >= 0xD800 && codepoint <= 0xDFFF)
+			{
+				// D800 to DBFF is a high surrogate: a low surrogate escape must follow it.
+				if (codepoint > 0xDBFF)
+					return .Err(.InvalidStringSurrogate(line, column));
+
+				if (ConsumeChar(stream, '\\') case .Err)
+					return .Err(.InvalidStringSurrogate(line, column));
+
+				if (ConsumeChar(stream, 'u') case .Err)
+					return .Err(.InvalidStringSurrogate(line, column));
+
+				let low = Try!(ParseHex4(stream));
+
+				if (low < 0xDC00 || low > 0xDFFF)
+					return .Err(.InvalidStringSurrogate(line, column));
+
+				codepoint = (((codepoint - 0xD800) << 10) | (low - 0xDC00)) + 0x10000;
+			}
+
+			str.Append((char32)codepoint);
+
+			return .Ok;
 		}
 
 		/// Consumes one UTF-8 sequence and appends its bytes to str.
@@ -460,7 +457,27 @@ namespace BJSON
 			str.Append(lead);
 			stream.Skip(1);
 
-			for (int i = 0; i < continuationCount; i++)
+			codepoint = Try!(AppendUtf8Continuations(stream, continuationCount, codepoint, str));
+
+			if (codepoint < minCodepoint || codepoint > 0x10FFFF)
+				return .Err(.InvalidEncoding(line, column));
+
+			if (codepoint >= 0xD800 && codepoint <= 0xDFFF)
+				return .Err(.InvalidEncoding(line, column));
+
+			column++;
+
+			return .Ok;
+		}
+
+		/// Appends count continuation bytes to str, folding their payload bits into the code point
+		/// the lead byte started. A byte that is not 10xxxxxx, and a sequence the input cuts short,
+		/// are both InvalidEncoding.
+		Result<uint32, JsonParsingError> AppendUtf8Continuations(Stream stream, int count, uint32 leadBits, String str)
+		{
+			var codepoint = leadBits;
+
+			for (int i = 0; i < count; i++)
 			{
 				if (let c = stream.Peek<char8>())
 				{
@@ -477,15 +494,7 @@ namespace BJSON
 					return .Err(.InvalidEncoding(line, column));
 			}
 
-			if (codepoint < minCodepoint || codepoint > 0x10FFFF)
-				return .Err(.InvalidEncoding(line, column));
-
-			if (codepoint >= 0xD800 && codepoint <= 0xDFFF)
-				return .Err(.InvalidEncoding(line, column));
-
-			column++;
-
-			return .Ok;
+			return .Ok(codepoint);
 		}
 
 		Result<void, JsonParsingError> ParseObject(Stream stream)
@@ -494,9 +503,7 @@ namespace BJSON
 			column++;
 
 			if (!mHandler.StartObject())
-			{
-				return .Err(.UnexpectedToken(line, column, ""));
-			}
+				return .Err(.InvalidValue(line, column));
 
 			currentDepth++;
 
@@ -510,7 +517,7 @@ namespace BJSON
 			if (ConsumeChar(stream, '}') case .Ok)
 			{
 				if (!mHandler.EndObject())
-					return .Err(.UnexpectedToken(line, column, ""));
+					return .Err(.InvalidValue(line, column));
 
 				currentDepth--;
 
@@ -544,8 +551,8 @@ namespace BJSON
 						case '}':
 							stream.Skip(1);
 							column++;
-						if (!mHandler.EndObject())
-							return .Err(.UnexpectedToken(line, column, ""));
+							if (!mHandler.EndObject())
+								return .Err(.InvalidValue(line, column));
 
 							currentDepth--;
 
@@ -567,9 +574,7 @@ namespace BJSON
 			column++;
 
 			if (!mHandler.StartArray())
-			{
-				return .Err(.UnexpectedToken(line, column, ""));
-			}
+				return .Err(.InvalidValue(line, column));
 
 			currentDepth++;
 
@@ -583,7 +588,7 @@ namespace BJSON
 			if (ConsumeChar(stream, ']') case .Ok)
 			{
 				if (!mHandler.EndArray())
-					return .Err(.UnexpectedToken(line, column, ""));
+					return .Err(.InvalidValue(line, column));
 
 				currentDepth--;
 
@@ -603,7 +608,7 @@ namespace BJSON
 				else if (ConsumeChar(stream, ']') case .Ok)
 				{
 					if (!mHandler.EndArray())
-						return .Err(.UnexpectedToken(line, column, ""));
+						return .Err(.InvalidValue(line, column));
 
 					currentDepth--;
 					return .Ok;

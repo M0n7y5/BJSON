@@ -19,15 +19,15 @@ namespace BJSON.Enums
 		/// A peek or read on the stream failed: truncated input, or an I/O error.
 		/// line and column locate the cursor at the failed read.
 		case UnableToRead(uint line, uint column);
-		/// A complete value was refused: the handler returned false from Bool, String, Key or
-		/// Number, or the accumulated number text failed double.Parse.
+		/// A value was refused: an IHandler callback returned false, or the accumulated number text
+		/// failed double.Parse. Every handler refusal reports this, whichever callback refused.
 		/// line and column locate the value; for a number, column is where the literal started.
 		case InvalidValue(uint line, uint column);
-		/// The character read here is not allowed by the grammar at this point, or a structural
-		/// handler callback (StartObject, EndObject, StartArray, EndArray, Null) returned false.
+		/// The character read here is not allowed by the grammar at this point, so the document
+		/// itself is malformed; a handler refusal reports InvalidValue instead.
 		/// line and column locate the cursor. expected is the text the reader would have accepted,
-		/// such as "end of document", ", or }" or "exponent value", and stays empty when a handler
-		/// refusal leaves no token to name; ToString then drops the expected clause.
+		/// such as "end of document", ", or }" or "exponent value", and stays empty where the
+		/// reader has no single token to name; ToString then drops the expected clause.
 		case UnexpectedToken(uint line, uint column, StringView expected);
 		/// A \u escape was not followed by four hexadecimal digits.
 		/// line and column locate the character that is not a hex digit.

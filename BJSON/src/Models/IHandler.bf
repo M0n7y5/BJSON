@@ -5,8 +5,7 @@ namespace BJSON.Models
 	/// every value, key and structural boundary in document order, holding no tree of its own.
 	/// Deserializer is the implementation that assembles a JsonValue tree from these calls.
 	/// Returning false from any callback aborts the parse at once: the reader stops reading and
-	/// reports .InvalidValue for a refused scalar or key, .UnexpectedToken for a refused null or
-	/// structural boundary.
+	/// reports .InvalidValue, whichever callback refused.
 	public interface IHandler
 	{
 		/// Called for the literal null.

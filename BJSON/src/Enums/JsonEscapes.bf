@@ -1,28 +1,11 @@
 using System;
 namespace BJSON.Enums
 {
-	/// The eight characters JSON permits after a backslash, named for readability.
-	/// The lookup tables below are built from character literals and not from these cases,
-	/// so adding a case here teaches neither the reader nor the writer a new escape.
-	enum JsonEscapes : char8
+	/// The two escape tables JsonReader and JsonWriter share, one per direction.
+	/// Both are built from character literals: RFC 8259 fixes the eight escapes JSON allows, so a
+	/// named constant per escape would only restate a table entry that cannot be built from it.
+	static class JsonEscapes
 	{
-		/// Emitted as `\"`, decoded from `\"`.
-		case QUOTATION_MARK = '"';
-		/// Decoded from `\/` on input, never emitted: a bare solidus is valid JSON output.
-		case SOLIDUS = '/';
-		/// Emitted as `\\`, decoded from `\\`.
-		case REVERSE_SOLIDUS = '\\';
-		/// Emitted as `\b`, decoded from `\b`.
-		case BACKSPACE = '\b';
-		/// Emitted as `\f`, decoded from `\f`.
-		case FORM_FEED = '\f';
-		/// Emitted as `\n`, decoded from `\n`.
-		case LINE_FEED = '\n';
-		/// Emitted as `\r`, decoded from `\r`.
-		case CARRIAGE_RETURN = '\r';
-		/// Emitted as `\t`, decoded from `\t`.
-		case TABULATOR = '\t';
-
 		/// Comptime built table mapping the byte value of the character that follows a
 		/// backslash to the character it decodes to, so JsonReader unescapes in one indexed
 		/// load. A 0 entry means the byte is not a legal JSON escape.
